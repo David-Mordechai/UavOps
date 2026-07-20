@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UavOps.Agent</title>
+  <link rel="stylesheet" href="chat.css" />
+</head>
+<body>
+  <header>
+    <h1>UavOps.Agent</h1>
+    <span id="connectionStatus" class="status status-connecting">connecting…</span>
+  </header>
+
+  <main id="messages">
+    <div class="thread" id="thread"></div>
+  </main>
+
+  <form id="composer">
+    <div id="composer-inner">
+      <input id="messageInput" type="text" autocomplete="off" placeholder="Type a command, e.g. &quot;set speed to 120 and point the camera at target alpha&quot;" />
+      <button type="submit">Send</button>
+    </div>
+  </form>
+
+  <script src="lib/signalr.min.js"></script>
+  <script src="chat.js"></script>
+</body>
+</html>

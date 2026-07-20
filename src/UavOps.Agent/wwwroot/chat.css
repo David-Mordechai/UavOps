@@ -1,0 +1,351 @@
+/* ---- Design tokens ------------------------------------------------- */
+:root {
+  color-scheme: light dark;
+
+  --bg: #f6f7f9;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #eef0f3;
+  --border: #d8dce2;
+  --border-strong: #b9c0ca;
+
+  --text: #1a1d23;
+  --text-muted: #5b6472;
+  --text-faint: #8a92a0;
+
+  --accent: #2f6feb;
+  --accent-text: #ffffff;
+  --accent-soft: #e8f0fe;
+
+  --success: #1a7f37;
+  --success-bg: #e6f4ea;
+  --danger: #c1391f;
+  --danger-bg: #fbeae7;
+  --warning: #9a6700;
+  --warning-bg: #fff5e0;
+  --warning-border: #e0b64d;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181d;
+    --bg-elevated: #1e2128;
+    --bg-subtle: #262a32;
+    --border: #33383f;
+    --border-strong: #464c56;
+
+    --text: #eceef1;
+    --text-muted: #a3abb8;
+    --text-faint: #767f8c;
+
+    --accent: #5b8def;
+    --accent-text: #0b1220;
+    --accent-soft: #1c2a44;
+
+    --success: #4bb768;
+    --success-bg: #163524;
+    --danger: #e5735d;
+    --danger-bg: #3a2220;
+    --warning: #e0a940;
+    --warning-bg: #3a2f14;
+    --warning-border: #6b5321;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.24);
+  }
+}
+
+/* ---- Reset ----------------------------------------------------------- */
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+button, input {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+/* ---- Header ------------------------------------------------------------ */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.9rem 1.5rem;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin: 0;
+  color: var(--text);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.25rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+}
+
+.status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-connected { color: var(--success); background: var(--success-bg); border-color: transparent; }
+.status-connecting { color: var(--warning); background: var(--warning-bg); border-color: transparent; }
+.status-disconnected { color: var(--danger); background: var(--danger-bg); border-color: transparent; }
+
+/* ---- Message list ------------------------------------------------------ */
+main {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem 1rem;
+}
+
+main::before {
+  content: "No commands sent yet. Type one below to get started.";
+  display: block;
+  margin: auto;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+main:has(.thread .message)::before {
+  display: none;
+}
+
+.thread {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.message {
+  max-width: 85%;
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.message-operator {
+  align-self: flex-end;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.message-operator .message-meta { color: color-mix(in srgb, var(--accent-text) 75%, transparent); }
+
+.message-agent {
+  align-self: flex-start;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.message-meta {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+  margin-bottom: 0.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.message-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---- Reasoning trace ---------------------------------------------------- */
+.trace {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.trace summary {
+  cursor: pointer;
+  padding: 0.45rem 0.65rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.trace summary::-webkit-details-marker { display: none; }
+
+.trace summary::before {
+  content: "▸";
+  font-size: 0.7em;
+  transition: transform 0.15s ease;
+}
+
+.trace[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.trace-steps {
+  border-top: 1px solid var(--border);
+  padding: 0.4rem 0.65rem 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.trace-step {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+.trace-step .agent { color: var(--accent); font-weight: 600; }
+.trace-step .tool { color: var(--text); font-weight: 600; }
+
+/* ---- Confirmation card ---------------------------------------------------- */
+.confirmation {
+  margin-top: 0.6rem;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem 0.75rem;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.confirmation code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
+.confirmation-buttons {
+  margin-top: 0.6rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.btn {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: filter 0.1s ease;
+}
+
+.btn:hover { filter: brightness(0.95); }
+.btn:disabled { cursor: not-allowed; opacity: 0.5; filter: none; }
+
+.btn-approve { background: var(--success); color: #ffffff; }
+.btn-decline { background: transparent; color: var(--danger); border-color: var(--danger); }
+
+/* ---- Composer -------------------------------------------------------------- */
+#composer {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.9rem 1.5rem;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+}
+
+#composer > * {
+  max-width: 720px;
+}
+
+#composer {
+  justify-content: center;
+}
+
+#composer-inner {
+  display: flex;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 720px;
+}
+
+#messageInput {
+  flex: 1;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+}
+
+#messageInput::placeholder {
+  color: var(--text-faint);
+}
+
+#messageInput:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+#composer button[type="submit"] {
+  padding: 0.6rem 1.3rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#composer button[type="submit"]:hover { filter: brightness(1.08); }
+#composer button[type="submit"]:disabled { cursor: not-allowed; opacity: 0.5; }
