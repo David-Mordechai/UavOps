@@ -13,9 +13,13 @@ namespace UavOps.Agent.Tooling;
 /// approve/decline round-trip with the chat UI when ExecutionMode=Confirm; ExecutionMode reads
 /// live from IConfiguration so flipping it in appsettings.json takes effect without a restart.
 /// </summary>
-public sealed class ConfirmationGate(IHubContext<ChatHub> hub, IConfiguration configuration, ILogger<ConfirmationGate> logger)
+public sealed class ConfirmationGate(
+    IHubContext<ChatHub> hub,
+    IConfiguration configuration,
+    ILogger<ConfirmationGate> logger,
+    TimeSpan? timeout = null)
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(60);
+    private readonly TimeSpan _timeout = timeout ?? TimeSpan.FromSeconds(60);
 
     private readonly ConcurrentDictionary<string, TaskCompletionSource<bool>> _pending = new();
 
@@ -47,7 +51,7 @@ public sealed class ConfirmationGate(IHubContext<ChatHub> hub, IConfiguration co
             JsonSerializer.Serialize(arguments),
             cancellationToken);
 
-        using var timeoutCts = new CancellationTokenSource(Timeout);
+        using var timeoutCts = new CancellationTokenSource(_timeout);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
         using var registration = linked.Token.Register(() => tcs.TrySetResult(false));
 

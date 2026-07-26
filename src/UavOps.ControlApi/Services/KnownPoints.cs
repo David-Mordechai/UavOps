@@ -1,8 +1,8 @@
-namespace UavOps.MockApi;
+namespace UavOps.ControlApi.Services;
 
 /// <summary>
-/// Stand-in for a real points registry. Maps a human-friendly location name
-/// to coordinates so /navigate and /payload/point have something to resolve.
+/// Stand-in for a real points registry. Maps a human-friendly location name to coordinates
+/// so navigation and payload-pointing commands have something to resolve.
 /// </summary>
 public static class KnownPoints
 {

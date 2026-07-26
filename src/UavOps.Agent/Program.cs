@@ -95,3 +95,5 @@ app.MapGet("/healthz", () => Results.Ok(new
 }));
 
 app.Run();
+
+public partial class Program;

@@ -10,22 +10,25 @@ See `docs/plan.md` (or the plan this project was built from) for the full design
 
 ## Prerequisites
 
-- .NET 9 SDK
+- .NET 8 SDK
 - [Ollama](https://ollama.com) running locally with a model pulled, e.g. `ollama pull granite4.1:3b`
 - No Docker required — everything here is `dotnet run`.
 
 ## Running it
 
-This repo ships a mock UAV API (`UavOps.MockApi`) that stands in for the real UAV control
-application until one is available. Run both projects, each in its own terminal:
+This repo ships a simulated UAV control API (`UavOps.ControlApi`) that stands in for the real UAV
+control application until one is available. Run both projects, each in its own terminal:
 
 ```bash
-# Terminal 1 — the (mock) UAV control application
-dotnet run --project src/UavOps.MockApi --urls http://localhost:5250
+# Terminal 1 — the (simulated) UAV control application
+dotnet run --project src/UavOps.ControlApi --urls http://localhost:5250
 
 # Terminal 2 — the agent service + chat UI
 dotnet run --project src/UavOps.Agent --urls http://localhost:5262
 ```
+
+`UavOps.ControlApi` exposes its OpenAPI spec (Swashbuckle-generated) at
+`/openapi/v1.json` and a browsable Swagger UI at `/swagger`.
 
 Then open http://localhost:5262 and start typing commands, e.g.:
 
@@ -62,10 +65,10 @@ application or to change what an agent is told about a tool:
 ## Repo layout
 
 ```
-src/UavOps.Agent/     the production service: chat hub, agent orchestration, OpenAPI-driven
-                       tool catalog, confirmation gate, structured tool-call logging, static SPA
-src/UavOps.MockApi/    dev/demo stand-in for the real UAV control application
-tests/                 (scaffolded, see plan for what belongs here)
+src/UavOps.Agent/       the production service: chat hub, agent orchestration, OpenAPI-driven
+                         tool catalog, confirmation gate, structured tool-call logging, static SPA
+src/UavOps.ControlApi/  simulated dev/demo stand-in for the real UAV control application
+tests/                  unit/integration tests plus the live-pipeline golden-command evals
 ```
 
 ## Logging
