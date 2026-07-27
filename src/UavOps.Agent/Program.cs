@@ -58,10 +58,11 @@ builder.Services.AddSingleton(uavApiOptions);
 builder.Services.AddSingleton(agentsConfig);
 builder.Services.AddSingleton(toolCatalog);
 
-// Confirmation approvals must be able to reach the hub while a chat turn's SendMessage call is
-// still in flight on the same connection, so raise the per-connection parallel-invocation limit
-// above SignalR's default of 1 (which would otherwise queue SendConfirmationResponse behind the
-// still-running SendMessage call until it times out).
+// A confirmation reply is just another SendMessage call, which must be able to reach the hub
+// while the *original* SendMessage call is still in flight on the same connection (blocked
+// awaiting that confirmation), so raise the per-connection parallel-invocation limit above
+// SignalR's default of 1 (which would otherwise queue the reply behind the in-progress turn
+// until it times out).
 builder.Services.AddSignalR(options => options.MaximumParallelInvocationsPerClient = 10);
 
 builder.Services.AddHttpClient<UavApiToolInvoker>((sp, client) =>

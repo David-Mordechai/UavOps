@@ -46,27 +46,42 @@ public sealed class GoldenCommandEvals(LiveDependenciesFixture fixture, ITestOut
         // Arrange
         var trace = new List<(string Agent, string Tool, string Args)>();
         string? finalResponse = null;
+        var correlationId = Guid.NewGuid().ToString("N")[..8];
 
         await using var connection = new HubConnectionBuilder().WithUrl(HubUrl).Build();
 
         connection.On<string, string, string, string, string, double>("ReceiveAgentTrace",
             (_, agent, tool, args, _, _) => trace.Add((agent, tool, args)));
 
-        connection.On<string, string, double, string>("ReceiveChatMessage", (user, text, _, _) =>
+        // Confirmation prompts now arrive as ordinary chat messages, under a correlationId of
+        // their own (see ConfirmationGate) — only the message on THIS case's correlationId, from
+        // MainAgent, is the actual final answer. Anything else from a non-Operator sender is a
+        // confirmation prompt or re-prompt; auto-approve it so evals run unattended.
+        connection.On<string, string, double, string>("ReceiveChatMessage", (user, text, duration, messageCorrelationId) =>
         {
-            if (user != "Operator")
+            _ = duration;
+
+            if (user == "Operator")
+            {
+                return;
+            }
+
+            if (user == "MainAgent" && messageCorrelationId == correlationId)
             {
                 finalResponse = text;
+                return;
+            }
+
+            if (text.Contains("Approval needed", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("didn't catch that", StringComparison.OrdinalIgnoreCase))
+            {
+                connection.InvokeAsync("SendMessage", "Operator", "yes", Guid.NewGuid().ToString("N")[..8]);
             }
         });
-
-        connection.On<string, string, string, string, string>("ReceiveConfirmationRequest",
-            (confirmationId, _, _, _, _) => connection.InvokeAsync("SendConfirmationResponse", confirmationId, true));
 
         await connection.StartAsync();
 
         // Act
-        var correlationId = Guid.NewGuid().ToString("N")[..8];
         await connection.InvokeAsync("SendMessage", "Operator", testCase.Utterance, correlationId);
 
         var deadline = DateTime.UtcNow.AddSeconds(60);

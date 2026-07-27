@@ -10,7 +10,8 @@ namespace UavOps.Agent.Tooling;
 /// An AIFunction backed by one OpenAPI operation on the UAV app. The name, description, and
 /// every parameter description shown to the LLM come from appsettings (<see cref="AgentToolConfig"/>);
 /// the OpenAPI descriptor supplies only the mechanical HTTP contract. Every invocation goes
-/// through the confirmation gate (for mutating operations, mode-dependent) and is logged.
+/// through the confirmation gate (only when this tool opts in via
+/// <see cref="AgentToolConfig.RequiresConfirmation"/> and mode-dependent) and is logged.
 /// </summary>
 public sealed class UavApiOperationTool : AIFunction
 {
@@ -58,9 +59,9 @@ public sealed class UavApiOperationTool : AIFunction
             argDict[name] = value;
         }
 
-        if (ConfirmationGate.IsMutating(_descriptor.HttpMethod) && _confirmationGate.CurrentMode == ExecutionMode.Confirm)
+        if (_config.RequiresConfirmation && _confirmationGate.CurrentMode == ExecutionMode.Confirm)
         {
-            var approved = await _confirmationGate.RequireConfirmationAsync(_correlationId, _agentName, _config.OperationId, argDict, cancellationToken);
+            var approved = await _confirmationGate.RequireConfirmationAsync(_correlationId, _agentName, _config.OperationId, _config.Description, argDict, cancellationToken);
             if (!approved)
             {
                 return "Not executed: operator declined (or did not respond to) the confirmation request.";

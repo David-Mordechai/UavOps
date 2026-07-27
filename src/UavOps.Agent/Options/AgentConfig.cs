@@ -17,6 +17,12 @@ public sealed class AgentToolConfig
 
     /// <summary>Parameter name -> literal value sent on every call. Never shown to the LLM.</summary>
     public Dictionary<string, string> FixedParameters { get; init; } = [];
+
+    /// <summary>When true, a call to this tool must be approved by the operator in chat before
+    /// it executes (subject to <see cref="UavOps.Agent.Options.ExecutionMode"/>). Opt-in and
+    /// per-tool — unlike the HTTP verb, this is not inferred, since which specific actions are
+    /// consequential enough to warrant approval is a judgment call the config author makes.</summary>
+    public bool RequiresConfirmation { get; init; }
 }
 
 /// <summary>

@@ -12,20 +12,30 @@ namespace UavOps.Agent.Tests;
 public class ConfirmationGateTests
 {
     /// <summary>
-    /// Builds a ConfirmationGate whose outbound SendAsync call is captured — the confirmationId
-    /// is generated internally and never returned to the caller, so the only way a test can
-    /// resolve it is to intercept the SignalR send and react to it, exactly like the real chat
-    /// client does over the wire.
+    /// Builds a ConfirmationGate whose outbound "ReceiveChatMessage" sends are captured — the
+    /// gate has no confirmationId in its public surface any more (resolution happens by parsing
+    /// the operator's next chat reply, exactly like the real chat client), so tests observe the
+    /// prompt the same way the UI does and then feed a reply back through
+    /// <see cref="ConfirmationGate.TryHandleChatReplyAsync"/>.
     /// </summary>
-    private static ConfirmationGate CreateSut(TimeSpan timeout, Action<string> onConfirmationRequested)
+    private static ConfirmationGate CreateSut(TimeSpan timeout, Action<string>? onPrompt = null)
     {
+        // onPrompt only fires for the *first* outbound message (the prompt itself) — later sends
+        // on the same confirmation (a re-prompt after an unrecognized reply, or the final
+        // approved/declined notice) must not re-trigger it, or a test reply that itself doesn't
+        // parse as yes/no would recurse forever against its own re-prompt.
+        var promptSent = false;
         var clientProxy = Substitute.For<IClientProxy>();
         clientProxy
-            .SendCoreAsync(Arg.Any<string>(), Arg.Any<object?[]>(), Arg.Any<CancellationToken>())
+            .SendCoreAsync("ReceiveChatMessage", Arg.Any<object?[]>(), Arg.Any<CancellationToken>())
             .Returns(callInfo =>
             {
-                var args = callInfo.ArgAt<object?[]>(1);
-                onConfirmationRequested((string)args[0]!);
+                if (!promptSent)
+                {
+                    promptSent = true;
+                    var args = callInfo.ArgAt<object?[]>(1);
+                    onPrompt?.Invoke((string)args[1]!); // args: agentName, text, duration, correlationId
+                }
                 return Task.CompletedTask;
             });
 
@@ -40,46 +50,100 @@ public class ConfirmationGateTests
     }
 
     [Fact]
-    public async Task RequireConfirmationAsync_ApprovedBeforeTimeout_ReturnsTrue()
+    public async Task RequireConfirmationAsync_ApprovedByChatReply_ReturnsTrue()
     {
         ConfirmationGate? sut = null;
-        sut = CreateSut(TimeSpan.FromSeconds(30), confirmationId => sut!.Resolve(confirmationId, true));
+        sut = CreateSut(TimeSpan.FromSeconds(30), promptText => sut!.TryHandleChatReplyAsync("yes", CancellationToken.None));
 
-        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", new { speedKts = 100 }, CancellationToken.None);
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
 
         approved.Should().BeTrue();
     }
 
     [Fact]
-    public async Task RequireConfirmationAsync_DeclinedBeforeTimeout_ReturnsFalse()
+    public async Task RequireConfirmationAsync_DeclinedByChatReply_ReturnsFalse()
     {
         ConfirmationGate? sut = null;
-        sut = CreateSut(TimeSpan.FromSeconds(30), confirmationId => sut!.Resolve(confirmationId, false));
+        sut = CreateSut(TimeSpan.FromSeconds(30), promptText => sut!.TryHandleChatReplyAsync("no", CancellationToken.None));
 
-        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", new { speedKts = 100 }, CancellationToken.None);
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
+
+        approved.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("y")]
+    [InlineData("Yes!")]
+    [InlineData("sure")]
+    [InlineData("go ahead")]
+    public async Task RequireConfirmationAsync_RecognizesVariousAffirmativeReplies(string reply)
+    {
+        ConfirmationGate? sut = null;
+        sut = CreateSut(TimeSpan.FromSeconds(30), promptText => sut!.TryHandleChatReplyAsync(reply, CancellationToken.None));
+
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
+
+        approved.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RequireConfirmationAsync_UnrecognizedReply_KeepsWaitingUntilTimeout()
+    {
+        // "maybe" doesn't parse as yes/no, so the gate should re-prompt and keep waiting rather
+        // than guessing — the short injected timeout is what must eventually resolve it to false.
+        ConfirmationGate? sut = null;
+        sut = CreateSut(TimeSpan.FromMilliseconds(50), promptText => sut!.TryHandleChatReplyAsync("maybe", CancellationToken.None));
+
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
 
         approved.Should().BeFalse();
     }
 
     [Fact]
-    public async Task RequireConfirmationAsync_NoResponse_TimesOutAndReturnsFalse()
+    public async Task RequireConfirmationAsync_NoReply_TimesOutAndReturnsFalse()
     {
-        // Nobody calls Resolve — the short injected timeout is what must fire, deterministically
-        // and quickly, rather than the real 60s default.
-        var sut = CreateSut(TimeSpan.FromMilliseconds(50), _ => { });
+        var sut = CreateSut(TimeSpan.FromMilliseconds(50));
 
-        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", new { speedKts = 100 }, CancellationToken.None);
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
 
         approved.Should().BeFalse();
     }
 
     [Fact]
-    public void Resolve_UnknownConfirmationId_DoesNothing()
+    public async Task TryHandleChatReplyAsync_NoPendingConfirmation_ReturnsFalse()
     {
-        var sut = CreateSut(TimeSpan.FromSeconds(30), _ => { });
+        var sut = CreateSut(TimeSpan.FromSeconds(30));
 
-        var act = () => sut.Resolve("never-requested", true);
+        var handled = await sut.TryHandleChatReplyAsync("yes", CancellationToken.None);
 
-        act.Should().NotThrow();
+        handled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RequireConfirmationAsync_PromptText_IsHumanReadable()
+    {
+        // The operator approving/declining a UAV action shouldn't need to know operationIds or
+        // read raw JSON — the prompt should read like a sentence built from the tool's
+        // human-authored Description and plain "name: value" arguments.
+        string? promptText = null;
+        ConfirmationGate? sut = null;
+        sut = CreateSut(TimeSpan.FromSeconds(30), text =>
+        {
+            promptText = text;
+            _ = sut!.TryHandleChatReplyAsync("yes", CancellationToken.None);
+        });
+
+        await sut.RequireConfirmationAsync(
+            "corr1", "GdtControlAgent", "SetAntennaTrackingMode",
+            "Set the ground data terminal antenna's tracking mode for a UAV.",
+            new { tailNumber = "UAV-1", mode = "Manual" },
+            CancellationToken.None);
+
+        promptText.Should().NotBeNull();
+        promptText.Should().Contain("Set the ground data terminal antenna's tracking mode for a UAV");
+        promptText.Should().Contain("tailNumber: UAV-1");
+        promptText.Should().Contain("mode: Manual");
+        promptText.Should().NotContain("SetAntennaTrackingMode");
+        promptText.Should().NotContain("{"); // not raw JSON — quotes are fine, used stylistically around yes/no
     }
 }

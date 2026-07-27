@@ -1,4 +1,3 @@
-using System.Net;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.OpenApi.Models;
@@ -9,20 +8,6 @@ namespace UavOps.Agent.Tests;
 
 public class UavApiToolInvokerTests
 {
-    /// <summary>Captures the outgoing request instead of making a real network call.</summary>
-    private sealed class CapturingHandler : HttpMessageHandler
-    {
-        public HttpRequestMessage? LastRequest { get; private set; }
-        public string? LastBody { get; private set; }
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            LastRequest = request;
-            LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
-        }
-    }
-
     private static (UavApiToolInvoker Invoker, CapturingHandler Handler) CreateSut()
     {
         var handler = new CapturingHandler();

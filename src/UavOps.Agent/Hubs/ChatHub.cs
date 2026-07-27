@@ -6,13 +6,20 @@ namespace UavOps.Agent.Hubs;
 
 /// <summary>
 /// The one realtime surface for the chat SPA: chat turns, agent traces (tool name/args/result/
-/// duration for every call), and the confirmation round-trip when ExecutionMode=Confirm.
+/// duration for every call), and the confirmation round-trip when ExecutionMode=Confirm — which
+/// happens entirely in-band as chat messages, so every incoming message is first offered to
+/// <see cref="ConfirmationGate.TryHandleChatReplyAsync"/> before being treated as a new command.
 /// </summary>
 public sealed class ChatHub(MainAgentOrchestrator orchestrator, ConfirmationGate confirmationGate, ILogger<ChatHub> logger) : Hub
 {
     public async Task SendMessage(string user, string text, string correlationId)
     {
         await Clients.All.SendAsync("ReceiveChatMessage", user, text, 0d, correlationId);
+
+        if (await confirmationGate.TryHandleChatReplyAsync(text, Context.ConnectionAborted))
+        {
+            return;
+        }
 
         try
         {
@@ -25,7 +32,4 @@ public sealed class ChatHub(MainAgentOrchestrator orchestrator, ConfirmationGate
             await Clients.All.SendAsync("ReceiveChatMessage", "MainAgent", $"Something went wrong: {ex.Message}", 0d, correlationId);
         }
     }
-
-    public void SendConfirmationResponse(string confirmationId, bool approved) =>
-        confirmationGate.Resolve(confirmationId, approved);
 }

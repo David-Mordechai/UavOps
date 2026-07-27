@@ -91,20 +91,39 @@ file in `eval/golden-commands/`; no code changes needed.
   true }` plus `ChatOptions.AllowMultipleToolCalls = true` lets one model turn batch several tool
   calls (e.g. `SetSpeed` + `SetAltitude`, or MainAgent delegating to two domain agents at once)
   and run them concurrently instead of one at a time.
-- **Confirmation gate** (`ConfirmationGate`): `ExecutionMode` in config is `"Direct"` (execute
-  immediately) or `"Confirm"` (any mutating operation — POST/PUT/PATCH/DELETE, derived from the
-  OpenAPI verb via `ConfirmationGate.IsMutating` — sends a `ReceiveConfirmationRequest` SignalR
-  event and blocks up to 60s for `SendConfirmationResponse` from the UI). Read live from
-  `IConfiguration` on every call, so editing `appsettings.json` takes effect on the next tool
-  call with no restart. Defaults to `Confirm` if the value is missing/invalid (fail-safe).
+- **Confirmation gate** (`ConfirmationGate`): opt-in and per-tool, not inferred from the HTTP
+  verb — a tool only goes through confirmation when its config sets
+  `"RequiresConfirmation": true` (see below) *and* `ExecutionMode` is `"Confirm"` (`"Direct"` is a
+  global override that skips confirmation entirely, e.g. for local dev). `ExecutionMode` is read
+  live from `IConfiguration` on every call, so editing `appsettings.json` takes effect on the next
+  tool call with no restart; it defaults to `Confirm` if the value is missing/invalid (fail-safe).
+  The approval round-trip happens **in chat, not via UI buttons**: the prompt and its resolution
+  are sent as ordinary `ReceiveChatMessage` events (under a correlationId of their own, so they
+  render as their own bubble instead of overwriting the turn that triggered them — the turn's own
+  bubble is repositioned to the end of the thread once its final answer lands, in `chat.js`, since
+  it may have been created earlier from the first trace event and would otherwise sit above a
+  confirmation exchange that happened later but before that final answer). The prompt text is
+  built from the tool's human-authored `Description` and "name: value" arguments — never the raw
+  operationId or JSON — since an operator shouldn't need to know function names to approve or
+  decline an action. The operator's next plain-text reply is parsed by `ChatConfirmationParser` (a
+  small fixed yes/no vocabulary — deliberately not an LLM classification, since approving a UAV
+  command is safety-relevant and needs a deterministic, auditable interpretation).
+  `ChatHub.SendMessage` offers every incoming message to `ConfirmationGate.TryHandleChatReplyAsync`
+  before treating it as a new command, so a reply like "yes" is consumed as the answer to the
+  pending confirmation
+  rather than spawning a new agent turn. Only one confirmation can be outstanding at a time (a
+  `SemaphoreSlim` turnstile in `ConfirmationGate`) — with concurrent tool invocation enabled, two
+  mutating calls could otherwise both need approval at once, which would make a bare "yes" reply
+  ambiguous about which one it answers.
 - **Logging**: every tool call — including MainAgent→domain-agent delegation — goes through
   `ToolInvocationLogger`, producing one structured log line (tool, args, result, duration,
   correlation ID) and one `ReceiveAgentTrace` SignalR event, so the chat UI's reasoning panel and
   the eval suite's trace assertions see identical data.
 - **SignalR concurrency note**: `MaximumParallelInvocationsPerClient = 10` is set deliberately —
-  a confirmation approval (`SendConfirmationResponse`) must reach the hub on the same connection
-  while that connection's `SendMessage` call is still in flight; SignalR's default limit of 1
-  would otherwise queue the approval behind the in-progress turn until it times out.
+  the operator's chat reply to a pending confirmation (itself just another `SendMessage` call)
+  must reach the hub on the same connection while that connection's *original* `SendMessage` call
+  is still in flight, blocked awaiting that confirmation; SignalR's default limit of 1 would
+  otherwise queue the reply behind the in-progress turn until it times out.
 
 ### Configuring agents (`src/UavOps.Agent/appsettings.json`)
 
@@ -118,7 +137,9 @@ is told about a tool:
 - `Agents.<Name>.Tools[]` — each entry names an `OperationId` plus a hand-written `Description`
   and per-parameter `Parameters` descriptions — the only things the model sees for that tool. Use
   `FixedParameters` for values always sent but never exposed to the model (e.g. an internal
-  header).
+  header). Set `"RequiresConfirmation": true` on a tool to require operator approval before it
+  runs (default `false`); this is independent per tool, so e.g. `ReturnToLaunch` can require
+  approval while `SetSpeed` doesn't, regardless of both being mutating calls.
 - `Agents.MainAgent.Delegates` — which domain agents MainAgent can hand a request to.
 
 When editing agent instructions, note the existing prompts are deliberately explicit about not

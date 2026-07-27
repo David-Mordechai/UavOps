@@ -2,6 +2,20 @@ using Microsoft.OpenApi.Models;
 
 namespace UavOps.Agent.Tests;
 
+/// <summary>Captures the outgoing HTTP request instead of making a real network call.</summary>
+internal sealed class CapturingHandler : HttpMessageHandler
+{
+    public HttpRequestMessage? LastRequest { get; private set; }
+    public string? LastBody { get; private set; }
+
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        LastRequest = request;
+        LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+        return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{}") };
+    }
+}
+
 internal static class TestFixtures
 {
     /// <summary>A minimal OpenAPI document with one operation ("SetSpeed") shaped like the real

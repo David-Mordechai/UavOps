@@ -49,17 +49,22 @@ application or to change what an agent is told about a tool:
 
 - `UavApi` — base URL and OpenAPI spec URL of the UAV control application (mock or real).
 - `Ollama` — endpoint and default model.
-- `ExecutionMode` — `"Direct"` (tools execute immediately) or `"Confirm"` (mutating tool calls —
-  anything that isn't a GET — show an approve/decline card in the chat UI first, with a 60s
-  timeout). This is hot-reloaded: editing appsettings.json takes effect on the next tool call, no
-  restart needed.
+- `ExecutionMode` — `"Direct"` (tools execute immediately) or `"Confirm"` (tools marked
+  `RequiresConfirmation` ask the operator to approve first). This is hot-reloaded: editing
+  appsettings.json takes effect on the next tool call, no restart needed.
 - `Agents.<Name>.Instructions` — the agent's system prompt.
 - `Agents.<Name>.Tools[]` — each entry names an OpenAPI `operationId` plus a hand-written
   `Description` and per-parameter `Parameters` descriptions. These are the *only* things the
   model sees for that tool — the upstream OpenAPI spec supplies only the mechanical HTTP
   contract (verb, path, parameter types), never the text shown to the model. Use
   `FixedParameters` for values that should always be sent but never exposed as something the
-  model can choose (e.g. an internal header).
+  model can choose (e.g. an internal header). Set `"RequiresConfirmation": true` to require
+  operator approval before that specific tool runs (default `false`) — this is per-tool, not
+  tied to the HTTP verb, so you choose exactly which actions need a yes/no and which don't.
+
+Approval happens right in the chat, not as a button: the agent asks a plain-text yes/no question
+and the operator replies in the same message box ("yes"/"no" and a few common variants are
+recognized — see `ChatConfirmationParser`).
 - `Agents.MainAgent.Delegates` — the list of domain agents MainAgent can hand a request to.
 
 ## Repo layout
