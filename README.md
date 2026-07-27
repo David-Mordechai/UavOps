@@ -30,6 +30,12 @@ dotnet run --project src/UavOps.Agent --urls http://localhost:5262
 `UavOps.ControlApi` exposes its OpenAPI spec (Swashbuckle-generated) at
 `/openapi/v1.json` and a browsable Swagger UI at `/swagger`.
 
+By default `UavOps.ControlApi` answers fleet commands with an in-memory simulation
+(`FleetBackend: Simulated` in its `appsettings.json`). Setting it to `SignalR` instead routes
+every command over a SignalR bridge (`/uavCommandHub`) to a connected fleet-commanding
+application — see `src/UavOps.FleetClient` (the client library a real .NET Framework app
+references) and `src/UavOps.MockFleetClient` (a dev/test stand-in for it) for details.
+
 Then open http://localhost:5262 and start typing commands, e.g.:
 
 - `Set speed to 120 knots`
@@ -61,19 +67,23 @@ application or to change what an agent is told about a tool:
   model can choose (e.g. an internal header). Set `"RequiresConfirmation": true` to require
   operator approval before that specific tool runs (default `false`) — this is per-tool, not
   tied to the HTTP verb, so you choose exactly which actions need a yes/no and which don't.
-
-Approval happens right in the chat, not as a button: the agent asks a plain-text yes/no question
-and the operator replies in the same message box ("yes"/"no" and a few common variants are
-recognized — see `ChatConfirmationParser`).
+  Approval happens right in the chat, not as a button: the agent asks a plain-text yes/no
+  question and the operator replies in the same message box ("yes"/"no" and a few common
+  variants are recognized — see `ChatConfirmationParser`).
 - `Agents.MainAgent.Delegates` — the list of domain agents MainAgent can hand a request to.
 
 ## Repo layout
 
 ```
-src/UavOps.Agent/       the production service: chat hub, agent orchestration, OpenAPI-driven
-                         tool catalog, confirmation gate, structured tool-call logging, static SPA
-src/UavOps.ControlApi/  simulated dev/demo stand-in for the real UAV control application
-tests/                  unit/integration tests plus the live-pipeline golden-command evals
+src/UavOps.Agent/            the production service: chat hub, agent orchestration, OpenAPI-driven
+                              tool catalog, confirmation gate, structured tool-call logging, static SPA
+src/UavOps.ControlApi/       the REST API UavOps.Agent calls, backed by an in-memory simulation
+                              (default) or a SignalR bridge to a real fleet-commanding app
+src/UavOps.FleetClient/      (.NET Framework 4.7) client library the real fleet-commanding app
+                              references to connect to UavOps.ControlApi's SignalR bridge
+src/UavOps.MockFleetClient/  (.NET Framework 4.7) dev/test stand-in for the real app — references
+                              UavOps.FleetClient with stub (non-simulating) command handlers
+tests/                       unit/integration tests plus the live-pipeline golden-command evals
 ```
 
 ## Logging
