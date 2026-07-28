@@ -1,6 +1,11 @@
 const connection = new signalR.HubConnectionBuilder()
   .withUrl("/chatHub")
-  .withAutomaticReconnect()
+  .withAutomaticReconnect({
+    // Default withAutomaticReconnect() gives up after 4 attempts (~42s) and never retries again —
+    // too short if the server process was stopped and takes a while to relaunch. Retry forever
+    // instead, with a capped backoff, since a never-returning-null policy never gives up.
+    nextRetryDelayInMilliseconds: (retryContext) => Math.min(2000 * (retryContext.previousRetryCount + 1), 30000),
+  })
   .build();
 
 const statusEl = document.getElementById("connectionStatus");
@@ -112,7 +117,13 @@ connection.on("ReceiveAgentTrace", (correlationId, agent, tool, argsJson, result
 
 connection.onreconnecting(() => setStatus("reconnecting…", "status-connecting"));
 connection.onreconnected(() => setStatus("connected", "status-connected"));
-connection.onclose(() => setStatus("disconnected", "status-disconnected"));
+// onclose fires once automatic reconnect gives up (or the connection was never established) — the
+// retry policy above never gives up on its own, but restart here too as a safety net so the page
+// always keeps trying to get back to a connected state without a manual refresh.
+connection.onclose(() => {
+  setStatus("disconnected", "status-disconnected");
+  start();
+});
 
 async function start() {
   try {
