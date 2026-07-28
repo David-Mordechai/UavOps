@@ -6,4 +6,5 @@ public sealed class OllamaOptions
 
     public required string Endpoint { get; init; }
     public required string DefaultModel { get; init; }
+    public required string EmbeddingModel { get; init; }
 }

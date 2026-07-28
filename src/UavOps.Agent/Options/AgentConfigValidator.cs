@@ -59,12 +59,9 @@ public static class AgentConfigValidator
                 }
             }
 
-            foreach (var delegateName in config.Delegates)
+            if (agentName != "MainAgent" && string.IsNullOrWhiteSpace(config.Description))
             {
-                if (!agents.ContainsKey(delegateName))
-                {
-                    errors.Add($"Agent '{agentName}' delegates to unknown agent '{delegateName}'.");
-                }
+                errors.Add($"Agent '{agentName}' is missing a non-blank 'Description' (required for retrieval).");
             }
         }
 

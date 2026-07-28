@@ -33,8 +33,7 @@ public sealed class AgentToolConfig
 }
 
 /// <summary>
-/// One agent: either a domain agent (has <see cref="Tools"/>) or the MainAgent
-/// (has <see cref="Delegates"/> — the agent-as-tool / handoff list).
+/// One agent: either a domain agent or the MainAgent.
 /// </summary>
 public sealed class AgentConfig
 {
@@ -51,10 +50,7 @@ public sealed class AgentConfig
     /// Null uses the provider's default.</summary>
     public float? Temperature { get; set; }
 
-    /// <summary>Names of other agents this agent may delegate to (MainAgent only).</summary>
-    public List<string> Delegates { get; set; } = [];
-
-    /// <summary>Operation-backed tools this agent may call (domain agents only).</summary>
+    /// <summary>Operation-backed tools this agent may call.</summary>
     public List<AgentToolConfig> Tools { get; set; } = [];
 }
 

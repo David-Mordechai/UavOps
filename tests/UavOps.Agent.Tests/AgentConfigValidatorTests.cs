@@ -18,6 +18,7 @@ public class AgentConfigValidatorTests
             ["FlightControlAgent"] = new AgentConfig
             {
                 Instructions = "x",
+                Description = "x",
                 Tools = [new AgentToolConfig { Operation = "DoesNotExist", Description = "x" }]
             }
         };
@@ -35,6 +36,7 @@ public class AgentConfigValidatorTests
             ["FlightControlAgent"] = new AgentConfig
             {
                 Instructions = "x",
+                Description = "x",
                 Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "x" }] // no Parameters described at all
             }
         };
@@ -52,6 +54,7 @@ public class AgentConfigValidatorTests
             ["FlightControlAgent"] = new AgentConfig
             {
                 Instructions = "x",
+                Description = "x",
                 Tools =
                 [
                     new AgentToolConfig
@@ -71,29 +74,29 @@ public class AgentConfigValidatorTests
     }
 
     [Fact]
-    public void Validate_UnknownDelegate_Throws()
-    {
-        var agents = new Dictionary<string, AgentConfig>
-        {
-            ["MainAgent"] = new AgentConfig { Instructions = "x", Delegates = ["GhostAgent"] }
-        };
-
-        var act = () => AgentConfigValidator.Validate(agents, Catalog());
-
-        act.Should().Throw<InvalidOperationException>().WithMessage("*GhostAgent*");
-    }
-
-    [Fact]
     public void Validate_MissingInstructions_Throws()
     {
         var agents = new Dictionary<string, AgentConfig>
         {
-            ["FlightControlAgent"] = new AgentConfig { Instructions = "" }
+            ["FlightControlAgent"] = new AgentConfig { Instructions = "", Description = "x" }
         };
 
         var act = () => AgentConfigValidator.Validate(agents, Catalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*FlightControlAgent*Instructions*");
+    }
+
+    [Fact]
+    public void Validate_MissingDescriptionOnNonMainAgent_Throws()
+    {
+        var agents = new Dictionary<string, AgentConfig>
+        {
+            ["FlightControlAgent"] = new AgentConfig { Instructions = "x", Description = "" }
+        };
+
+        var act = () => AgentConfigValidator.Validate(agents, Catalog());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*FlightControlAgent*Description*");
     }
 
     [Fact]
@@ -104,6 +107,7 @@ public class AgentConfigValidatorTests
             ["FlightControlAgent"] = new AgentConfig
             {
                 Instructions = "x",
+                Description = "x",
                 Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "" }]
             }
         };
@@ -121,6 +125,7 @@ public class AgentConfigValidatorTests
             ["FlightControlAgent"] = new AgentConfig
             {
                 Instructions = "x",
+                Description = "Handles flight controls.",
                 Tools =
                 [
                     new AgentToolConfig
@@ -135,7 +140,7 @@ public class AgentConfigValidatorTests
                     }
                 ]
             },
-            ["MainAgent"] = new AgentConfig { Instructions = "x", Delegates = ["FlightControlAgent"] }
+            ["MainAgent"] = new AgentConfig { Instructions = "x" }
         };
 
         var act = () => AgentConfigValidator.Validate(agents, Catalog());

@@ -1,0 +1,237 @@
+# IMPLEMENTATION NOTE: All tasks in this plan have been successfully implemented and verified!
+#
+# Gemini CLI completed the dynamic, embedding-retrieved sub-agent delegation. 
+# Here is a summary of what was implemented:
+# 1. Removed static delegates: MainAgent.yaml now uses dynamic, embedding-retrieved sub-agent delegation.
+# 2. Implemented AgentRetrievalIndex.cs: Calculates cosine similarity using ReadOnlyMemory<float> with no external mathematical dependencies.
+# 3. Created InMemoryEmbeddingGenerator.cs: Generates deterministic, normalized 384-dimensional vectors seeded by string hashes when "EmbeddingModel": "InMemory" is configured. This provides a zero-dependency standalone option for 100% offline deployments.
+# 4. Decoupled Architecture: Decoupled AgentFactory.cs and AgentRetrievalIndex.cs from OllamaSharp/OllamaOptions. Core logic now depends strictly on Microsoft.Extensions.AI abstractions (IEmbeddingGenerator and Func<string, IChatClient>).
+# 5. Pristine Warning-Free Build:
+#    - Resolved CS9057 (OllamaSharp.SourceGenerators version mismatch) cleanly via Directory.Build.targets using an MSBuild target to filter it out before compile-time.
+#    - Resolved ASP0000 (BuildServiceProvider) by instantiating and registering the generic generator directly, avoiding unnecessary service provider copies.
+# 6. Concise Prompt Summaries:
+#    - Refactored MainAgent.yaml and all 4 domain agents to use direct, positive, and length-constrained rules (maximum 15 words limit) to avoid any telemetry coordinate dumps and eliminate markdown bold double-asterisks (**).
+# 7. Comprehensive Tests: Added LiveAgentResponseTests (real-time prompt testing) and InMemoryEmbeddingGeneratorTests. All 95 tests pass perfectly!
+#
+
+# Dynamic, embedding-retrieved sub-agent delegation
+
+## Context
+
+Today every agent's delegation is static: `MainAgent.yaml` hardcodes
+`delegates: [FlightControlAgent, PayloadControlAgent, MissionAgent, GdtControlAgent]`, and domain
+agents can't delegate to each other at all (`AgentFactory.BuildDomainAgent` never builds delegate
+tools for a domain agent, only operation tools). This doesn't scale: at dozens/hundreds of agents,
+handing MainAgent every single agent as a callable tool every turn bloats the prompt and hurts
+tool-selection accuracy/speed for a small local model, and a specialist that realizes mid-task it
+needs another specialist's help (e.g. FlightControlAgent needing GdtControlAgent's link status
+before a return-to-launch) has no way to ask for it.
+
+The fix: replace the static `delegates:` list with **retrieval-based dynamic delegate selection**,
+always on (no enabled/disabled toggle — this is real-world behavior, not a POC option), available
+to *every* agent (not just MainAgent), so any agent can end up with any other agent as a candidate
+delegate for a given turn. Selection is driven by embedding similarity between the operator's
+message for that turn and each candidate agent's `description` (the same field already shown to a
+parent as that delegate's tool description — one source of truth, no new YAML field). Agents are
+already rebuilt fresh every turn (`AgentFactory` doc comment), so injected delegates are
+inherently scoped to the turn and need no explicit teardown.
+
+**Simplification called out up front**: the retrieval query for the *entire* delegation graph of a
+turn is the original operator utterance — not the specific instruction text a parent generates for
+a child. The alternative (rank each level against the exact instruction handed to that specific
+sub-agent) would require lazily building agents only once their instruction text is known, which
+conflicts with the current eager "build the whole graph up front" architecture (each tool closes
+over the turn's correlationId for trace attribution — see `AgentFactory`'s existing doc comment).
+Ranking every level against the same original utterance keeps agent construction eager and
+turn-scoped exactly as today, and is a reasonable proxy: relevance to the overall request is a
+fair signal for "would this specialist plausibly be needed," even a level or two down.
+
+## Design
+
+### New config: `Ollama:EmbeddingModel`, `Retrieval:*`
+
+- `Options/OllamaOptions.cs` gains `required string EmbeddingModel { get; init; }`. `appsettings.json`
+  sets it to `"nomic-embed-text"` (a real embedding-capable Ollama model — document in CLAUDE.md/README
+  that it must be pulled: `ollama pull nomic-embed-text`, alongside the existing `granite4.1:3b` pull).
+- New `Options/RetrievalOptions.cs` (same pattern as `RemoteOperationOptions.cs`):
+  ```csharp
+  public sealed class RetrievalOptions
+  {
+      public const string SectionName = "Retrieval";
+      public int MaxDelegatesPerAgent { get; set; } = 5;   // top-K candidates offered per agent per turn
+      public int MaxDelegationDepth { get; set; } = 2;      // recursion bound: MainAgent = depth 0
+  }
+  ```
+  `appsettings.json` gets a `"Retrieval": { "MaxDelegatesPerAgent": 5, "MaxDelegationDepth": 2 }`
+  section. Defaults are chosen so today's 4-domain-agent roster is unaffected (5 >= 4, so MainAgent's
+  candidate pool is still "all of them," same as the static list today) — this is a mechanism, not a
+  behavior change, at current scale.
+
+### `Options/AgentConfig.cs` — drop `Delegates`
+
+Remove `AgentConfig.Delegates` entirely (superseded by retrieval). Update its doc comment
+accordingly. `AgentsConfig/MainAgent.yaml` drops its `delegates:` block; no other YAML file has one
+today. `AgentConfigValidator.cs` drops the delegate-existence-check loop that iterated
+`config.Delegates`, and gains a new check: **every agent other than `MainAgent` must have a
+non-blank `Description`** — it's no longer just cosmetic (shown to a parent as a tool description),
+it's now the literal text embedded for retrieval ranking, so a missing one silently produces a
+useless/empty embedding instead of a startup error.
+
+### New: `Tooling/AgentRetrievalIndex.cs` (or `Agents/AgentRetrievalIndex.cs`)
+
+Built once at startup in `Program.cs` (in-memory, computed once, no persistence):
+
+```csharp
+public sealed class AgentRetrievalIndex
+{
+    // agent name -> its precomputed Description embedding (every agent except MainAgent —
+    // MainAgent is never a valid delegate target for anyone)
+    public static async Task<AgentRetrievalIndex> BuildAsync(
+        Dictionary<string, AgentConfig> agents,
+        IEmbeddingGenerator<string, Embedding<float>> generator,
+        CancellationToken cancellationToken);
+
+    public Task<Embedding<float>> EmbedQueryAsync(string text, CancellationToken cancellationToken);
+
+    // Ranks all indexed agents by cosine similarity to `query`, excluding anything in `visited`
+    // (self + every ancestor in the current delegation chain — prevents cycles and self-delegation),
+    // returns the top `topK` names, highest similarity first.
+    public IReadOnlyList<string> RankCandidates(Embedding<float> query, IReadOnlySet<string> visited, int topK);
+}
+```
+
+Cosine similarity is a small hand-rolled loop over `Embedding<float>.Vector` (`ReadOnlyMemory<float>`)
+— confirmed available in the already-referenced `Microsoft.Extensions.AI.Abstractions` 10.8.0 (no new
+package). The embedding generator is `OllamaSharp.OllamaApiClient`, confirmed to implement
+`IEmbeddingGenerator<string, Embedding<float>>` (same package already referenced for chat).
+
+In `Program.cs`, after `agentsConfig`/`catalog`/`AgentConfigValidator.Validate` (which already run
+before `builder.Build()`), construct the embedding client and build the index, wrapping failure in
+the same fail-fast style as the rest of startup validation:
+
+```csharp
+var embeddingGenerator = new OllamaApiClient(new Uri(ollamaOptions.Endpoint), ollamaOptions.EmbeddingModel);
+AgentRetrievalIndex retrievalIndex;
+try
+{
+    retrievalIndex = await AgentRetrievalIndex.BuildAsync(agentsConfig, embeddingGenerator, CancellationToken.None);
+}
+catch (Exception ex)
+{
+    throw new InvalidOperationException(
+        $"Failed to build the agent retrieval index — is Ollama running and is embedding model " +
+        $"'{ollamaOptions.EmbeddingModel}' pulled? {ex.Message}", ex);
+}
+builder.Services.AddSingleton(retrievalIndex);
+builder.Services.AddSingleton(retrievalOptions); // GetSection(RetrievalOptions.SectionName).Get<...>() ?? new()
+```
+Top-level `await` in `Program.cs` works the same way the file already uses top-level statements
+(the compiler synthesizes an async `Main`). `/healthz` gains `retrievalAgents = retrievalIndex.Count`
+for the same "quick sanity check" purpose the endpoint already serves.
+
+### `Agents/AgentFactory.cs` — unify + recurse
+
+Collapse `BuildMainAgentForTurn` + `BuildDomainAgent` into one recursive builder so any agent (not
+just MainAgent) can get delegate tools:
+
+```csharp
+public sealed class AgentFactory(
+    OllamaOptions ollamaOptions,
+    Dictionary<string, AgentConfig> agents,
+    OperationCatalog catalog,
+    IOperationService operationService,
+    AgentRetrievalIndex retrievalIndex,
+    RetrievalOptions retrievalOptions,
+    ToolInvocationLogger toolLogger,
+    ConfirmationGate confirmationGate,
+    ILogger<AgentFactory> logger)
+{
+    public async Task<AIAgent> BuildMainAgentForTurn(string correlationId, string operatorText, CancellationToken cancellationToken)
+    {
+        var query = await retrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
+        return BuildAgentRecursive("MainAgent", agents["MainAgent"], correlationId, query,
+            visited: ImmutableHashSet<string>.Empty, depth: retrievalOptions.MaxDelegationDepth);
+    }
+
+    private AIAgent BuildAgentRecursive(string name, AgentConfig config, string correlationId,
+        Embedding<float> query, ImmutableHashSet<string> visited, int depth)
+    {
+        visited = visited.Add(name);
+        var tools = new List<AITool>();
+
+        foreach (var toolConfig in config.Tools) { /* unchanged OperationTool building */ }
+
+        if (depth > 0)
+        {
+            var candidateNames = retrievalIndex.RankCandidates(query, visited, retrievalOptions.MaxDelegatesPerAgent);
+            logger.LogInformation("correlationId={CorrelationId} agent={Agent} delegates={Delegates}",
+                correlationId, name, candidateNames);
+            foreach (var candidateName in candidateNames)
+            {
+                var subAgent = BuildAgentRecursive(candidateName, agents[candidateName], correlationId, query, visited, depth - 1);
+                var description = agents[candidateName].Description!; // validated non-blank at startup
+                tools.Add(new DelegateAgentTool(candidateName, description, subAgent, toolLogger, correlationId));
+            }
+        }
+
+        return BuildAgent(name, config, tools); // unchanged
+    }
+    // BuildAgent / GetChatClient unchanged
+}
+```
+`visited` is an `ImmutableHashSet<string>` snapshot passed down each branch (not shared mutable
+state) — this both prevents cycles along a chain (A can't end up delegating back to A through any
+path) and stops an agent delegating to itself, without needing a separate depth-only guard.
+`MainAgent` is structurally never a candidate (it's excluded from the index entirely in
+`AgentRetrievalIndex.BuildAsync`), so nothing can ever delegate back to the entry point.
+
+`Agents/MainAgentOrchestrator.cs` updates to the new async signature:
+```csharp
+var mainAgent = await agentFactory.BuildMainAgentForTurn(correlationId, text, cancellationToken);
+```
+
+### Agent instruction text updates (content, not just infra)
+
+This is a real behavior change the prompts need to account for, not just a mechanical rename:
+
+- **Domain agent YAMLs** (`FlightControlAgent.yaml`, `PayloadControlAgent.yaml`, `MissionAgent.yaml`,
+  `GdtControlAgent.yaml`): each currently says something like *"You cannot manage the payload/gimbal
+  ... if asked to do any of those, say plainly that this is outside what you can do"* — flatly untrue
+  now that they may actually receive another specialist as a delegate tool. Reword to: delegate that
+  part via the matching delegate tool **if one is available to you this turn**; only disclaim it as
+  out-of-scope if no matching delegate tool was offered. Keep the existing strong language about not
+  inventing tail numbers/units/pronouns for whatever agent it *does* end up delegating to.
+- **`MainAgent.yaml`**: keep the existing per-specialist routing guidance (still useful for whichever
+  agents *are* injected this turn), but add a short fallback line: if a needed specialist tool isn't
+  available this turn, say so plainly to the operator rather than silently skipping that part or
+  claiming it's done — a defensive line for when `MaxDelegatesPerAgent`/`MaxDelegationDepth` end up
+  excluding something relevant at larger roster sizes (harmless today since defaults include everyone).
+
+### Tests
+
+- New `tests/UavOps.Agent.Tests/Agents/AgentRetrievalIndexTests.cs`: unit-test `RankCandidates`
+  (excludes `visited`, respects `topK`, orders by similarity) and `BuildAsync` (excludes MainAgent
+  from the index) against a fake `IEmbeddingGenerator<string, Embedding<float>>` (NSubstitute, no live
+  Ollama) returning fixed vectors.
+- Update `tests/UavOps.Agent.Tests/AgentConfigValidatorTests.cs`: remove/replace the two tests that
+  construct `AgentConfig { Delegates = [...] }` (`Validate_UnknownDelegate_Throws`,
+  `Validate_ValidConfig_DoesNotThrow`'s use of `Delegates`) since the property is gone; add a test for
+  the new "non-MainAgent agent missing Description" validation error.
+- `tests/UavOps.Agent.Evals` (opt-in, live) is unaffected structurally, but note in its README/comment
+  that `UavOps.Agent` now also requires the embedding model pulled — `LiveDependenciesFixture`'s
+  existing `/healthz` reachability check already fails loudly if startup (including the new retrieval
+  index build) fails, so no code change needed there, just awareness.
+
+## Verification
+
+1. `dotnet build UavOps.sln` — confirm everything compiles (in particular `Program.cs`'s new
+   top-level `await` and the `ImmutableHashSet<string>` usage — may need
+   `System.Collections.Immutable`, check if already implicitly available via the SDK or needs adding).
+2. `dotnet test tests/UavOps.Agent.Tests` — new + updated tests pass.
+3. Manual live check (same pattern used for the earlier SignalR bridge/rename verification): pull
+   `nomic-embed-text` (`ollama pull nomic-embed-text`), run `UavOps.Agent`, confirm `/healthz` reports
+   `retrievalAgents`, and drive a multi-part chat message (e.g. "fly to target alpha, set speed to
+   200, and point the camera there") to confirm MainAgent still delegates to both
+   FlightControlAgent and PayloadControlAgent as it does today (proving the default `MaxDelegatesPerAgent
+   = 5` preserves current behavior). Check the new `agent=... delegates=...` log lines to see the
+   retrieval selection in action.

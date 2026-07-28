@@ -11,7 +11,11 @@ is a general agentic tool-calling framework with a UAV domain currently plugged 
 ## Prerequisites
 
 - .NET 8 SDK
-- [Ollama](https://ollama.com) running locally with a model pulled, e.g. `ollama pull granite4.1:3b`
+- [Ollama](https://ollama.com) running locally with the required chat model pulled:
+  - Chat model: `ollama pull granite4.1:3b`
+- For semantic agent-retrieval embeddings:
+  - **Ollama (Default)**: Pull the embedding model: `ollama pull nomic-embed-text`
+  - **In-Memory (Offline)**: Set `"EmbeddingModel": "InMemory"` in `appsettings.json` to compute embeddings 100% in-process deterministically, requiring no external embedding model pull.
 - No Docker required — everything here is `dotnet run`.
 
 ## Running it

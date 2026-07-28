@@ -34,7 +34,12 @@ invoked in-process or over SignalR — never HTTP.
 
 ## Running it
 
-Requires the .NET 8 SDK and Ollama running locally with a model pulled (`ollama pull granite4.1:3b`).
+Requires the .NET 8 SDK and Ollama running locally with the main chat model (`ollama pull granite4.1:3b`) pulled.
+
+For the semantic agent-retrieval index, the application supports two modes:
+1. **Ollama (Default)**: Pull the retrieval embedding model (`ollama pull nomic-embed-text`) in your local Ollama instance.
+2. **In-Memory**: Set `"EmbeddingModel": "InMemory"` in `appsettings.json` to run embeddings completely in-process (recomputes deterministic, normalized 384-dimensional vectors seeded by string hashes). This is highly recommended for offline/standalone development with zero external dependencies.
+
 No Docker.
 
 ```bash

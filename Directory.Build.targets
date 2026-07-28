@@ -1,0 +1,12 @@
+<Project>
+  <!-- 
+    OllamaSharp ships an incompatible source generator that references a newer Roslyn/compiler 
+    version than the current SDK's compiler, triggering warning CS9057. 
+    This target cleanly removes the generator from analyzer inputs so compile works without warnings.
+  -->
+  <Target Name="RemoveOllamaSharpSourceGenerators" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.Filename)' == 'OllamaSharp.SourceGenerators'" />
+    </ItemGroup>
+  </Target>
+</Project>

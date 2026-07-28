@@ -1,3 +1,5 @@
+using Microsoft.Extensions.AI;
+using OllamaSharp;
 using Serilog;
 using UavOps.Agent.Agents;
 using UavOps.Agent.Hubs;
@@ -29,7 +31,35 @@ var agentsConfig = AgentConfigLoader.LoadFromDirectory(Path.Combine(builder.Envi
 var catalog = new OperationCatalog(typeof(IOperationService));
 AgentConfigValidator.Validate(agentsConfig, catalog);
 
+IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
+if (string.Equals(ollamaOptions.EmbeddingModel, "InMemory", StringComparison.OrdinalIgnoreCase))
+{
+    embeddingGenerator = new InMemoryEmbeddingGenerator();
+}
+else
+{
+    embeddingGenerator = new OllamaApiClient(new Uri(ollamaOptions.Endpoint), ollamaOptions.EmbeddingModel);
+}
+builder.Services.AddSingleton(embeddingGenerator);
+
+AgentRetrievalIndex retrievalIndex;
+try
+{
+    retrievalIndex = await AgentRetrievalIndex.BuildAsync(agentsConfig, embeddingGenerator, CancellationToken.None);
+}
+catch (Exception ex)
+{
+    throw new InvalidOperationException(
+        $"Failed to build the agent retrieval index using the configured embedding generator. " +
+        $"Please ensure your embedding provider is running and accessible. {ex.Message}", ex);
+}
+
+var retrievalOptions = builder.Configuration.GetSection(RetrievalOptions.SectionName).Get<RetrievalOptions>()
+    ?? new RetrievalOptions();
+
 builder.Services.AddSingleton(ollamaOptions);
+builder.Services.AddSingleton(retrievalOptions);
+builder.Services.AddSingleton(retrievalIndex);
 builder.Services.AddSingleton(remoteOperationOptions);
 builder.Services.AddSingleton(agentsConfig);
 builder.Services.AddSingleton(catalog);
@@ -55,7 +85,28 @@ else
 
 builder.Services.AddSingleton<ToolInvocationLogger>();
 builder.Services.AddSingleton<ConfirmationGate>();
-builder.Services.AddSingleton<AgentFactory>();
+
+builder.Services.AddSingleton<Func<string, IChatClient>>(sp => modelName =>
+{
+    var options = sp.GetRequiredService<OllamaOptions>();
+    var ollama = new OllamaApiClient(new Uri(options.Endpoint), modelName);
+    return new FunctionInvokingChatClient(ollama) { AllowConcurrentInvocation = true };
+});
+
+builder.Services.AddSingleton<AgentFactory>(sp =>
+    new AgentFactory(
+        sp.GetRequiredService<Func<string, IChatClient>>(),
+        ollamaOptions.DefaultModel,
+        sp.GetRequiredService<Dictionary<string, AgentConfig>>(),
+        sp.GetRequiredService<OperationCatalog>(),
+        sp.GetRequiredService<IOperationService>(),
+        sp.GetRequiredService<AgentRetrievalIndex>(),
+        sp.GetRequiredService<RetrievalOptions>(),
+        sp.GetRequiredService<ToolInvocationLogger>(),
+        sp.GetRequiredService<ConfirmationGate>(),
+        sp.GetRequiredService<ILogger<AgentFactory>>()
+    ));
+
 builder.Services.AddSingleton<MainAgentOrchestrator>();
 
 var app = builder.Build();
@@ -71,7 +122,8 @@ app.MapGet("/healthz", () => Results.Ok(new
     status = "ok",
     ollamaModel = ollamaOptions.DefaultModel,
     operationBackend = operationBackend.ToString(),
-    operations = catalog.Operations.Count
+    operations = catalog.Operations.Count,
+    retrievalAgents = retrievalIndex.Count
 }));
 
 app.Run();
