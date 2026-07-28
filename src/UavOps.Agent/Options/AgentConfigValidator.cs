@@ -3,24 +3,44 @@ using UavOps.Agent.Tooling;
 namespace UavOps.Agent.Options;
 
 /// <summary>
-/// Fail-fast startup validation: catches the PoC's "prompt advertises tools that don't exist"
-/// bug class at boot instead of silently at inference time. Any violation stops the app from
-/// starting with a message naming exactly which tool/parameter is wrong.
+/// Fail-fast startup validation: catches the "prompt advertises tools that don't exist" bug class
+/// at boot instead of silently at inference time. Any violation stops the app from starting with a
+/// message naming exactly which tool/parameter/field is wrong. Also compensates for
+/// <see cref="AgentConfig"/>/<see cref="AgentToolConfig"/> using plain mutable properties instead
+/// of <c>required</c>/<c>init</c> (needed for YamlDotNet deserialization) — a required field
+/// silently omitted from a YAML file becomes `""` rather than a compile-time error, so this
+/// explicitly checks for that instead.
 /// </summary>
 public static class AgentConfigValidator
 {
-    public static void Validate(Dictionary<string, AgentConfig> agents, OpenApiToolCatalog catalog)
+    public static void Validate(Dictionary<string, AgentConfig> agents, OperationCatalog catalog)
     {
         var errors = new List<string>();
 
         foreach (var (agentName, config) in agents)
         {
+            if (string.IsNullOrWhiteSpace(config.Instructions))
+            {
+                errors.Add($"Agent '{agentName}' is missing 'Instructions'.");
+            }
+
             foreach (var tool in config.Tools)
             {
-                if (!catalog.TryResolve(tool.OperationId, out var descriptor) || descriptor is null)
+                if (string.IsNullOrWhiteSpace(tool.Operation))
                 {
-                    errors.Add($"Agent '{agentName}' references unknown OpenAPI operationId '{tool.OperationId}'. " +
-                                "Check UavApi:OpenApiUrl and the operationId spelling.");
+                    errors.Add($"Agent '{agentName}' has a tool with a missing 'Operation'.");
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(tool.Description))
+                {
+                    errors.Add($"Agent '{agentName}' tool '{tool.Operation}' is missing a 'Description'.");
+                }
+
+                if (!catalog.TryResolve(tool.Operation, out var descriptor) || descriptor is null)
+                {
+                    errors.Add($"Agent '{agentName}' references unknown operation '{tool.Operation}'. " +
+                                "Check the spelling against IOperationService's method names.");
                     continue;
                 }
 
@@ -31,10 +51,10 @@ public static class AgentConfigValidator
                         continue;
                     }
 
-                    if (p.Required && !tool.Parameters.ContainsKey(p.Name))
+                    if (!tool.Parameters.ContainsKey(p.Name))
                     {
-                        errors.Add($"Agent '{agentName}' tool '{tool.OperationId}' is missing a description for " +
-                                    $"required parameter '{p.Name}' — add it under Parameters or FixedParameters.");
+                        errors.Add($"Agent '{agentName}' tool '{tool.Operation}' is missing a description for " +
+                                    $"parameter '{p.Name}' — add it under Parameters or FixedParameters.");
                     }
                 }
             }

@@ -8,7 +8,7 @@ namespace UavOps.MockFleetClient
     /// Proves the SignalR plumbing works end to end — logs each command it receives and returns
     /// a hardcoded, correctly-shaped placeholder result. Deliberately does NOT simulate fleet
     /// state (position, speed, mission progress, etc.); that's already covered by
-    /// UavOps.ControlApi's Simulated* services. A real fleet-commanding app implements
+    /// UavOps.Agent's Simulation/ services. A real fleet-commanding app implements
     /// IUavCommandHandler with real hardware calls in place of this.
     /// </summary>
     public sealed class EmptyCommandHandler : IUavCommandHandler

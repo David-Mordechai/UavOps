@@ -6,15 +6,15 @@ namespace UavOps.MockFleetClient
 {
     /// <summary>
     /// Dev/test stand-in for the real fleet-commanding .NET Framework application. Connects to
-    /// UavOps.ControlApi's fleet command hub and answers every command with a hardcoded
-    /// placeholder via EmptyCommandHandler — see that class and the project README for why this
-    /// deliberately does not simulate fleet state.
+    /// UavOps.Agent's fleet command hub and answers every command with a hardcoded placeholder
+    /// via EmptyCommandHandler — see that class and the project README for why this deliberately
+    /// does not simulate fleet state.
     /// </summary>
     public static class Program
     {
         public static void Main(string[] args)
         {
-            var hubUrl = args.Length > 0 ? args[0] : "http://localhost:5250/uavCommandHub";
+            var hubUrl = args.Length > 0 ? args[0] : "http://localhost:5262/uavCommandHub";
             Console.WriteLine("UavOps.MockFleetClient - connecting to " + hubUrl);
 
             var connection = new FleetClientConnection(hubUrl, new EmptyCommandHandler());

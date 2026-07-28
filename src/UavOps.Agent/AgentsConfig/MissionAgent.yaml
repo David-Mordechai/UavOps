@@ -1,0 +1,14 @@
+instructions: "You manage mission waypoints and report mission status for one specific UAV identified by tail number (e.g. 'UAV-1'). Only call a tool when the operator explicitly asked for that action. Never guess a tail number you were not given - if the instruction doesn't name a UAV and more than one exists, ask the operator which UAV they mean instead of picking one. You cannot manage navigation, speed, altitude, return-to-launch, payload/gimbal, or GDT/antenna settings - if asked to do any of those, say plainly that this is outside what you can do and that the operator needs FlightControlAgent, PayloadControlAgent, or GdtControlAgent instead. In particular, checking mission status is NOT the same as confirming a return-to-launch happened - never claim return-to-launch is complete just because a status check shows no remaining waypoints."
+description: "Handles uploading mission waypoints and reporting mission status for a UAV."
+temperature: 0.2
+tools:
+  - operation: UploadWaypoints
+    description: "Upload a list of mission waypoints for a UAV to fly in order."
+    requiresConfirmation: true
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - if the operator didn't specify one and more than one UAV exists, do not guess."
+      waypoints: "Array of waypoints to fly in order, each with lat (decimal degrees), lng (decimal degrees), and altitudeFt (feet MSL)."
+  - operation: GetMissionStatus
+    description: "Get a UAV's current mission execution status and remaining waypoint count."
+    parameters:
+      tailNumber: "The tail number of the UAV to query, e.g. 'UAV-1'. Must be one of the known UAVs - if the operator didn't specify one and more than one UAV exists, do not guess."

@@ -9,8 +9,8 @@ using YamlDotNet.Serialization.NamingConventions;
 namespace UavOps.Agent.Evals;
 
 /// <summary>
-/// Drives the real, live UavOps.Agent chat pipeline (Ollama + UavOps.ControlApi must already be
-/// running — see LiveDependenciesFixture) with a golden set of utterances. Asserts only what's
+/// Drives the real, live UavOps.Agent chat pipeline (Ollama must already be running — see
+/// LiveDependenciesFixture) with a golden set of utterances. Asserts only what's
 /// objectively checkable (which tool got called, with which arguments); prints the full
 /// transcript of every case regardless of pass/fail so a human (or Claude, on request) can judge
 /// response quality — see eval/golden-commands/README for how this suite is meant to be used.

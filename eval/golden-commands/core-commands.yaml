@@ -7,7 +7,7 @@
   utterance: "Fly UAV-1 to target alpha"
   expectedTools:
     - agent: FlightControlAgent
-      tool: NavigateTo
+      tool: Navigate
       argsContain:
         tailNumber: '"tailNumber":"UAV-1"'
         location: '"location":"target alpha"'
@@ -50,7 +50,7 @@
   utterance: "List all the UAVs in the fleet"
   expectedTools:
     - agent: FlightControlAgent
-      tool: ListUavs
+      tool: ListFleet
       argsContain: {}
 
 - name: point-payload
@@ -90,7 +90,7 @@
   utterance: "Set UAV-1's antenna tracking mode to manual"
   expectedTools:
     - agent: GdtControlAgent
-      tool: SetAntennaTrackingMode
+      tool: SetTrackingMode
       argsContain:
         tailNumber: '"tailNumber":"UAV-1"'
         mode: '"mode":"Manual"'
@@ -99,7 +99,7 @@
   utterance: "fly UAV-1 to target alpha, set speed to 200 and altitude to 3000 and point the camera there"
   expectedTools:
     - agent: FlightControlAgent
-      tool: NavigateTo
+      tool: Navigate
       argsContain:
         location: '"location":"target alpha"'
     - agent: FlightControlAgent

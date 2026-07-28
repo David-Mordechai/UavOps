@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace UavOps.FleetClient
 {
     /// <summary>
-    /// Implement this to answer fleet commands relayed from UavOps.ControlApi over its fleet
+    /// Implement this to answer fleet commands relayed from UavOps.Agent over its fleet
     /// command hub. Plain, hardware-facing method signatures — no SignalR, JSON, or
     /// correlation-id concerns here; <see cref="FleetClientConnection"/> handles all of that.
     /// This is the one thing a real fleet-commanding application needs to implement to integrate

@@ -3,10 +3,10 @@ using Xunit;
 namespace UavOps.Agent.Evals;
 
 /// <summary>
-/// Checks that Ollama, UavOps.ControlApi, and UavOps.Agent are all actually running before any
-/// golden-set case executes. Throwing from InitializeAsync makes xUnit fail every test in the
-/// class with a clear message — this is meant to fail loudly, not skip quietly, when the
-/// operator forgot to start the live dependencies this suite needs.
+/// Checks that Ollama and UavOps.Agent are both actually running before any golden-set case
+/// executes. Throwing from InitializeAsync makes xUnit fail every test in the class with a clear
+/// message — this is meant to fail loudly, not skip quietly, when the operator forgot to start
+/// the live dependencies this suite needs.
 /// </summary>
 public sealed class LiveDependenciesFixture : IAsyncLifetime
 {
@@ -15,7 +15,6 @@ public sealed class LiveDependenciesFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         await CheckReachable("http://localhost:11434/api/version", "Ollama");
-        await CheckReachable("http://localhost:5250/uavs", "UavOps.ControlApi");
         await CheckReachable("http://localhost:5262/healthz", "UavOps.Agent");
     }
 

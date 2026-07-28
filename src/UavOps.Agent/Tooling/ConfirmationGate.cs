@@ -9,7 +9,7 @@ namespace UavOps.Agent.Tooling;
 /// <summary>
 /// Config-switchable, chat-driven confirmation gate. A tool call only goes through this when its
 /// <see cref="AgentToolConfig.RequiresConfirmation"/> is true (an opt-in, per-tool setting — see
-/// <see cref="UavApiOperationTool"/>) and <see cref="ExecutionMode"/> is <c>Confirm</c>;
+/// <see cref="OperationTool"/>) and <see cref="ExecutionMode"/> is <c>Confirm</c>;
 /// ExecutionMode reads live from IConfiguration so flipping it in appsettings.json takes effect
 /// without a restart.
 ///

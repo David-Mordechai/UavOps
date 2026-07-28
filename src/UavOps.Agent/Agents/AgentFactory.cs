@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
+using UavOps.Agent.Operations;
 using UavOps.Agent.Options;
 using UavOps.Agent.Tooling;
 
@@ -10,14 +11,14 @@ namespace UavOps.Agent.Agents;
 /// <summary>
 /// Builds the agent graph fresh for each chat turn. Rebuilding is necessary (not just
 /// cheap-and-easy) because every tool instance closes over the turn's correlationId, so logs
-/// and traces for that turn are attributable end to end. Chat clients (one per distinct Ollama
+/// and traces for that turn are attributable end-to-end. Chat clients (one per distinct Ollama
 /// model in use) are cached across turns.
 /// </summary>
 public sealed class AgentFactory(
     OllamaOptions ollamaOptions,
     Dictionary<string, AgentConfig> agents,
-    OpenApiToolCatalog toolCatalog,
-    UavApiToolInvoker apiInvoker,
+    OperationCatalog catalog,
+    IOperationService operationService,
     ToolInvocationLogger toolLogger,
     ConfirmationGate confirmationGate)
 {
@@ -43,13 +44,13 @@ public sealed class AgentFactory(
         var tools = new List<AITool>();
         foreach (var toolConfig in config.Tools)
         {
-            if (!toolCatalog.TryResolve(toolConfig.OperationId, out var descriptor) || descriptor is null)
+            if (!catalog.TryResolve(toolConfig.Operation, out var descriptor) || descriptor is null)
             {
                 // Should never happen — AgentConfigValidator checks this at startup.
-                throw new InvalidOperationException($"Agent '{name}' references unknown OpenAPI operationId '{toolConfig.OperationId}'.");
+                throw new InvalidOperationException($"Agent '{name}' references unknown operation '{toolConfig.Operation}'.");
             }
 
-            tools.Add(new UavApiOperationTool(descriptor, toolConfig, apiInvoker, toolLogger, confirmationGate, name, correlationId));
+            tools.Add(new OperationTool(descriptor, toolConfig, operationService, toolLogger, confirmationGate, name, correlationId));
         }
 
         return BuildAgent(name, config, tools);

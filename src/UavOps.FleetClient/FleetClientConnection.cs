@@ -7,7 +7,7 @@ using Newtonsoft.Json;
 namespace UavOps.FleetClient
 {
     /// <summary>
-    /// Connects to UavOps.ControlApi's fleet command hub as a SignalR client and dispatches every
+    /// Connects to UavOps.Agent's fleet command hub as a SignalR client and dispatches every
     /// incoming command to the supplied <see cref="IUavCommandHandler"/>, replying with its
     /// result. This is the reusable piece — a host app (the dev-only mock, or the real
     /// fleet-commanding application) only needs to implement <see cref="IUavCommandHandler"/> and

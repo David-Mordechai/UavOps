@@ -1,4 +1,5 @@
 using FluentAssertions;
+using UavOps.Agent.Operations;
 using UavOps.Agent.Options;
 using UavOps.Agent.Tooling;
 using Xunit;
@@ -7,20 +8,21 @@ namespace UavOps.Agent.Tests;
 
 public class AgentConfigValidatorTests
 {
+    private static OperationCatalog Catalog() => new(typeof(IOperationService));
+
     [Fact]
-    public void Validate_UnknownOperationId_Throws()
+    public void Validate_UnknownOperation_Throws()
     {
-        var catalog = new OpenApiToolCatalog(TestFixtures.SetSpeedDocument());
         var agents = new Dictionary<string, AgentConfig>
         {
             ["FlightControlAgent"] = new AgentConfig
             {
                 Instructions = "x",
-                Tools = [new AgentToolConfig { OperationId = "DoesNotExist", Description = "x" }]
+                Tools = [new AgentToolConfig { Operation = "DoesNotExist", Description = "x" }]
             }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, catalog);
+        var act = () => AgentConfigValidator.Validate(agents, Catalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*DoesNotExist*");
     }
@@ -28,17 +30,16 @@ public class AgentConfigValidatorTests
     [Fact]
     public void Validate_MissingRequiredParameterDescription_Throws()
     {
-        var catalog = new OpenApiToolCatalog(TestFixtures.SetSpeedDocument());
         var agents = new Dictionary<string, AgentConfig>
         {
             ["FlightControlAgent"] = new AgentConfig
             {
                 Instructions = "x",
-                Tools = [new AgentToolConfig { OperationId = "SetSpeed", Description = "x" }] // no Parameters described at all
+                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "x" }] // no Parameters described at all
             }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, catalog);
+        var act = () => AgentConfigValidator.Validate(agents, Catalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*speedKts*");
     }
@@ -46,7 +47,6 @@ public class AgentConfigValidatorTests
     [Fact]
     public void Validate_FixedParameterCoversRequiredParameter_DoesNotThrow()
     {
-        var catalog = new OpenApiToolCatalog(TestFixtures.SetSpeedDocument());
         var agents = new Dictionary<string, AgentConfig>
         {
             ["FlightControlAgent"] = new AgentConfig
@@ -56,7 +56,7 @@ public class AgentConfigValidatorTests
                 [
                     new AgentToolConfig
                     {
-                        OperationId = "SetSpeed",
+                        Operation = "SetSpeed",
                         Description = "x",
                         Parameters = new Dictionary<string, string> { ["speedKts"] = "the speed" },
                         FixedParameters = new Dictionary<string, string> { ["tailNumber"] = "UAV-1" }
@@ -65,7 +65,7 @@ public class AgentConfigValidatorTests
             }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, catalog);
+        var act = () => AgentConfigValidator.Validate(agents, Catalog());
 
         act.Should().NotThrow();
     }
@@ -73,21 +73,49 @@ public class AgentConfigValidatorTests
     [Fact]
     public void Validate_UnknownDelegate_Throws()
     {
-        var catalog = new OpenApiToolCatalog(TestFixtures.SetSpeedDocument());
         var agents = new Dictionary<string, AgentConfig>
         {
             ["MainAgent"] = new AgentConfig { Instructions = "x", Delegates = ["GhostAgent"] }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, catalog);
+        var act = () => AgentConfigValidator.Validate(agents, Catalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*GhostAgent*");
     }
 
     [Fact]
+    public void Validate_MissingInstructions_Throws()
+    {
+        var agents = new Dictionary<string, AgentConfig>
+        {
+            ["FlightControlAgent"] = new AgentConfig { Instructions = "" }
+        };
+
+        var act = () => AgentConfigValidator.Validate(agents, Catalog());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*FlightControlAgent*Instructions*");
+    }
+
+    [Fact]
+    public void Validate_ToolMissingDescription_Throws()
+    {
+        var agents = new Dictionary<string, AgentConfig>
+        {
+            ["FlightControlAgent"] = new AgentConfig
+            {
+                Instructions = "x",
+                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "" }]
+            }
+        };
+
+        var act = () => AgentConfigValidator.Validate(agents, Catalog());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*SetSpeed*Description*");
+    }
+
+    [Fact]
     public void Validate_ValidConfig_DoesNotThrow()
     {
-        var catalog = new OpenApiToolCatalog(TestFixtures.SetSpeedDocument());
         var agents = new Dictionary<string, AgentConfig>
         {
             ["FlightControlAgent"] = new AgentConfig
@@ -97,7 +125,7 @@ public class AgentConfigValidatorTests
                 [
                     new AgentToolConfig
                     {
-                        OperationId = "SetSpeed",
+                        Operation = "SetSpeed",
                         Description = "x",
                         Parameters = new Dictionary<string, string>
                         {
@@ -110,7 +138,7 @@ public class AgentConfigValidatorTests
             ["MainAgent"] = new AgentConfig { Instructions = "x", Delegates = ["FlightControlAgent"] }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, catalog);
+        var act = () => AgentConfigValidator.Validate(agents, Catalog());
 
         act.Should().NotThrow();
     }
