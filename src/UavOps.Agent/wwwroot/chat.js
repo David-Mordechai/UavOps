@@ -14,7 +14,7 @@ const threadEl = document.getElementById("thread");
 const form = document.getElementById("composer");
 const input = document.getElementById("messageInput");
 
-// correlationId -> { bubble, textEl, durationEl, stepsEl, stepCountEl, stepCount }
+// correlationId -> { bubble, textEl, durationEl, traceEl, stepsEl, stepCountEl, stepCount, choicesEl }
 const turns = new Map();
 
 function setStatus(text, cls) {
@@ -50,6 +50,7 @@ function ensureAgentTurn(correlationId, agentName) {
   bubble.innerHTML =
     '<div class="message-meta"><span class="agent-name"></span> · <span class="duration">thinking…</span></div>' +
     '<div class="message-text">…</div>' +
+    '<div class="choice-options"></div>' +
     '<details class="trace"><summary>Reasoning (<span class="step-count">0</span> steps)</summary><div class="trace-steps"></div></details>';
 
   threadEl.appendChild(bubble);
@@ -60,6 +61,8 @@ function ensureAgentTurn(correlationId, agentName) {
     agentNameEl: bubble.querySelector(".agent-name"),
     textEl: bubble.querySelector(".message-text"),
     durationEl: bubble.querySelector(".duration"),
+    choicesEl: bubble.querySelector(".choice-options"),
+    traceEl: bubble.querySelector(".trace"),
     stepsEl: bubble.querySelector(".trace-steps"),
     stepCountEl: bubble.querySelector(".step-count"),
     stepCount: 0,
@@ -76,9 +79,17 @@ connection.on("ReceiveChatMessage", (user, text, duration, correlationId) => {
   if (user === "Operator") {
     return; // already rendered optimistically on submit
   }
+  const isResolution = turns.has(correlationId);
   const turn = ensureAgentTurn(correlationId, user);
   turn.textEl.textContent = text;
   turn.durationEl.textContent = duration.toFixed(2) + "s";
+
+  if (isResolution) {
+    // A gate (ConfirmationGate/OperatorPromptGate) resolving or timing out reuses this same
+    // correlationId for its follow-up message — any choice buttons offered for the prompt are no
+    // longer valid to click, whether or not the operator actually used one.
+    turn.choicesEl.innerHTML = "";
+  }
 
   if (user === "BrainAgent") {
     // The turn's bubble is created as soon as its first trace event arrives, which can be well
@@ -113,6 +124,30 @@ connection.on("ReceiveAgentTrace", (correlationId, agent, tool, argsJson, result
   turn.stepsEl.appendChild(step);
   turn.stepCount += 1;
   turn.stepCountEl.textContent = String(turn.stepCount);
+  turn.traceEl.classList.add("has-steps"); // hidden until there's at least one step to show
+});
+
+// Sent alongside a ConfirmationGate/OperatorPromptGate prompt's ReceiveChatMessage, under the same
+// correlationId, so the operator can click an answer instead of having to type it. A click submits
+// that exact option text through the same path as typing it — see sendOperatorReply.
+connection.on("ReceiveChoices", (correlationId, options) => {
+  const turn = turns.get(correlationId);
+  if (!turn) {
+    return;
+  }
+
+  turn.choicesEl.innerHTML = "";
+  for (const option of options) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "choice-option";
+    button.textContent = option;
+    button.addEventListener("click", () => {
+      turn.choicesEl.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      sendOperatorReply(option);
+    });
+    turn.choicesEl.appendChild(button);
+  }
 });
 
 connection.onreconnecting(() => setStatus("reconnecting…", "status-connecting"));
@@ -137,6 +172,12 @@ async function start() {
 }
 start();
 
+function sendOperatorReply(text) {
+  renderOperatorMessage(text);
+  const correlationId = newId();
+  connection.invoke("SendMessage", "Operator", text, correlationId).catch(console.error);
+}
+
 form.addEventListener("submit", (evt) => {
   evt.preventDefault();
   const text = input.value.trim();
@@ -144,7 +185,5 @@ form.addEventListener("submit", (evt) => {
     return;
   }
   input.value = "";
-  renderOperatorMessage(text);
-  const correlationId = newId();
-  connection.invoke("SendMessage", "Operator", text, correlationId).catch(console.error);
+  sendOperatorReply(text);
 });

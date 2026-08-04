@@ -162,15 +162,18 @@ infrastructure" below).
   override that skips confirmation entirely, e.g. for local dev). `ExecutionMode` is read live
   from `IConfiguration` on every call, so editing `appsettings.json` takes effect on the next tool
   call with no restart; it defaults to `Confirm` if the value is missing/invalid (fail-safe). The
-  approval round-trip happens **in chat, not via UI buttons**: the prompt and its resolution are
-  sent as ordinary `ReceiveChatMessage` events (under a correlationId of their own, so they render
-  as their own bubble instead of overwriting the turn that triggered them — the turn's own bubble
-  is repositioned to the end of the thread once its final answer lands, in `chat.js`, since it may
+  approval round-trip happens **in chat**: the prompt and its resolution are sent as ordinary
+  `ReceiveChatMessage` events (under a correlationId of their own, so they render as their own
+  bubble instead of overwriting the turn that triggered them — the turn's own bubble is
+  repositioned to the end of the thread once its final answer lands, in `chat.js`, since it may
   have been created earlier from the first trace event and would otherwise sit above a
   confirmation exchange that happened later but before that final answer). The prompt text is
   built from the tool's human-authored `Description` and "name: value" arguments — never a
   function/operation name or raw JSON — since an operator shouldn't need to know internals to
-  approve or decline an action. The operator's next plain-text reply is parsed by
+  approve or decline an action. Alongside that prompt, a `ReceiveChoices` event (under the same
+  correlationId) carries `["Yes", "No"]` so `chat.js` can render them as clickable buttons on that
+  bubble — clicking one submits that exact text through the same `SendMessage` path as typing it,
+  so the two are indistinguishable to the backend. Either way, the operator's reply is parsed by
   `ChatConfirmationParser` (a small fixed yes/no vocabulary — deliberately not an LLM
   classification, since approving a UAV operation is safety-relevant and needs a deterministic,
   auditable interpretation). `ChatHub.SendMessage` offers every incoming message to
@@ -401,9 +404,11 @@ The fifth tool ("ask the operator which lesson to run") is deliberately **not** 
 operation, so it's a hand-built `AIFunction` (`Agents/SimulatorAgent/AskOperatorChoiceTool.cs`, `kind:
 OperatorPrompt` in YAML — see "Configuring agents" above) backed by `OperatorPromptGate`
 (`Tooling/OperatorPromptGate.cs`) — the open-ended counterpart to `ConfirmationGate`: same in-chat
-round-trip mechanics (its own `ReceiveChatMessage` correlationId, its own turnstile), but resolves
-to the operator's chosen string (matched against the offered list, by exact name or 1-based index)
-instead of yes/no. `ChatHub.SendMessage` offers every incoming message to both gates
+round-trip mechanics (its own `ReceiveChatMessage`/`ReceiveChoices` correlationId, its own
+turnstile — `ReceiveChoices` here carries the offered lesson names so `chat.js` can render them as
+clickable buttons, same as the yes/no case above), but resolves to the operator's chosen string
+(matched against the offered list, by exact name or 1-based index) instead of yes/no.
+`ChatHub.SendMessage` offers every incoming message to both gates
 (`ConfirmationGate.TryHandleChatReplyAsync` then `OperatorPromptGate.TryHandleChatReplyAsync`)
 before treating it as a new command — a known, accepted limitation is that the two gates are
 independent turnstiles, so a confirmation and an operator-choice prompt pending at the exact same

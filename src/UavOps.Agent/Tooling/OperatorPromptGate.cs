@@ -12,9 +12,11 @@ namespace UavOps.Agent.Tooling;
 ///
 /// Same in-chat round-trip mechanics as <see cref="ConfirmationGate"/>: the question and its
 /// resolution are sent as ordinary <c>ReceiveChatMessage</c> events (under their own
-/// correlationId so they render as their own bubble), and the operator's next plain-text reply is
-/// matched against the offered choices by <see cref="Hubs.ChatHub.SendMessage"/> before being
-/// treated as a new command.
+/// correlationId so they render as their own bubble), alongside a <c>ReceiveChoices</c> event
+/// carrying the offered choices so the chat UI can render them as clickable buttons — clicking one
+/// just submits that exact text through the normal operator-message path. Either way, the
+/// operator's next plain-text reply is matched against the offered choices by
+/// <see cref="Hubs.ChatHub.SendMessage"/> before being treated as a new command.
 ///
 /// Independent turnstile from <see cref="ConfirmationGate"/> (its own <see cref="_turnstile"/>) —
 /// a known, accepted limitation is that if a confirmation and an operator-choice prompt were ever
@@ -58,6 +60,7 @@ public sealed class OperatorPromptGate(
                 0d,
                 promptCorrelationId,
                 cancellationToken);
+            await hub.Clients.All.SendAsync("ReceiveChoices", promptCorrelationId, choices, cancellationToken);
 
             var sw = Stopwatch.StartNew();
 

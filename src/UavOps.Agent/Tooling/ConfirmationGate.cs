@@ -13,9 +13,12 @@ namespace UavOps.Agent.Tooling;
 /// ExecutionMode reads live from IConfiguration so flipping it in appsettings.json takes effect
 /// without a restart.
 ///
-/// The approval round-trip happens as an ordinary chat message, not a UI card: the prompt and its
-/// resolution are sent as <c>ReceiveChatMessage</c> events (under a correlationId of their own, so
-/// they render as their own bubble rather than overwriting the turn that triggered them), and the
+/// The approval round-trip happens as an ordinary chat message: the prompt and its resolution are
+/// sent as <c>ReceiveChatMessage</c> events (under a correlationId of their own, so they render as
+/// their own bubble rather than overwriting the turn that triggered them). Alongside the prompt, a
+/// <c>ReceiveChoices</c> event carrying <c>["Yes", "No"]</c> lets the chat UI render clickable
+/// buttons for that bubble — clicking one just submits that exact text through the normal
+/// operator-message path, so it and typing "yes"/"no" are handled identically. Either way, the
 /// operator's next plain-text reply is parsed by <see cref="ChatConfirmationParser"/> — see
 /// <see cref="ChatHub.SendMessage"/>, which checks <see cref="TryHandleChatReplyAsync"/> before
 /// treating an incoming message as a new command. The prompt text is built from the tool's
@@ -67,6 +70,7 @@ public sealed class ConfirmationGate(
                 0d,
                 promptCorrelationId,
                 cancellationToken);
+            await hub.Clients.All.SendAsync("ReceiveChoices", promptCorrelationId, new[] { "Yes", "No" }, cancellationToken);
 
             var sw = Stopwatch.StartNew();
 

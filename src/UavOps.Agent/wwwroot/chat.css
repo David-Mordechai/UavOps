@@ -203,12 +203,17 @@ main:has(.thread .message)::before {
 
 /* ---- Reasoning trace ---------------------------------------------------- */
 .trace {
+  display: none; /* hidden until it has at least one step — see .has-steps */
   margin-top: 0.6rem;
   font-size: 0.8rem;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
+}
+
+.trace.has-steps {
+  display: block;
 }
 
 .trace summary {
@@ -252,6 +257,40 @@ main:has(.thread .message)::before {
 
 .trace-step .agent { color: var(--accent); font-weight: 600; }
 .trace-step .tool { color: var(--text); font-weight: 600; }
+
+/* ---- Choice options (confirmation / operator-choice prompts) ------------ */
+.choice-options {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.choice-options:empty {
+  display: none;
+  margin-top: 0;
+}
+
+.choice-option {
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.choice-option:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choice-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 
 /* ---- Composer -------------------------------------------------------------- */
 #composer {
