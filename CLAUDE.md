@@ -14,13 +14,23 @@ Two processes end to end:
 
 - **`src/UavOps.Agent`** — the one server-side process: SignalR chat hub (`/chatHub`) for the
   browser, SignalR operation hub (`/uavCommandHub`) for a fleet-commanding client, multi-agent
-  orchestration (agent-as-tool delegation), a reflection-based tool catalog, a confirmation gate
-  for mutating actions, structured tool-call logging, and a static SPA (`wwwroot/`). Answers
-  operations via either an in-memory simulation (`Simulation/`, default) or a SignalR bridge
-  (`Operations/Remote/`) to a connected fleet-commanding app — see "Architecture" below. The core
-  plumbing (`Operations/`, `Hubs/`, `Tooling/`) is intentionally domain-agnostic — `UavOps.Agent`
-  is a general agentic tool-calling framework that currently has a UAV domain plugged into it,
-  not a UAV-specific system. Only `Simulation/` is genuinely UAV-domain logic.
+  orchestration (agent-as-tool delegation, rooted at `BrainAgent`, which routes each request to
+  either live fleet operations or the training simulator), a reflection-based tool catalog, a
+  confirmation gate for mutating actions, structured tool-call logging, and a static SPA
+  (`wwwroot/`). Answers UAV operations via either an in-memory simulation
+  (`Agents/MoavAgent/Simulation/`, default) or a SignalR bridge
+  (`Agents/MoavAgent/Operations/Remote/`) to a connected fleet-commanding app, and drives the
+  separate training-simulator environment (a local VMware host/VM, plus lesson scripts run
+  directly on this machine) via `Agents/SimulatorAgent/` — see "Architecture" below. `.cs` files
+  under `Agents/` are arranged per agent branch — `Agents/MoavAgent/` (the live-fleet plumbing:
+  operations, simulation, the UAV-specific SignalR hub) and `Agents/SimulatorAgent/` (the real
+  VMware/lesson-runner implementation) — while genuinely cross-cutting infrastructure used by every
+  branch (`AgentFactory`, delegation, retrieval, `Tooling/`, `Options/`, `Hubs/ChatHub.cs`) stays at
+  the `Agents/`/top level. `BrainAgent` is a pure router with no files of its own. The fake/dev
+  stand-in simulator implementation (`FakeSimulatorService`/`FakeLessonExecutor`) and the shared
+  interfaces/DTOs both the real and fake implementations depend on (`ISimulatorService`,
+  `OperationResult`, etc.) live in two more small projects, `src/UavOps.Agent.Simulator.Fake` and
+  `src/UavOps.Agent.Contracts` — see "Simulator infrastructure" below for why.
 - **`src/UavOps.FleetClient`** (.NET Framework 4.7) — a class library a real fleet-commanding
   .NET Framework application references to connect to `UavOps.Agent`'s operation hub; see its
   own README. **`src/UavOps.MockFleetClient`** (.NET Framework 4.7) is a thin console app
@@ -29,8 +39,9 @@ Two processes end to end:
 There is no separate REST API or OpenAPI spec anywhere in this system — that was an earlier
 design (a `UavOps.ControlApi` project) that got folded directly into `UavOps.Agent` once it became
 clear the real backend transport is SignalR; a REST hop in between was pure indirection.
-Operations are declared directly as C# method signatures (`Operations/IOperationService.cs`) and
-invoked in-process or over SignalR — never HTTP.
+Operations are declared directly as C# method signatures
+(`Agents/MoavAgent/Operations/IOperationService.cs`) and invoked in-process or over SignalR — never
+HTTP.
 
 ## Running it
 
@@ -96,17 +107,39 @@ file in `eval/golden-commands/`; no code changes needed.
 ## Architecture: UavOps.Agent
 
 **Request flow**: `ChatHub.SendMessage` → `MainAgentOrchestrator.HandleAsync` →
-`AgentFactory.BuildMainAgentForTurn` builds the *entire* agent graph fresh for that turn → MainAgent
-(an `AIAgent` from Microsoft.Agents.AI) decides which domain agent(s) to delegate to.
+`AgentFactory.BuildMainAgentForTurn` builds the *entire* agent graph fresh for that turn, rooted at
+`BrainAgent` (an `AIAgent` from Microsoft.Agents.AI). `BrainAgent` is a pure router: it decides
+*live fleet* (`MoavAgent`) vs. *training simulator* (`SimulatorAgent`) and delegates to exactly
+one. `MoavAgent` is what used to be the whole entry point (`MainAgent`) before the simulator branch
+existed — it still fans out to the four live-fleet specialists (`FlightControlAgent`,
+`PayloadControlAgent`, `MissionAgent`, `GdtControlAgent`). `SimulatorAgent` delegates to
+`SimulatorInfrastructureAgent`, which owns the VMware/VM/local-lesson tools (see "Simulator
+infrastructure" below).
 
 - **Agents are rebuilt every turn**, not cached, because every tool instance closes over that
   turn's `correlationId` so logs/traces are attributable end-to-end. Only the underlying
   `IChatClient` per Ollama model is cached across turns (`AgentFactory._chatClients`).
 - **Delegation is "agent-as-tool"**, not a hardcoded router: `DelegateAgentTool` wraps a domain
-  `AIAgent` as an `AIFunction` that MainAgent calls like any other tool. MainAgent is configured
-  (`MainAgent.yaml`'s `delegates`) with which domain agents it can hand requests to
-  (`FlightControlAgent`, `PayloadControlAgent`, `MissionAgent`, `GdtControlAgent`). Each delegate
-  call is logged exactly like a real fleet-command call.
+  `AIAgent` as an `AIFunction` that its parent calls like any other tool — any agent can hold
+  these, not just the root. Each call is logged exactly like a real fleet-command call, attributed
+  to whichever agent actually built the tool (not a fixed name).
+- **Two ways an agent picks its delegates**, both in `AgentFactory.BuildAgentRecursive`:
+  - **Explicit (`children:` in YAML)** — an author-declared, deterministic list, always honored
+    regardless of anything else. Used for `BrainAgent`/`MoavAgent`/`SimulatorAgent` specifically
+    *because* the live-vs-simulator split is safety-relevant and must never depend on embedding
+    similarity noise — same reasoning `ChatConfirmationParser` already uses a fixed vocabulary
+    instead of LLM classification for yes/no approvals. `children: []` marks a deliberate leaf.
+  - **Embedding retrieval (`AgentRetrievalIndex`), the fallback** — for any agent that omits
+    `children:` entirely. Every such agent's `description` is embedded once at startup; each turn,
+    the operator's raw text is embedded once and the parent's candidates are the top-K
+    (`Retrieval:MaxDelegatesPerAgent`) most similar non-visited agents, recursed up to
+    `Retrieval:MaxDelegationDepth` levels (`visited` prevents cycles/self-delegation). This is a
+    leftover-but-live extension point from an earlier iteration of this design — nothing in the
+    current roster actually falls through to it (every agent in the tree declares `children:`
+    explicitly, even leaves), but it's kept rather than deleted for any future agent added without
+    an explicit position in the tree. Requires `Ollama:EmbeddingModel` — either a real Ollama
+    embedding model (e.g. `nomic-embed-text`) or the literal `"InMemory"` for a zero-dependency,
+    deterministic, offline `IEmbeddingGenerator` (`Agents/InMemoryEmbeddingGenerator.cs`).
 - **Domain agent tools are reflected from `IOperationService`**, not HTTP-backed:
   `OperationTool` is an `AIFunction` for one `IOperationService` method, invoked in-process
   via `MethodInfo.Invoke` (no separate HTTP invoker class — there's no network hop to make).
@@ -121,7 +154,7 @@ file in `eval/golden-commands/`; no code changes needed.
   arguments and schemas — not the DTOs' native PascalCase.
 - **Concurrent tool calls**: `FunctionInvokingChatClient(ollama) { AllowConcurrentInvocation =
   true }` plus `ChatOptions.AllowMultipleToolCalls = true` lets one model turn batch several tool
-  calls (e.g. `SetSpeed` + `SetAltitude`, or MainAgent delegating to two domain agents at once)
+  calls (e.g. `SetSpeed` + `SetAltitude`, or a parent agent delegating to two children at once)
   and run them concurrently instead of one at a time.
 - **Confirmation gate** (`ConfirmationGate`): opt-in and per-tool, not inferred from anything
   about the command — a tool only goes through confirmation when its config sets
@@ -147,7 +180,7 @@ file in `eval/golden-commands/`; no code changes needed.
   `ConfirmationGate`) — with concurrent tool invocation enabled, two mutating calls could
   otherwise both need approval at once, which would make a bare "yes" reply ambiguous about which
   one it answers.
-- **Logging**: every tool call — including MainAgent→domain-agent delegation — goes through
+- **Logging**: every tool call — including agent-to-agent delegation at any level — goes through
   `ToolInvocationLogger`, producing one structured log line (tool, args, result, duration,
   correlation ID) and one `ReceiveAgentTrace` SignalR event, so the chat UI's reasoning panel and
   the eval suite's trace assertions see identical data.
@@ -163,31 +196,42 @@ file in `eval/golden-commands/`; no code changes needed.
 ### Configuring agents (`src/UavOps.Agent/AgentsConfig/*.yaml`)
 
 One YAML file per agent (filename, without extension, is the agent's name — not a field inside
-the file, so a filename/field mismatch can't happen), loaded by `AgentConfigLoader` at startup.
-No code changes needed to change what an agent can do or how it's described to the model:
+the file, so a filename/field mismatch can't happen), loaded by `AgentConfigLoader` at startup,
+which searches recursively (`SearchOption.AllDirectories`) so the files can be nested into
+per-agent subfolders that mirror `Agents/`'s layout purely for organization (`BrainAgent/`,
+`MoavAgent/` — the four live-fleet specialists plus `MoavAgent.yaml` itself, `SimulatorAgent/` —
+itself plus `SimulatorInfrastructureAgent.yaml`); an agent's position in that folder tree plays no
+role in the agent graph (that's `children:`, below). No code changes needed to change what an
+agent can do or how it's described to the model:
 
 - `instructions` — the agent's system prompt.
-- `description` — shown to MainAgent as this agent's tool description when it's one of
-  MainAgent's delegates.
+- `description` — shown to a parent as this agent's tool description whenever it's delegated to,
+  *and* embedded for retrieval ranking when the agent doesn't declare `children:` (required and
+  validated non-blank for every agent except `BrainAgent`, the root).
 - `temperature` — sampling temperature (lower = more consistent tool-calling decisions for a
   small model).
-- `delegates` — names of other agents this agent may delegate to (MainAgent only).
-- `tools[]` — operation-backed tools this agent may call (domain agents only). Each entry:
-  `operation` (must match an `IOperationService` method name exactly, case-sensitive — see
-  `Operations/IOperationService.cs`), `description`, `parameters` (name → description shown to the
-  model — must cover every parameter the operation needs that isn't in `fixedParameters`),
-  `fixedParameters` (name → literal value sent every call, never shown to the model),
-  `requiresConfirmation` (default `false`; see the confirmation gate above — independent per
-  tool, so e.g. `ReturnToLaunch` can require approval while `SetSpeed` doesn't).
+- `children` — optional explicit, ordered list of this agent's delegates. Omit entirely to fall
+  back to embedding retrieval (see above); include (even as `children: []`) to make delegation
+  deterministic instead — `BrainAgent`, `MoavAgent`, and `SimulatorAgent` all declare this.
+- `tools[]` — operation-backed tools this agent may call. Each entry: `operation` (the tool name
+  the LLM sees; for `kind: Operation` — the default — must match a method name on
+  `IOperationService` or `ISimulatorService` exactly, case-sensitive), `description`,
+  `parameters` (name → description shown to the model — must cover every parameter the operation
+  needs that isn't in `fixedParameters`), `fixedParameters` (name → literal value sent every call,
+  never shown to the model), `requiresConfirmation` (default `false`; see the confirmation gate
+  above — independent per tool, so e.g. `ReturnToLaunch`/`RunSimulatorLesson` can require approval
+  while others don't). `kind: OperatorPrompt` instead builds a bespoke ask-the-operator-and-wait
+  tool (`Agents/SimulatorAgent/AskOperatorChoiceTool.cs`) — not resolved against any catalog — see
+  `SimulatorInfrastructureAgent.yaml`'s `AskOperatorWhichLesson` tool for the only current example.
 
 When editing agent instructions, note the existing prompts are deliberately explicit about not
 letting the model invent tail numbers, guess/convert units, or resolve pronouns across
-agent-to-agent handoffs (each delegate only sees the instruction text MainAgent gives it, not the
+agent-to-agent handoffs (each delegate only sees the instruction text its parent gives it, not the
 full conversation) — preserve that style if you touch them.
 
-### The operation layer (`Operations/`, `Simulation/`, `Operations/Remote/`)
+### The operation layer (`Agents/MoavAgent/Operations/`, `Agents/MoavAgent/Simulation/`, `Agents/MoavAgent/Operations/Remote/`)
 
-`Operations/IOperationService.cs` is the single source of truth for what an "operation" is — 12
+`Agents/MoavAgent/Operations/IOperationService.cs` is the single source of truth for what an "operation" is — 12
 async methods (`ListFleet`, `GetTelemetry`, `Navigate`, `SetSpeed`, `SetAltitude`,
 `ReturnToLaunch`, `PointPayload`, `ResetPayload`, `UploadWaypoints`, `GetMissionStatus`,
 `GetLinkStatus`, `SetTrackingMode`), each returning `Task<OperationResult>` — a uniform,
@@ -198,23 +242,27 @@ only boxes to `object` at the return statement. Add a 13th operation by adding o
 interface — `OperationCatalog`/`AgentConfigValidator` pick it up automatically, nothing else
 to hand-sync. This interface (and the hub/broker/catalog/tool machinery around it) is
 intentionally domain-agnostic in naming; the method names themselves stay UAV-flavored on
-purpose since they're domain data, and `Hubs/IOperationClientProxy.cs`'s matching method names
-are additionally pinned by the (unchanged) net47 client's wire contract — `ListFleet` keeps
-"Fleet" in its name for exactly that reason.
+purpose since they're domain data, and `Agents/MoavAgent/Hubs/IOperationClientProxy.cs`'s matching
+method names are additionally pinned by the (unchanged) net47 client's wire contract —
+`ListFleet` keeps "Fleet" in its name for exactly that reason. `OperationResult`/`OperationError`
+themselves live in `src/UavOps.Agent.Contracts` rather than here — they're genuinely
+domain-agnostic, shared verbatim by `ISimulatorService` (see "Simulator infrastructure" below).
 
 `appsettings.json`'s `OperationBackend` (`"Simulated"` or `"SignalR"`, read once at startup)
 chooses which `IOperationService` implementation gets registered in `Program.cs`:
 
-- **`Simulated`** (default) — `Simulation/SimulatedUavOperationService.cs`, in-memory, no
-  persistence, no external dependency. `Simulation/KnownPoints.cs` resolves named locations
-  (e.g. `"target alpha"`, `"home"`) to lat/lng for navigation and payload-pointing operations.
-  This is what local dev and `UavOps.Agent.Evals` run against by default.
-- **`SignalR`** — `Operations/Remote/RemoteOperationService.cs`, which relays each call over
-  `Hubs/OperationHub.cs` (`/uavCommandHub`, always mapped regardless of backend) to whichever
-  fleet command client is connected — the real .NET Framework 4.7 application, or
-  `UavOps.MockFleetClient` standing in for it during dev — and awaits the reply.
+- **`Simulated`** (default) — `Agents/MoavAgent/Simulation/SimulatedUavOperationService.cs`,
+  in-memory, no persistence, no external dependency.
+  `Agents/MoavAgent/Simulation/KnownPoints.cs` resolves named locations (e.g. `"target alpha"`,
+  `"home"`) to lat/lng for navigation and payload-pointing operations. This is what local dev and
+  `UavOps.Agent.Evals` run against by default.
+- **`SignalR`** — `Agents/MoavAgent/Operations/Remote/RemoteOperationService.cs`, which relays
+  each call over `Agents/MoavAgent/Hubs/OperationHub.cs` (`/uavCommandHub`, always mapped
+  regardless of backend) to whichever fleet command client is connected — the real .NET Framework
+  4.7 application, or `UavOps.MockFleetClient` standing in for it during dev — and awaits the
+  reply.
 
-**The SignalR bridge mechanic** (`Operations/Remote/RemoteOperationBroker.cs`) adapts the same
+**The SignalR bridge mechanic** (`Agents/MoavAgent/Operations/Remote/RemoteOperationBroker.cs`) adapts the same
 request/response-over-SignalR pattern `ConfirmationGate` uses (send a message to a connected
 client, await a correlated `TaskCompletionSource` with a timeout, resolve it when the client
 replies), generalized for multiple operations in flight at once (unlike `ConfirmationGate`'s
@@ -238,6 +286,158 @@ instead of broadcasting.
   and returned as a real `OperationResult.Error`/`ErrorMessage` — since `IOperationService`
   is fully async and uniform (unlike the old split-interface design this replaced), no failure
   information is lost or flattened on the way back to the caller.
+
+### Simulator infrastructure (`Agents/SimulatorAgent/`, `OperatorPromptGate`)
+
+`UavOps.Agent.Contracts`'s `ISimulatorService.cs` mirrors `IOperationService`'s shape exactly
+(uniform `Task<OperationResult>`, `CancellationToken` last) so it plugs into the same
+`OperationCatalog`/`OperationTool` reflection machinery via a second `OperationCatalog` instance
+(`Program.cs` builds and validates both catalogs) — a second reflected interface for a second
+domain, not a parallel mechanism. `ISimulatorService` lives in its own project (rather than beside
+`IOperationService`) specifically so the Fake implementation below can reference just the
+interface without pulling in the rest of `UavOps.Agent` — see "Two implementations, split across
+three projects" further down. Four operations, all local to the machine `UavOps.Agent` runs
+on — no SSH/network hop anywhere in this domain, since the lesson scripts live alongside the
+agent, not on the VM: `EnsureVmwareHostRunning`/`EnsureSimulatorVmRunning` (check-and-start-if-
+needed, via `IVmwareController` — local `Process`/`vmrun.exe`, since there's no VMware .NET SDK),
+`ListSimulatorLessons` (via `ILocalLessonRunner`), and `RunSimulatorLesson` — see "Background
+lesson execution" below, it doesn't run the lesson itself. `LocalLessonRunner` validates every
+resolved lesson path stays inside the configured lessons folder (`Path.GetFullPath` + prefix
+check) before running anything — the lesson name ultimately originates from the operator's chat
+reply, so it's never trusted as a bare filename.
+
+**Virtual network adapters**: `EnsureSimulatorVmRunning` (re)connects every device name in
+`SimulatorOptions.NetworkAdapterDeviceNames` (e.g. `"ethernet0"`, `"ethernet1"`) via `vmrun
+connectNamedDevice` — VMware Workstation can silently fail to auto-connect one of several virtual
+NICs on power-on (the greyed-out adapter you'd otherwise right-click → Connect in the UI). `vmrun`
+has no documented way to *query* a device's live connection state, only to force a connect, so
+this runs unconditionally rather than "check then fix" — reconnecting an already-connected adapter
+is a harmless no-op, same as clicking Connect on one that's already fine. Each adapter gets up to
+`NetworkAdapterReconnectAttempts` tries (`NetworkAdapterReconnectRetryDelaySeconds` apart, both in
+`SimulatorOptions`), each attempt logged individually — added after production showed two
+adapters failing on their only attempt with no way to tell from one data point whether that's a
+permanent config issue or the adapter simply not being ready an instant after power-on; the
+per-attempt logs make that distinguishable after the fact. Best-effort per adapter (one exhausting
+all attempts doesn't fail the whole "is the VM ready" result — reported via
+`networkAdaptersFailedToReconnect`, not fatal).
+
+**Readiness, not just "started"**: `Process.Start`/`vmrun start` returning doesn't mean VMware or
+the guest OS is actually usable yet, so both Ensure* operations poll for real readiness before
+returning success (`IVmwareController.WaitForHostReadyAsync`/`WaitForVmToolsRunningAsync`,
+`SimulatorOptions.HostReadyTimeoutSeconds`/`VmToolsReadyTimeoutSeconds`/
+`ReadyPollIntervalSeconds`), returning `OperationResult.Fail` on timeout rather than a false
+"success":
+- **Host**: polls `vmrun list` until it succeeds — there's no dedicated "is the host ready"
+  command, but a successful `vmrun list` proves the VMware backend service is responsive, which is
+  what actually matters for every subsequent `vmrun` call.
+- **Guest**: polls `vmrun checkToolsState <vmx>` until it reports `"running"`. Deliberately *not*
+  `vmrun getGuestIPAddress -wait` — verified against VMware's own vmrun command reference that
+  `-wait` returns immediately (doesn't actually wait) if the network isn't ready yet, and it's
+  separately documented as unreliable specifically in the `nogui`/headless mode `StartVmAsync`
+  always uses. Adapter reconnection (above) deliberately happens *before* this wait, not after —
+  `connectNamedDevice` only needs the VM powered on at the hypervisor level (not a booted guest),
+  so fixing a flaky management NIC first avoids it skewing a network-dependent readiness check.
+
+**Background lesson execution** (`SimulatorLessonJob`/`ISimulatorLessonJobQueue`/
+`SimulatorLessonJobProcessor`/`ILessonExecutor`): a lesson script can take minutes and may itself
+start other long-running services (e.g. `docker compose up`), and its output can run to several KB
+of dense `docker ps`-style text — both a bad fit for blocking the model's synchronous tool-call
+turn. `RunSimulatorLesson` on `SimulatorService`/`FakeSimulatorService` is deliberately
+thin: it just calls `ISimulatorLessonJobQueue.Enqueue(...)` (a `System.Threading.Channels.Channel`-
+backed queue, not just a "busy" flag — a second request while one is running waits its turn
+instead of being rejected) and returns `{ status: "queued" }` immediately — the entire tool result
+the model sees for that turn, so it never has to parse a docker dump (a real run's summary once
+claimed "no errors reported" while the raw output plainly showed two containers crash-looping,
+`Restarting (127)`, buried in ~30 lines of table text a small model didn't reliably scan — wording
+alone wasn't a reliable enough fix). `SimulatorInfrastructureAgent.yaml` tells the model to report
+only that the lesson started, never a final outcome, in that same turn.
+
+A single `SimulatorLessonJobProcessor` (`BackgroundService`, registered once regardless of
+backend) consumes the queue one job at a time under its own lifetime token (app shutdown only —
+not any individual chat request's, so a browser disconnecting mid-lesson can no longer affect a
+run already handed to the queue). For each job it: (1) runs `ILessonExecutor.ExecuteAsync` — the
+deterministic "what happened" step (`LocalLessonExecutor` for the Real backend, wrapping
+`ILocalLessonRunner` and moving the old unhealthy-container detection here — substring match on
+`Restarting (` / `Dead`, and `Exited (N)` for non-zero `N`, `Exited (0)` excluded since it's the
+normal state for a one-shot/init container; `FakeLessonExecutor` for Fake, a short `Task.Delay`
+then a canned outcome — full raw output is logged here for debugging and never passed further);
+then (2) builds a **tools-stripped** instance of `SimulatorInfrastructureAgent`
+(`AgentFactory.BuildPersonaOnlyAgent` — calls the private `BuildAgent` directly with no tools,
+bypassing `BuildAgentRecursive` entirely) and runs it once with a synthetic instruction built from
+the concise outcome, to produce the "simple terms" sentence in the same voice as the real agent —
+tool-free specifically so it cannot re-trigger anything even if it misreads the prompt; then (3)
+pushes the resulting text via the **existing** `ReceiveChatMessage` SignalR event under a fresh
+correlationId. `chat.js` needed no changes for this — it already renders any `ReceiveChatMessage`
+as a new bubble the first time it sees a correlationId, so the summary appears as a new,
+unprompted message in the thread with no frontend work at all.
+
+**Deterministic lesson pre-selection** (`AskOperatorChoiceTool`): the instructions used to say the
+model *may* skip asking which lesson to run if the operator already named one — discretion a small
+model didn't reliably exercise (it asked anyway). Fixed the same way this codebase already fixes
+this class of problem — deterministically, not via model judgment: `AskOperatorChoiceTool` now
+receives the turn's raw operator text (threaded through `AgentFactory.BuildAgentRecursive`
+alongside the retrieval `query`) and auto-resolves without ever prompting when **exactly one**
+offered choice appears in it (matched against the full lesson filename or the name without
+`.ps1`); zero or multiple matches falls back to the real prompt, the safe default for anything
+ambiguous.
+
+**PowerShell invocation details** (`LocalLessonRunner`, called from `LocalLessonExecutor`): lesson
+scripts run via `powershell.exe -Command "[Console]::OutputEncoding =
+[System.Text.Encoding]::UTF8; & '<path>'; exit $LASTEXITCODE"` rather than the simpler `-File
+<path>`, for two reasons verified empirically against a real script: (1) `-File` inherits the
+legacy console codepage for captured output, which corrupted non-ASCII bytes in production (e.g.
+`docker ps`'s truncation ellipsis) — setting `[Console]::OutputEncoding` first, plus
+`StandardOutputEncoding`/`StandardErrorEncoding = Encoding.UTF8` on the .NET side, fixes this;
+(2) invoking via `& 'path'` inside `-Command` does **not** automatically propagate the script's
+`exit N` as the process's own exit code the way `-File` does — confirmed directly (a script
+calling `exit 7` otherwise surfaced here as exit `1`) — so `; exit $LASTEXITCODE` is required at
+the end to forward it. `VmwareController` also sets UTF-8 on its captured streams for consistency,
+and its failure messages fall back to stdout when stderr is empty (`FailureDetails`) — also
+observed in production: a real `connectNamedDevice` failure had a nonzero exit code and completely
+empty stderr, and would have silently discarded whatever `vmrun` actually wrote to stdout instead.
+
+The fifth tool ("ask the operator which lesson to run") is deliberately **not** on
+`ISimulatorService` — its whole job is to prompt-and-wait in chat, not to be a data
+operation, so it's a hand-built `AIFunction` (`Agents/SimulatorAgent/AskOperatorChoiceTool.cs`, `kind:
+OperatorPrompt` in YAML — see "Configuring agents" above) backed by `OperatorPromptGate`
+(`Tooling/OperatorPromptGate.cs`) — the open-ended counterpart to `ConfirmationGate`: same in-chat
+round-trip mechanics (its own `ReceiveChatMessage` correlationId, its own turnstile), but resolves
+to the operator's chosen string (matched against the offered list, by exact name or 1-based index)
+instead of yes/no. `ChatHub.SendMessage` offers every incoming message to both gates
+(`ConfirmationGate.TryHandleChatReplyAsync` then `OperatorPromptGate.TryHandleChatReplyAsync`)
+before treating it as a new command — a known, accepted limitation is that the two gates are
+independent turnstiles, so a confirmation and an operator-choice prompt pending at the exact same
+moment could make a bare reply ambiguous about which one it answers (not expected in practice: the
+simulator lesson flow's own gated tools are strictly sequential).
+
+Connection details (`SimulatorOptions`, `appsettings.json`'s `Simulator` section) are
+environment-specific and left blank by default — VMware/`vmrun` paths, the simulator VM's `.vmx`
+path, the local lessons folder, the list of network adapter device names to reconnect, and their
+retry attempt count/delay. `SimulatorBackend` (top-level config key, default `Fake`) chooses
+between this real implementation and `FakeSimulatorService` — an in-memory stand-in (fixed fake
+lesson list, "started"/"already running" bookkeeping, no VMware/process calls at all) that still
+exercises the entire agent/chat/prompt/confirmation flow end to end with nothing installed, same
+reasoning `OperationBackend: Simulated` already establishes on the UAV side. Flip it to `Real` once
+`SimulatorOptions` is filled in for an actual machine.
+
+**Two implementations, split across three projects**: `SimulatorService` (the `Real` backend) is
+an ordinary class in `Agents/SimulatorAgent/`, alongside `VmwareController`/`LocalLessonRunner`/
+`LocalLessonExecutor`/the job queue — no different from any other agent-specific code in
+`UavOps.Agent`. `FakeSimulatorService`/`FakeLessonExecutor` (the `Fake` backend) instead live in
+their own project, `src/UavOps.Agent.Simulator.Fake`, with their own IoC registration
+(`ServiceCollectionExtensions.AddFakeSimulator(this IServiceCollection)`) — `Program.cs` calls that
+one extension method when `SimulatorBackend == Fake` rather than registering the fake types itself.
+This exists to keep the fake/dev-only implementation physically separable from the main app, not
+just logically. The catch: both implementations need to implement `ISimulatorService`/
+`ILessonExecutor`/`ISimulatorLessonJobQueue`/`SimulatorLessonJob` — if those lived in
+`UavOps.Agent` itself, `UavOps.Agent.Simulator.Fake` would need to reference `UavOps.Agent` to
+implement them, but `Program.cs` (in `UavOps.Agent`) also needs to reference
+`UavOps.Agent.Simulator.Fake` to call `AddFakeSimulator` — a circular project reference, which
+.NET disallows. `src/UavOps.Agent.Contracts` (also holding `OperationResult`/`OperationError`,
+since those are equally domain-agnostic and used by both `IOperationService` and
+`ISimulatorService`) breaks the cycle: both `UavOps.Agent` and `UavOps.Agent.Simulator.Fake`
+reference `Contracts`, and only `UavOps.Agent` references `Simulator.Fake` — one direction, no
+cycle.
 
 ### `UavOps.FleetClient` / `UavOps.MockFleetClient`
 

@@ -2,7 +2,7 @@ namespace UavOps.Agent.Options;
 
 /// <summary>
 /// One tool an agent may call. <see cref="Operation"/> must match a method name on
-/// <see cref="UavOps.Agent.Operations.IOperationService"/> exactly — that interface supplies the
+/// <c>IOperationService</c> (or <c>ISimulatorService</c>) exactly — that interface supplies the
 /// mechanical parameter contract (names, CLR types). Everything the LLM actually reads —
 /// <see cref="Description"/> and every parameter description — is authored here, never taken
 /// from the interface.
@@ -17,6 +17,12 @@ public sealed class AgentToolConfig
 {
     public string Operation { get; set; } = "";
     public string Description { get; set; } = "";
+
+    /// <summary>"Operation" (default) resolves <see cref="Operation"/> against a catalog via
+    /// reflection, as above. "OperatorPrompt" builds a bespoke ask-the-operator-and-wait tool
+    /// instead (see <c>Agents.AskOperatorChoiceTool</c>) — <see cref="Operation"/> is then just
+    /// the tool name shown to the LLM, not resolved against any catalog.</summary>
+    public string Kind { get; set; } = "Operation";
 
     /// <summary>Parameter name -> description shown to the LLM. Must cover every parameter
     /// the operation requires that isn't listed in <see cref="FixedParameters"/>.</summary>
@@ -33,15 +39,23 @@ public sealed class AgentToolConfig
 }
 
 /// <summary>
-/// One agent: either a domain agent or the MainAgent.
+/// One agent: either a domain agent or the root BrainAgent.
 /// </summary>
 public sealed class AgentConfig
 {
     public string? Model { get; set; }
     public string Instructions { get; set; } = "";
 
-    /// <summary>Shown to MainAgent as this agent's tool description when it is one of MainAgent's delegates.</summary>
+    /// <summary>Shown to a parent agent as this agent's tool description when it is one of that
+    /// parent's delegates, and embedded for retrieval ranking (see <see cref="Children"/>).</summary>
     public string? Description { get; set; }
+
+    /// <summary>Optional explicit, ordered list of this agent's delegates. When present (even as
+    /// an empty list), this is used verbatim instead of embedding retrieval — for structural/
+    /// safety-relevant branches (e.g. live vs. simulated) where the split must be guaranteed, not
+    /// similarity-ranked. Omit the YAML key entirely to keep using retrieval
+    /// (<c>Agents.AgentRetrievalIndex</c>) as before.</summary>
+    public List<string>? Children { get; set; }
 
     /// <summary>Sampling temperature for this agent's model calls. Lower values (e.g. 0.1-0.3)
     /// make tool-calling decisions more consistent across repeated identical requests — a small

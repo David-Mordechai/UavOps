@@ -80,7 +80,7 @@ connection.on("ReceiveChatMessage", (user, text, duration, correlationId) => {
   turn.textEl.textContent = text;
   turn.durationEl.textContent = duration.toFixed(2) + "s";
 
-  if (user === "MainAgent") {
+  if (user === "BrainAgent") {
     // The turn's bubble is created as soon as its first trace event arrives, which can be well
     // before this final answer — if a confirmation prompt happens mid-turn, its own bubble gets
     // appended after the (still-empty) turn bubble and would otherwise stay below it forever,
@@ -93,7 +93,7 @@ connection.on("ReceiveChatMessage", (user, text, duration, correlationId) => {
 });
 
 connection.on("ReceiveAgentTrace", (correlationId, agent, tool, argsJson, result, durationSeconds) => {
-  const turn = ensureAgentTurn(correlationId, "MainAgent");
+  const turn = ensureAgentTurn(correlationId, "BrainAgent");
   const step = document.createElement("div");
   step.className = "trace-step";
 

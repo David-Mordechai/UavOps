@@ -15,7 +15,7 @@ namespace UavOps.Agent.Tests.Agents;
 public class AgentRetrievalIndexTests
 {
     [Fact]
-    public async Task BuildAsync_ExcludesMainAgent_AndPopulatesIndex()
+    public async Task BuildAsync_ExcludesBrainAgent_AndPopulatesIndex()
     {
         // Arrange
         var generator = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
@@ -26,9 +26,11 @@ public class AgentRetrievalIndexTests
                 return Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(list));
             });
 
+        // BrainAgent is given a Description too, so exclusion here is proven to be by name, not
+        // just an incidental blank-Description skip.
         var agents = new Dictionary<string, AgentConfig>
         {
-            ["MainAgent"] = new AgentConfig { Instructions = "Coordinator" },
+            ["BrainAgent"] = new AgentConfig { Instructions = "Coordinator", Description = "Top-level router." },
             ["FlightControlAgent"] = new AgentConfig { Instructions = "Flight", Description = "Handles flight controls" }
         };
 
@@ -65,7 +67,7 @@ public class AgentRetrievalIndexTests
 
         var agents = new Dictionary<string, AgentConfig>
         {
-            ["MainAgent"] = new AgentConfig { Instructions = "Coordinator" },
+            ["BrainAgent"] = new AgentConfig { Instructions = "Coordinator" },
             ["FlightControlAgent"] = new AgentConfig { Instructions = "Flight", Description = "Handles flight controls" },
             ["PayloadControlAgent"] = new AgentConfig { Instructions = "Payload", Description = "Handles payload settings" },
             ["GdtControlAgent"] = new AgentConfig { Instructions = "GDT", Description = "Handles ground settings" }

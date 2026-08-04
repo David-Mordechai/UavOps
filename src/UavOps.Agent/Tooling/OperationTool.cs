@@ -2,20 +2,24 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
-using UavOps.Agent.Operations;
+using UavOps.Agent.Contracts;
 using UavOps.Agent.Options;
 
 namespace UavOps.Agent.Tooling;
 
 /// <summary>
-/// An AIFunction backed by one <see cref="IOperationService"/> method. The name, description,
+/// An AIFunction backed by one reflected operation method — originally always an
+/// <c>IOperationService</c> method, now also reused for <c>ISimulatorService</c>
+/// (any interface <see cref="Tooling.OperationCatalog"/> was built from). The name, description,
 /// and every parameter description shown to the LLM come from appsettings/YAML
 /// (<see cref="AgentToolConfig"/>); the reflected <see cref="OperationDescriptor"/> supplies
 /// only the mechanical parameter shape (names/CLR types). Every invocation goes through the
 /// confirmation gate (only when this tool opts in via <see cref="AgentToolConfig.RequiresConfirmation"/>
 /// and mode-dependent) and is logged. Calls the operation in-process via reflection
 /// (<see cref="OperationDescriptor.Method"/>) rather than an HTTP invoker — there is no
-/// separate invoker class, since there is no network hop to make.
+/// separate invoker class, since there is no network hop to make. The target service is typed
+/// <see cref="object"/> (not a specific interface) precisely so this class works for any
+/// reflected operation interface, not just <c>IOperationService</c>.
 /// </summary>
 public sealed class OperationTool : AIFunction
 {
@@ -28,7 +32,7 @@ public sealed class OperationTool : AIFunction
 
     private readonly OperationDescriptor _descriptor;
     private readonly AgentToolConfig _config;
-    private readonly IOperationService _operationService;
+    private readonly object _operationService;
     private readonly ToolInvocationLogger _toolLogger;
     private readonly ConfirmationGate _confirmationGate;
     private readonly string _agentName;
@@ -37,7 +41,7 @@ public sealed class OperationTool : AIFunction
     public OperationTool(
         OperationDescriptor descriptor,
         AgentToolConfig config,
-        IOperationService operationService,
+        object operationService,
         ToolInvocationLogger toolLogger,
         ConfirmationGate confirmationGate,
         string agentName,

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace UavOps.FleetClient
 {
-    // Net47-side copies of UavOps.Agent.Operations's models — no common TFM worth introducing for a
+    // Net47-side copies of UavOps.Agent.Agents.MoavAgent.Operations's models — no common TFM worth introducing for a
     // handful of tiny records. JSON property names must match UavOps.Agent's (camelCase)
     // by convention; FleetClientConnection is the only place that serializes/deserializes these.
 

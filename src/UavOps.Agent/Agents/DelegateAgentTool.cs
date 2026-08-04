@@ -7,23 +7,26 @@ using UavOps.Agent.Tooling;
 namespace UavOps.Agent.Agents;
 
 /// <summary>
-/// Exposes a domain <see cref="AIAgent"/> as a callable tool of MainAgent — the agent-as-tool
-/// pattern used instead of a hardcoded router switch statement. MainAgent decides which
-/// specialist(s) to invoke by calling these like any other tool; each call is logged like any
-/// other tool call.
+/// Exposes a domain <see cref="AIAgent"/> as a callable tool of its parent agent — the agent-as-
+/// tool pattern used instead of a hardcoded router switch statement. Any agent (not just the
+/// root) can hold these: the parent decides which specialist(s) to invoke by calling these like
+/// any other tool; each call is logged like any other tool call, attributed to the actual parent
+/// (<see cref="_parentAgentName"/>), not a fixed name.
 /// </summary>
 public sealed class DelegateAgentTool : AIFunction
 {
     private readonly AIAgent _subAgent;
     private readonly ToolInvocationLogger _toolLogger;
+    private readonly string _parentAgentName;
     private readonly string _correlationId;
 
-    public DelegateAgentTool(string name, string description, AIAgent subAgent, ToolInvocationLogger toolLogger, string correlationId)
+    public DelegateAgentTool(string name, string description, AIAgent subAgent, ToolInvocationLogger toolLogger, string parentAgentName, string correlationId)
     {
         Name = name;
         Description = description;
         _subAgent = subAgent;
         _toolLogger = toolLogger;
+        _parentAgentName = parentAgentName;
         _correlationId = correlationId;
         JsonSchema = BuildSchema();
     }
@@ -39,7 +42,7 @@ public sealed class DelegateAgentTool : AIFunction
 
         return await _toolLogger.LogAsync(
             _correlationId,
-            "MainAgent",
+            _parentAgentName,
             Name,
             new { instruction },
             async () =>

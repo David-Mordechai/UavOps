@@ -13,7 +13,10 @@ namespace UavOps.Agent.Options;
 /// </summary>
 public static class AgentConfigValidator
 {
-    public static void Validate(Dictionary<string, AgentConfig> agents, OperationCatalog catalog)
+    private const string RootAgentName = "BrainAgent";
+    private const string OperatorPromptKind = "OperatorPrompt";
+
+    public static void Validate(Dictionary<string, AgentConfig> agents, OperationCatalog catalog, OperationCatalog simulatorCatalog)
     {
         var errors = new List<string>();
 
@@ -26,21 +29,34 @@ public static class AgentConfigValidator
 
             foreach (var tool in config.Tools)
             {
+                if (string.IsNullOrWhiteSpace(tool.Description))
+                {
+                    errors.Add($"Agent '{agentName}' tool '{tool.Operation}' is missing a 'Description'.");
+                }
+
+                if (tool.Kind == OperatorPromptKind)
+                {
+                    // Bespoke ask-the-operator tool (AskOperatorChoiceTool) — not reflected off
+                    // any catalog, so there's no parameter contract to check it against.
+                    continue;
+                }
+
                 if (string.IsNullOrWhiteSpace(tool.Operation))
                 {
                     errors.Add($"Agent '{agentName}' has a tool with a missing 'Operation'.");
                     continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(tool.Description))
+                var resolved = catalog.TryResolve(tool.Operation, out var descriptor) && descriptor is not null;
+                if (!resolved)
                 {
-                    errors.Add($"Agent '{agentName}' tool '{tool.Operation}' is missing a 'Description'.");
+                    resolved = simulatorCatalog.TryResolve(tool.Operation, out descriptor) && descriptor is not null;
                 }
 
-                if (!catalog.TryResolve(tool.Operation, out var descriptor) || descriptor is null)
+                if (!resolved || descriptor is null)
                 {
                     errors.Add($"Agent '{agentName}' references unknown operation '{tool.Operation}'. " +
-                                "Check the spelling against IOperationService's method names.");
+                                "Check the spelling against IOperationService's/ISimulatorService's method names.");
                     continue;
                 }
 
@@ -59,9 +75,21 @@ public static class AgentConfigValidator
                 }
             }
 
-            if (agentName != "MainAgent" && string.IsNullOrWhiteSpace(config.Description))
+            if (config.Children is not null)
             {
-                errors.Add($"Agent '{agentName}' is missing a non-blank 'Description' (required for retrieval).");
+                foreach (var child in config.Children)
+                {
+                    if (!agents.ContainsKey(child))
+                    {
+                        errors.Add($"Agent '{agentName}' declares child '{child}' which does not exist in AgentsConfig.");
+                    }
+                }
+            }
+
+            if (agentName != RootAgentName && string.IsNullOrWhiteSpace(config.Description))
+            {
+                errors.Add($"Agent '{agentName}' is missing a non-blank 'Description' (required for retrieval, " +
+                            "and shown as this agent's tool description whenever it's delegated to).");
             }
         }
 

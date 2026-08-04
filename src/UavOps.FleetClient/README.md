@@ -27,6 +27,6 @@ this plumbing works end to end during development.
 - Uses `Newtonsoft.Json` internally to serialize `CommandResult<T>.Value` for the reply — callers
   of `IUavCommandHandler` never see JSON directly.
 - The DTOs here (`Waypoint`, `TelemetrySnapshot`, `GdtLinkStatus`, `MissionStatus`, `UavSummary`)
-  are net47-side copies of `UavOps.Agent.Operations`'s models (no common TFM between net47 and
+  are net47-side copies of `UavOps.Agent.Agents.MoavAgent.Operations`'s models (no common TFM between net47 and
   net8 worth introducing). Property names must stay in sync by convention if that side ever
   changes shape.

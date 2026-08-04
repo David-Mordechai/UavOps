@@ -25,7 +25,7 @@ public sealed class AgentRetrievalIndex
 
     /// <summary>
     /// Builds the AgentRetrievalIndex once at startup.
-    /// Excludes MainAgent from the index as it's never a valid delegate target.
+    /// Excludes BrainAgent from the index as it's never a valid delegate target.
     /// </summary>
     public static async Task<AgentRetrievalIndex> BuildAsync(
         Dictionary<string, AgentConfig> agents,
@@ -36,7 +36,7 @@ public sealed class AgentRetrievalIndex
 
         foreach (var (name, config) in agents)
         {
-            if (name == "MainAgent")
+            if (name == "BrainAgent")
             {
                 continue;
             }

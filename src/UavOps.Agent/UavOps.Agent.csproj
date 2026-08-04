@@ -18,7 +18,12 @@
   <ItemGroup>
     <!-- Unlike appsettings*.json, the SDK doesn't auto-copy an arbitrary new folder to the
          output/publish directory. -->
-    <None Update="AgentsConfig\*.yaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="AgentsConfig\**\*.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UavOps.Agent.Contracts\UavOps.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\UavOps.Agent.Simulator.Fake\UavOps.Agent.Simulator.Fake.csproj" />
   </ItemGroup>
 
 </Project>

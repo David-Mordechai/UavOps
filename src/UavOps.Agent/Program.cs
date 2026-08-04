@@ -2,11 +2,15 @@ using Microsoft.Extensions.AI;
 using OllamaSharp;
 using Serilog;
 using UavOps.Agent.Agents;
+using UavOps.Agent.Agents.MoavAgent.Hubs;
+using UavOps.Agent.Agents.MoavAgent.Operations;
+using UavOps.Agent.Agents.MoavAgent.Operations.Remote;
+using UavOps.Agent.Agents.MoavAgent.Simulation;
+using UavOps.Agent.Agents.SimulatorAgent;
+using UavOps.Agent.Contracts;
 using UavOps.Agent.Hubs;
-using UavOps.Agent.Operations;
-using UavOps.Agent.Operations.Remote;
 using UavOps.Agent.Options;
-using UavOps.Agent.Simulation;
+using UavOps.Agent.Simulator.Fake;
 using UavOps.Agent.Tooling;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -26,10 +30,19 @@ var operationBackend = Enum.TryParse<OperationBackend>(builder.Configuration["Op
 
 var agentsConfig = AgentConfigLoader.LoadFromDirectory(Path.Combine(builder.Environment.ContentRootPath, "AgentsConfig"));
 
-// Reflects over IOperationService's methods — no network call, no remotely-fetched spec — and
-// validates every agent's Tools[] against it before the app is allowed to start.
+// Reflects over IOperationService's/ISimulatorService's methods — no network call, no
+// remotely-fetched spec — and validates every agent's Tools[] against them before the app is
+// allowed to start.
 var catalog = new OperationCatalog(typeof(IOperationService));
-AgentConfigValidator.Validate(agentsConfig, catalog);
+var simulatorCatalog = new OperationCatalog(typeof(ISimulatorService));
+AgentConfigValidator.Validate(agentsConfig, catalog, simulatorCatalog);
+
+var simulatorOptions = builder.Configuration.GetSection(SimulatorOptions.SectionName).Get<SimulatorOptions>()
+    ?? new SimulatorOptions();
+
+var simulatorBackend = Enum.TryParse<SimulatorBackend>(builder.Configuration["SimulatorBackend"], ignoreCase: true, out var simBackend)
+    ? simBackend
+    : SimulatorBackend.Fake;
 
 IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
 if (string.Equals(ollamaOptions.EmbeddingModel, "InMemory", StringComparison.OrdinalIgnoreCase))
@@ -63,6 +76,29 @@ builder.Services.AddSingleton(retrievalIndex);
 builder.Services.AddSingleton(remoteOperationOptions);
 builder.Services.AddSingleton(agentsConfig);
 builder.Services.AddSingleton(catalog);
+builder.Services.AddSingleton(simulatorCatalog);
+builder.Services.AddSingleton(simulatorOptions);
+
+// A real queue (not just a "busy" flag) so a second lesson request while one is already running
+// waits its turn instead of being rejected — consumed by SimulatorLessonJobProcessor below.
+builder.Services.AddSingleton<ISimulatorLessonJobQueue, SimulatorLessonJobQueue>();
+
+if (simulatorBackend == SimulatorBackend.Real)
+{
+    builder.Services.AddSingleton<IVmwareController, VmwareController>();
+    builder.Services.AddSingleton<ILocalLessonRunner, LocalLessonRunner>();
+    builder.Services.AddSingleton<ILessonExecutor, LocalLessonExecutor>();
+    builder.Services.AddSingleton<ISimulatorService, SimulatorService>();
+}
+else
+{
+    // No VMware/VM required — the default, so the SimulatorAgent branch (routing, all five
+    // tools, the operator lesson-choice prompt, the run-lesson confirmation) can be exercised
+    // end to end on any machine with nothing installed. Registered via the Fake DLL's own IoC
+    // extension (UavOps.Agent.Simulator.Fake) rather than this project registering the fake
+    // types itself.
+    builder.Services.AddFakeSimulator();
+}
 
 // A confirmation reply (or an operation's SubmitCommandResult reply) is just another call on
 // the same connection while the original call is still in flight, so raise the per-connection
@@ -85,6 +121,7 @@ else
 
 builder.Services.AddSingleton<ToolInvocationLogger>();
 builder.Services.AddSingleton<ConfirmationGate>();
+builder.Services.AddSingleton<OperatorPromptGate>();
 
 builder.Services.AddSingleton<Func<string, IChatClient>>(sp => modelName =>
 {
@@ -98,16 +135,25 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
         sp.GetRequiredService<Func<string, IChatClient>>(),
         ollamaOptions.DefaultModel,
         sp.GetRequiredService<Dictionary<string, AgentConfig>>(),
-        sp.GetRequiredService<OperationCatalog>(),
+        catalog,
         sp.GetRequiredService<IOperationService>(),
+        simulatorCatalog,
+        sp.GetRequiredService<ISimulatorService>(),
         sp.GetRequiredService<AgentRetrievalIndex>(),
         sp.GetRequiredService<RetrievalOptions>(),
         sp.GetRequiredService<ToolInvocationLogger>(),
         sp.GetRequiredService<ConfirmationGate>(),
+        sp.GetRequiredService<OperatorPromptGate>(),
         sp.GetRequiredService<ILogger<AgentFactory>>()
     ));
 
 builder.Services.AddSingleton<MainAgentOrchestrator>();
+
+// Backend-agnostic (only depends on ILessonExecutor, registered above per SimulatorBackend) —
+// one consumer processes ISimulatorLessonJobQueue jobs one at a time under its own lifetime token
+// (app shutdown only, not any individual chat request's), so a browser disconnecting mid-lesson
+// can't affect a run already handed off to the queue.
+builder.Services.AddHostedService<SimulatorLessonJobProcessor>();
 
 var app = builder.Build();
 
@@ -122,7 +168,9 @@ app.MapGet("/healthz", () => Results.Ok(new
     status = "ok",
     ollamaModel = ollamaOptions.DefaultModel,
     operationBackend = operationBackend.ToString(),
+    simulatorBackend = simulatorBackend.ToString(),
     operations = catalog.Operations.Count,
+    simulatorOperations = simulatorCatalog.Operations.Count,
     retrievalAgents = retrievalIndex.Count
 }));
 

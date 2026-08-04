@@ -1,11 +1,12 @@
 namespace UavOps.Agent.Tooling;
 
 /// <summary>
-/// Reflects over <see cref="UavOps.Agent.Operations.IOperationService"/>'s methods once at startup
-/// to build the mechanical contract (parameter names + CLR types) for each operation — replaces
-/// the old OpenAPI-spec-based catalog. No network call, no remotely-fetched document: the
-/// interface itself is the single source of truth. Add a 13th operation by adding one method to
-/// <see cref="UavOps.Agent.Operations.IOperationService"/>; nothing else needs to change here.
+/// Reflects over an operation interface's methods once at startup (e.g. <c>IOperationService</c>
+/// in <c>Agents/MoavAgent/Operations/</c>, or <c>ISimulatorService</c> in
+/// <see cref="UavOps.Agent.Contracts"/>) to build the mechanical contract (parameter names + CLR
+/// types) for each operation — replaces the old OpenAPI-spec-based catalog. No network call, no
+/// remotely-fetched document: the interface itself is the single source of truth. Add a 13th
+/// operation by adding one method to the interface; nothing else needs to change here.
 /// </summary>
 public sealed class OperationCatalog
 {

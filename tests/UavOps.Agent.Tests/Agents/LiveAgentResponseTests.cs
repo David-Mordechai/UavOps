@@ -10,10 +10,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using OllamaSharp;
 using UavOps.Agent.Agents;
+using UavOps.Agent.Agents.MoavAgent.Operations;
+using UavOps.Agent.Agents.MoavAgent.Simulation;
+using UavOps.Agent.Contracts;
 using UavOps.Agent.Hubs;
-using UavOps.Agent.Operations;
 using UavOps.Agent.Options;
-using UavOps.Agent.Simulation;
 using UavOps.Agent.Tooling;
 using Xunit;
 using Xunit.Abstractions;
@@ -39,6 +40,8 @@ public class LiveAgentResponseTests(ITestOutputHelper output)
 
         var catalog = new OperationCatalog(typeof(IOperationService));
         var simulatedService = new SimulatedUavOperationService();
+        var simulatorInfraCatalog = new OperationCatalog(typeof(ISimulatorService));
+        var simulatorInfraService = Substitute.For<ISimulatorService>();
 
         var embeddingGenerator = new OllamaApiClient(new Uri(ollamaOptions.Endpoint), ollamaOptions.EmbeddingModel);
         var retrievalIndex = await AgentRetrievalIndex.BuildAsync(agentsConfig, embeddingGenerator, CancellationToken.None);
@@ -64,10 +67,13 @@ public class LiveAgentResponseTests(ITestOutputHelper output)
             agentsConfig,
             catalog,
             simulatedService,
+            simulatorInfraCatalog,
+            simulatorInfraService,
             retrievalIndex,
             retrievalOptions,
             new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, mockHubContext),
             new ConfirmationGate(mockHubContext, mockConfig, NullLogger<ConfirmationGate>.Instance, null),
+            new OperatorPromptGate(mockHubContext, NullLogger<OperatorPromptGate>.Instance, null),
             NullLogger<AgentFactory>.Instance
         );
 
