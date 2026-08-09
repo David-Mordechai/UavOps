@@ -42,6 +42,8 @@ public class LiveAgentResponseTests(ITestOutputHelper output)
         var simulatedService = new SimulatedUavOperationService();
         var simulatorInfraCatalog = new OperationCatalog(typeof(ISimulatorService));
         var simulatorInfraService = Substitute.For<ISimulatorService>();
+        var watchdogCatalog = new OperationCatalog(typeof(IWatchdogService));
+        var watchdogService = Substitute.For<IWatchdogService>();
 
         var embeddingGenerator = new OllamaApiClient(new Uri(ollamaOptions.Endpoint), ollamaOptions.EmbeddingModel);
         var retrievalIndex = await AgentRetrievalIndex.BuildAsync(agentsConfig, embeddingGenerator, CancellationToken.None);
@@ -69,6 +71,8 @@ public class LiveAgentResponseTests(ITestOutputHelper output)
             simulatedService,
             simulatorInfraCatalog,
             simulatorInfraService,
+            watchdogCatalog,
+            watchdogService,
             retrievalIndex,
             retrievalOptions,
             new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, mockHubContext),

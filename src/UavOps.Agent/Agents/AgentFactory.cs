@@ -3,6 +3,7 @@ using System.Collections.Immutable;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using UavOps.Agent.Agents.MaintenanceAgent;
 using UavOps.Agent.Agents.MoavAgent.Operations;
 using UavOps.Agent.Agents.SimulatorAgent;
 using UavOps.Agent.Contracts;
@@ -29,6 +30,8 @@ public sealed class AgentFactory(
     IOperationService operationService,
     OperationCatalog simulatorCatalog,
     ISimulatorService simulatorService,
+    OperationCatalog watchdogCatalog,
+    IWatchdogService watchdogService,
     AgentRetrievalIndex retrievalIndex,
     RetrievalOptions retrievalOptions,
     ToolInvocationLogger toolLogger,
@@ -75,6 +78,10 @@ public sealed class AgentFactory(
             else if (simulatorCatalog.TryResolve(toolConfig.Operation, out var simDescriptor) && simDescriptor is not null)
             {
                 tools.Add(new OperationTool(simDescriptor, toolConfig, simulatorService, toolLogger, confirmationGate, name, correlationId));
+            }
+            else if (watchdogCatalog.TryResolve(toolConfig.Operation, out var watchdogDescriptor) && watchdogDescriptor is not null)
+            {
+                tools.Add(new OperationTool(watchdogDescriptor, toolConfig, watchdogService, toolLogger, confirmationGate, name, correlationId));
             }
             else
             {

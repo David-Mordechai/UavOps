@@ -11,6 +11,7 @@ public class AgentConfigValidatorTests
 {
     private static OperationCatalog Catalog() => new(typeof(IOperationService));
     private static OperationCatalog SimulatorInfraCatalog() => new(typeof(ISimulatorService));
+    private static OperationCatalog WatchdogCatalog() => new(typeof(IWatchdogService));
 
     [Fact]
     public void Validate_UnknownOperation_Throws()
@@ -25,7 +26,7 @@ public class AgentConfigValidatorTests
             }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*DoesNotExist*");
     }
@@ -43,7 +44,7 @@ public class AgentConfigValidatorTests
             }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*speedKts*");
     }
@@ -70,7 +71,7 @@ public class AgentConfigValidatorTests
             }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().NotThrow();
     }
@@ -83,7 +84,7 @@ public class AgentConfigValidatorTests
             ["FlightControlAgent"] = new AgentConfig { Instructions = "", Description = "x" }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*FlightControlAgent*Instructions*");
     }
@@ -96,7 +97,7 @@ public class AgentConfigValidatorTests
             ["FlightControlAgent"] = new AgentConfig { Instructions = "x", Description = "" }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*FlightControlAgent*Description*");
     }
@@ -114,7 +115,7 @@ public class AgentConfigValidatorTests
             }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*SetSpeed*Description*");
     }
@@ -127,7 +128,7 @@ public class AgentConfigValidatorTests
             ["BrainAgent"] = new AgentConfig { Instructions = "x", Children = ["DoesNotExistAgent"] }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*BrainAgent*DoesNotExistAgent*");
     }
@@ -141,7 +142,7 @@ public class AgentConfigValidatorTests
             ["MoavAgent"] = new AgentConfig { Instructions = "x", Description = "Handles live ops.", Children = [] }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().NotThrow();
     }
@@ -170,7 +171,7 @@ public class AgentConfigValidatorTests
             }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().NotThrow();
     }
@@ -188,7 +189,7 @@ public class AgentConfigValidatorTests
             }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().NotThrow();
     }
@@ -219,7 +220,7 @@ public class AgentConfigValidatorTests
             ["BrainAgent"] = new AgentConfig { Instructions = "x" }
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog());
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog());
 
         act.Should().NotThrow();
     }

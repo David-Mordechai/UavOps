@@ -12,6 +12,7 @@
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.0" />
     <PackageReference Include="OllamaSharp" Version="5.4.27" ExcludeAssets="analyzers" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 
@@ -24,6 +25,7 @@
   <ItemGroup>
     <ProjectReference Include="..\UavOps.Agent.Contracts\UavOps.Agent.Contracts.csproj" />
     <ProjectReference Include="..\UavOps.Agent.Simulator.Fake\UavOps.Agent.Simulator.Fake.csproj" />
+    <ProjectReference Include="..\UavOps.Agent.Watchdog.Fake\UavOps.Agent.Watchdog.Fake.csproj" />
   </ItemGroup>
 
 </Project>

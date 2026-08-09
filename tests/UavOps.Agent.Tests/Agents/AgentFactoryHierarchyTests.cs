@@ -47,6 +47,8 @@ public class AgentFactoryHierarchyTests
             Substitute.For<IOperationService>(),
             new OperationCatalog(typeof(ISimulatorService)),
             Substitute.For<ISimulatorService>(),
+            new OperationCatalog(typeof(IWatchdogService)),
+            Substitute.For<IWatchdogService>(),
             retrievalIndex,
             new RetrievalOptions(),
             toolLogger,

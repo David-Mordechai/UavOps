@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using OllamaSharp;
 using Serilog;
 using UavOps.Agent.Agents;
+using UavOps.Agent.Agents.MaintenanceAgent;
 using UavOps.Agent.Agents.MoavAgent.Hubs;
 using UavOps.Agent.Agents.MoavAgent.Operations;
 using UavOps.Agent.Agents.MoavAgent.Operations.Remote;
@@ -12,6 +13,7 @@ using UavOps.Agent.Hubs;
 using UavOps.Agent.Options;
 using UavOps.Agent.Simulator.Fake;
 using UavOps.Agent.Tooling;
+using UavOps.Agent.Watchdog.Fake;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,7 +37,8 @@ var agentsConfig = AgentConfigLoader.LoadFromDirectory(Path.Combine(builder.Envi
 // allowed to start.
 var catalog = new OperationCatalog(typeof(IOperationService));
 var simulatorCatalog = new OperationCatalog(typeof(ISimulatorService));
-AgentConfigValidator.Validate(agentsConfig, catalog, simulatorCatalog);
+var watchdogCatalog = new OperationCatalog(typeof(IWatchdogService));
+AgentConfigValidator.Validate(agentsConfig, catalog, simulatorCatalog, watchdogCatalog);
 
 var simulatorOptions = builder.Configuration.GetSection(SimulatorOptions.SectionName).Get<SimulatorOptions>()
     ?? new SimulatorOptions();
@@ -43,6 +46,13 @@ var simulatorOptions = builder.Configuration.GetSection(SimulatorOptions.Section
 var simulatorBackend = Enum.TryParse<SimulatorBackend>(builder.Configuration["SimulatorBackend"], ignoreCase: true, out var simBackend)
     ? simBackend
     : SimulatorBackend.Fake;
+
+var watchdogOptions = builder.Configuration.GetSection(WatchdogOptions.SectionName).Get<WatchdogOptions>()
+    ?? new WatchdogOptions();
+
+var watchdogBackend = Enum.TryParse<WatchdogBackend>(builder.Configuration["WatchdogBackend"], ignoreCase: true, out var wdBackend)
+    ? wdBackend
+    : WatchdogBackend.Fake;
 
 IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
 if (string.Equals(ollamaOptions.EmbeddingModel, "InMemory", StringComparison.OrdinalIgnoreCase))
@@ -78,6 +88,8 @@ builder.Services.AddSingleton(agentsConfig);
 builder.Services.AddSingleton(catalog);
 builder.Services.AddSingleton(simulatorCatalog);
 builder.Services.AddSingleton(simulatorOptions);
+builder.Services.AddSingleton(watchdogCatalog);
+builder.Services.AddSingleton(watchdogOptions);
 
 // A real queue (not just a "busy" flag) so a second lesson request while one is already running
 // waits its turn instead of being rejected — consumed by SimulatorLessonJobProcessor below.
@@ -98,6 +110,27 @@ else
     // extension (UavOps.Agent.Simulator.Fake) rather than this project registering the fake
     // types itself.
     builder.Services.AddFakeSimulator();
+}
+
+if (watchdogBackend == WatchdogBackend.Real)
+{
+    builder.Services.AddHttpClient("Watchdog", c => c.Timeout = TimeSpan.FromSeconds(watchdogOptions.HttpTimeoutSeconds));
+#pragma warning disable CA1416 // WindowsServiceController is [SupportedOSPlatform("windows")] — only reached when WatchdogBackend=Real, and this app already assumes Windows (VMware/PowerShell).
+    builder.Services.AddSingleton<IWindowsServiceController, WindowsServiceController>();
+#pragma warning restore CA1416
+    builder.Services.AddSingleton<IWatchdogHealthStore, WatchdogHealthStore>();
+    builder.Services.AddSingleton<IWatchdogService, WatchdogService>();
+    // Only meaningful under Real — there's no watchdog HTTP endpoint to poll under Fake, so this
+    // hosted service (unlike SimulatorLessonJobProcessor) is registered conditionally.
+    builder.Services.AddHostedService<WatchdogHealthPoller>();
+}
+else
+{
+    // No watchdog HTTP endpoint or real Windows services required — the default, so the
+    // MaintenanceAgent branch can be exercised end to end on any machine with nothing installed.
+    // Registered via the Fake DLL's own IoC extension (UavOps.Agent.Watchdog.Fake), same pattern
+    // as AddFakeSimulator above.
+    builder.Services.AddFakeWatchdog();
 }
 
 // A confirmation reply (or an operation's SubmitCommandResult reply) is just another call on
@@ -139,6 +172,8 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
         sp.GetRequiredService<IOperationService>(),
         simulatorCatalog,
         sp.GetRequiredService<ISimulatorService>(),
+        watchdogCatalog,
+        sp.GetRequiredService<IWatchdogService>(),
         sp.GetRequiredService<AgentRetrievalIndex>(),
         sp.GetRequiredService<RetrievalOptions>(),
         sp.GetRequiredService<ToolInvocationLogger>(),
@@ -169,8 +204,10 @@ app.MapGet("/healthz", () => Results.Ok(new
     ollamaModel = ollamaOptions.DefaultModel,
     operationBackend = operationBackend.ToString(),
     simulatorBackend = simulatorBackend.ToString(),
+    watchdogBackend = watchdogBackend.ToString(),
     operations = catalog.Operations.Count,
     simulatorOperations = simulatorCatalog.Operations.Count,
+    watchdogOperations = watchdogCatalog.Operations.Count,
     retrievalAgents = retrievalIndex.Count
 }));
 

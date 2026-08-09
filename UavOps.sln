@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UavOps.Agent.Contracts", "s
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UavOps.Agent.Simulator.Fake", "src\UavOps.Agent.Simulator.Fake\UavOps.Agent.Simulator.Fake.csproj", "{3EA71811-8BC1-4003-A723-5E37BA5F6526}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "UavOps.Agent.Watchdog.Fake", "src\UavOps.Agent.Watchdog.Fake\UavOps.Agent.Watchdog.Fake.csproj", "{06626901-B070-4138-8232-AE1F6394B473}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -99,6 +101,18 @@ Global
 		{3EA71811-8BC1-4003-A723-5E37BA5F6526}.Release|x64.Build.0 = Release|Any CPU
 		{3EA71811-8BC1-4003-A723-5E37BA5F6526}.Release|x86.ActiveCfg = Release|Any CPU
 		{3EA71811-8BC1-4003-A723-5E37BA5F6526}.Release|x86.Build.0 = Release|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Debug|x64.Build.0 = Debug|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Debug|x86.Build.0 = Debug|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Release|Any CPU.Build.0 = Release|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Release|x64.ActiveCfg = Release|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Release|x64.Build.0 = Release|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Release|x86.ActiveCfg = Release|Any CPU
+		{06626901-B070-4138-8232-AE1F6394B473}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -110,5 +124,6 @@ Global
 		{3EB5357D-F146-4A57-BBCA-D4C7DD277F26} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{5278B076-0E36-42CD-BE43-EFD6F47BDA41} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{3EA71811-8BC1-4003-A723-5E37BA5F6526} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{06626901-B070-4138-8232-AE1F6394B473} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

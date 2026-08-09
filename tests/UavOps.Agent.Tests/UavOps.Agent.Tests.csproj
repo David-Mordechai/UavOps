@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\UavOps.Agent\UavOps.Agent.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.Contracts\UavOps.Agent.Contracts.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.Simulator.Fake\UavOps.Agent.Simulator.Fake.csproj" />
+    <ProjectReference Include="..\..\src\UavOps.Agent.Watchdog.Fake\UavOps.Agent.Watchdog.Fake.csproj" />
   </ItemGroup>
 
 </Project>
