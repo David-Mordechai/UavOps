@@ -172,4 +172,50 @@ public class ServiceConfigFileStoreTests : IDisposable
 
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*Config file not found*");
     }
+
+    [Fact]
+    public async Task ReadAsync_EntryWithGroupField_ParsesIt()
+    {
+        // Regression: a real production config.yml had a 'group' field on an entry that
+        // ServiceConfigEntry didn't model yet, which crashed every operation on that file — see
+        // ReadAsync_EntryWithStillUnknownField_DoesNotCrashTheWholeFile below for the general case.
+        CreateConfiguration("Flight",
+            "- description: 'Test Service'\n" +
+            "  executable: 'C:\\Windows\\System32\\notepad.exe'\n" +
+            "  group: 'Core'\n");
+        var sut = CreateSut();
+
+        var entries = await sut.ReadAsync("Flight", CancellationToken.None);
+
+        entries.Should().ContainSingle().Which.Group.Should().Be("Core");
+    }
+
+    [Fact]
+    public async Task ReadAsync_EntryWithStillUnknownField_DoesNotCrashTheWholeFile()
+    {
+        // The real incident this guards against: the watchdog's own schema can carry a field
+        // ServiceConfigEntry doesn't model yet (like 'group' before it was added). YamlDotNet's
+        // default strict deserializer throws the instant it hits ANY unrecognized field anywhere
+        // in the document, aborting the parse of the whole list — not just that one field or
+        // entry — which broke every operation (list/add/update) on that configuration, including
+        // entries with only already-known fields. IgnoreUnmatchedProperties() (see
+        // ServiceConfigFileStore's Deserializer) is the fix under test here: a still-unknown field
+        // must be skipped, not fatal, and every other known field on every entry must still parse.
+        CreateConfiguration("Flight",
+            "- description: 'Service One'\n" +
+            "  executable: '%MoavProducts%\\Services\\ServiceOne\\ServiceOne.exe'\n" +
+            "  someFutureField: 'unmodeled value'\n" +
+            "\n" +
+            "- description: 'Service Two'\n" +
+            "  executable: '%MoavProducts%\\Services\\ServiceTwo\\ServiceTwo.exe'\n" +
+            "  healthEndPoint: 'http://localhost:1111/_health'\n");
+        var sut = CreateSut();
+
+        var entries = await sut.ReadAsync("Flight", CancellationToken.None);
+
+        entries.Should().HaveCount(2);
+        entries[0].Description.Should().Be("Service One");
+        entries[1].Description.Should().Be("Service Two");
+        entries[1].HealthEndPoint.Should().Be("http://localhost:1111/_health");
+    }
 }

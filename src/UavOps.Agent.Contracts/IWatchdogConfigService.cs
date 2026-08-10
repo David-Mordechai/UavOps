@@ -44,6 +44,7 @@ public interface IWatchdogConfigService
         int? retries,
         bool? isManaged,
         string? healthEndPoint,
+        string? group,
         CancellationToken cancellationToken);
 
     /// <summary><paramref name="description"/> identifies the existing entry to update.
@@ -62,6 +63,7 @@ public interface IWatchdogConfigService
         int? retries,
         bool? isManaged,
         string? healthEndPoint,
+        string? group,
         CancellationToken cancellationToken);
 
     Task<OperationResult> RemoveConfiguredService(string configurationName, string description, CancellationToken cancellationToken);

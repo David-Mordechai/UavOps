@@ -56,6 +56,7 @@ public sealed class FakeWatchdogConfigService : IWatchdogConfigService
         int? retries,
         bool? isManaged,
         string? healthEndPoint,
+        string? group,
         CancellationToken cancellationToken)
     {
         if (!_configurations.TryGetValue(configurationName, out var entries))
@@ -93,7 +94,8 @@ public sealed class FakeWatchdogConfigService : IWatchdogConfigService
             Id = id,
             Retries = retries,
             IsManaged = isManaged,
-            HealthEndPoint = healthEndPoint
+            HealthEndPoint = healthEndPoint,
+            Group = group
         };
 
         ServiceConfigEntryMutation.ApplyDisabled(entry, disabled);
@@ -114,6 +116,7 @@ public sealed class FakeWatchdogConfigService : IWatchdogConfigService
         int? retries,
         bool? isManaged,
         string? healthEndPoint,
+        string? group,
         CancellationToken cancellationToken)
     {
         if (!_configurations.TryGetValue(configurationName, out var entries))
@@ -144,6 +147,7 @@ public sealed class FakeWatchdogConfigService : IWatchdogConfigService
         if (retries is not null) existing.Retries = retries;
         if (isManaged is not null) existing.IsManaged = isManaged;
         if (healthEndPoint is not null) existing.HealthEndPoint = healthEndPoint;
+        if (group is not null) existing.Group = group;
 
         return Task.FromResult(OperationResult.Ok(new { updated = existing, yaml = ServiceConfigEntryFormatter.Format(existing) }));
     }

@@ -54,7 +54,7 @@ public class WatchdogConfigServiceTests
         var store = CreateFileStore(new ServiceConfigEntry { Description = "Service One", Executable = "x.exe" });
         var sut = CreateSut(fileStore: store);
 
-        var result = await sut.AddConfiguredService("Flight", "Service One", "y.exe", null, null, null, null, null, null, CancellationToken.None);
+        var result = await sut.AddConfiguredService("Flight", "Service One", "y.exe", null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeFalse();
         result.ErrorMessage.Should().Contain("already exists");
@@ -69,7 +69,7 @@ public class WatchdogConfigServiceTests
         resolver.Resolve("missing.exe").Returns(new ExecutablePathResolution(ExecutablePathResolutionKind.NotFound, @"C:\missing.exe"));
         var sut = CreateSut(store, resolver);
 
-        var result = await sut.AddConfiguredService("Flight", "New Svc", "missing.exe", null, null, null, null, null, null, CancellationToken.None);
+        var result = await sut.AddConfiguredService("Flight", "New Svc", "missing.exe", null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeFalse();
         result.ErrorMessage.Should().Contain("does not exist");
@@ -82,7 +82,7 @@ public class WatchdogConfigServiceTests
         var store = CreateFileStore();
         var sut = CreateSut(fileStore: store);
 
-        var result = await sut.AddConfiguredService("Flight", "New Svc", "real.exe", null, null, null, null, null, null, CancellationToken.None);
+        var result = await sut.AddConfiguredService("Flight", "New Svc", "real.exe", null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeTrue();
         await store.Received(1).WriteAsync("Flight",
@@ -98,7 +98,7 @@ public class WatchdogConfigServiceTests
             new ServiceConfigEntry { Description = "Service Two", Executable = @"%MoavProducts%\Services\ServiceTwo\ServiceTwo.exe" });
         var sut = CreateSut(fileStore: store);
 
-        var result = await sut.AddConfiguredService("Flight", "Service Three", null, null, null, null, null, null, null, CancellationToken.None);
+        var result = await sut.AddConfiguredService("Flight", "Service Three", null, null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeTrue();
         await store.Received(1).WriteAsync("Flight",
@@ -113,7 +113,7 @@ public class WatchdogConfigServiceTests
         var store = CreateFileStore();
         var sut = CreateSut(fileStore: store);
 
-        var result = await sut.AddConfiguredService("Flight", "New Svc", null, null, null, null, null, null, null, CancellationToken.None);
+        var result = await sut.AddConfiguredService("Flight", "New Svc", null, null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeFalse();
         result.ErrorMessage.Should().Contain("please provide the executable path explicitly");
@@ -128,7 +128,7 @@ public class WatchdogConfigServiceTests
             ServiceExecutableLookupKind.Resolved, @"%MoavProducts%\Services\GuConvertorService\GuConvertorService.exe"));
         var sut = CreateSut(fileStore: store, executableLocator: locator);
 
-        var result = await sut.AddConfiguredService("Flight", "Gu Convertor", null, null, null, null, null, null, null, CancellationToken.None);
+        var result = await sut.AddConfiguredService("Flight", "Gu Convertor", null, null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeTrue();
         await store.Received(1).WriteAsync("Flight",
@@ -146,7 +146,7 @@ public class WatchdogConfigServiceTests
             ServiceExecutableLookupKind.Ambiguous, Candidates: ["GuConvertorServiceA", "GuConvertorServiceB"]));
         var sut = CreateSut(fileStore: store, executableLocator: locator);
 
-        var result = await sut.AddConfiguredService("Flight", "Gu Convertor", null, null, null, null, null, null, null, CancellationToken.None);
+        var result = await sut.AddConfiguredService("Flight", "Gu Convertor", null, null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeFalse();
         result.ErrorMessage.Should().Contain("GuConvertorServiceA").And.Contain("GuConvertorServiceB");
@@ -162,7 +162,7 @@ public class WatchdogConfigServiceTests
             .Returns(new ExecutablePathResolution(ExecutablePathResolutionKind.Unverifiable, "%Unknown%\\x.exe", "%Unknown%"));
         var sut = CreateSut(store, resolver);
 
-        var result = await sut.AddConfiguredService("Flight", "New Svc", "%Unknown%\\x.exe", null, null, null, null, null, null, CancellationToken.None);
+        var result = await sut.AddConfiguredService("Flight", "New Svc", "%Unknown%\\x.exe", null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeTrue();
         await store.Received(1).WriteAsync("Flight", Arg.Any<IReadOnlyList<ServiceConfigEntry>>(), Arg.Any<CancellationToken>());
@@ -174,7 +174,7 @@ public class WatchdogConfigServiceTests
         var store = CreateFileStore();
         var sut = CreateSut(fileStore: store);
 
-        var result = await sut.UpdateConfiguredService("Flight", "Does Not Exist", null, null, null, null, null, null, null, null, CancellationToken.None);
+        var result = await sut.UpdateConfiguredService("Flight", "Does Not Exist", null, null, null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeFalse();
         result.ErrorMessage.Should().Contain("No service named");
@@ -193,7 +193,7 @@ public class WatchdogConfigServiceTests
 
         var result = await sut.UpdateConfiguredService(
             "Flight", "Service One", newDescription: null, executable: null,
-            args: ["--foo"], id: null, disabled: null, retries: null, isManaged: null, healthEndPoint: null,
+            args: ["--foo"], id: null, disabled: null, retries: null, isManaged: null, healthEndPoint: null, group: null,
             CancellationToken.None);
 
         result.Success.Should().BeTrue();
@@ -214,7 +214,7 @@ public class WatchdogConfigServiceTests
 
         var result = await sut.UpdateConfiguredService(
             "Flight", "Service One", newDescription: null, executable: null,
-            args: null, id: null, disabled: false, retries: null, isManaged: null, healthEndPoint: null,
+            args: null, id: null, disabled: false, retries: null, isManaged: null, healthEndPoint: null, group: null,
             CancellationToken.None);
 
         result.Success.Should().BeTrue();
@@ -233,7 +233,7 @@ public class WatchdogConfigServiceTests
 
         var result = await sut.UpdateConfiguredService(
             "Flight", "Service One", newDescription: null, executable: null,
-            args: null, id: null, disabled: true, retries: null, isManaged: null, healthEndPoint: null,
+            args: null, id: null, disabled: true, retries: null, isManaged: null, healthEndPoint: null, group: null,
             CancellationToken.None);
 
         result.Success.Should().BeTrue();
@@ -252,7 +252,7 @@ public class WatchdogConfigServiceTests
 
         var result = await sut.UpdateConfiguredService(
             "Flight", "Service One", newDescription: "Service Two", executable: null,
-            args: null, id: null, disabled: null, retries: null, isManaged: null, healthEndPoint: null,
+            args: null, id: null, disabled: null, retries: null, isManaged: null, healthEndPoint: null, group: null,
             CancellationToken.None);
 
         result.Success.Should().BeFalse();
@@ -269,7 +269,7 @@ public class WatchdogConfigServiceTests
 
         var result = await sut.UpdateConfiguredService(
             "Flight", "Service One", newDescription: null, executable: "missing.exe",
-            args: null, id: null, disabled: null, retries: null, isManaged: null, healthEndPoint: null,
+            args: null, id: null, disabled: null, retries: null, isManaged: null, healthEndPoint: null, group: null,
             CancellationToken.None);
 
         result.Success.Should().BeFalse();

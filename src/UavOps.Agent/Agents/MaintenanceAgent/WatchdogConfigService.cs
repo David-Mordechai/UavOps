@@ -33,6 +33,7 @@ public sealed class WatchdogConfigService(
         int? retries,
         bool? isManaged,
         string? healthEndPoint,
+        string? group,
         CancellationToken cancellationToken) =>
         RunAsync("AddConfiguredService", async () =>
         {
@@ -85,7 +86,8 @@ public sealed class WatchdogConfigService(
                 Id = id,
                 Retries = retries,
                 IsManaged = isManaged,
-                HealthEndPoint = healthEndPoint
+                HealthEndPoint = healthEndPoint,
+                Group = group
             };
             ServiceConfigEntryMutation.ApplyDisabled(entry, disabled);
 
@@ -106,6 +108,7 @@ public sealed class WatchdogConfigService(
         int? retries,
         bool? isManaged,
         string? healthEndPoint,
+        string? group,
         CancellationToken cancellationToken) =>
         RunAsync("UpdateConfiguredService", async () =>
         {
@@ -144,6 +147,7 @@ public sealed class WatchdogConfigService(
             if (retries is not null) existing.Retries = retries;
             if (isManaged is not null) existing.IsManaged = isManaged;
             if (healthEndPoint is not null) existing.HealthEndPoint = healthEndPoint;
+            if (group is not null) existing.Group = group;
 
             await fileStore.WriteAsync(configurationName, entries, cancellationToken);
             return OperationResult.Ok(new { updated = existing, yaml = ServiceConfigEntryFormatter.Format(existing), executableNote });

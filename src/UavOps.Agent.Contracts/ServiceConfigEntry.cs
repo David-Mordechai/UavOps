@@ -4,10 +4,10 @@ using YamlDotNet.Serialization;
 namespace UavOps.Agent.Contracts;
 
 /// <summary>
-/// One service entry in a watchdog service-definition config file. Mirrors the YAML schema
-/// documented in the watchdog's own config file header exactly (<c>description</c>,
-/// <c>executable</c>, <c>args</c>, <c>id</c>, <c>enabled</c>, <c>disabled</c>, <c>retries</c>,
-/// <c>isManaged</c>, <c>healthEndPoint</c>) — used both as the on-disk file-format model
+/// One service entry in a watchdog service-definition config file. Mirrors the real watchdog's
+/// YAML schema (<c>description</c>, <c>executable</c>, <c>args</c>, <c>id</c>, <c>enabled</c>,
+/// <c>disabled</c>, <c>retries</c>, <c>isManaged</c>, <c>healthEndPoint</c>, <c>group</c>) — used
+/// both as the on-disk file-format model
 /// (<c>Agents.MaintenanceAgent.IServiceConfigFileStore</c>) and as the JSON payload returned in
 /// <see cref="OperationResult.Value"/> for <c>IWatchdogConfigService.ListConfiguredServices</c>.
 /// Every field except <see cref="Description"/>/<see cref="Executable"/> is nullable so "not
@@ -43,4 +43,7 @@ public sealed class ServiceConfigEntry
 
     [YamlMember(ScalarStyle = ScalarStyle.SingleQuoted)]
     public string? HealthEndPoint { get; set; }
+
+    [YamlMember(ScalarStyle = ScalarStyle.SingleQuoted)]
+    public string? Group { get; set; }
 }

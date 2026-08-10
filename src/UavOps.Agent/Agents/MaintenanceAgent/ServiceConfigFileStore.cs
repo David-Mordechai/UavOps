@@ -28,6 +28,13 @@ public sealed partial class ServiceConfigFileStore(WatchdogOptions options) : IS
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .WithTypeConverter(new ArgsYamlConverter())
+        // Defensive fallback, not a substitute for modeling real fields on ServiceConfigEntry: a
+        // real config file can carry a field the watchdog itself understands that this DTO
+        // doesn't yet (e.g. "group" before it was added here) — without this, any single such
+        // field made every operation on that file fail outright. Any field genuinely present on
+        // disk should still be added to ServiceConfigEntry so it round-trips instead of silently
+        // vanishing on the next write to that file.
+        .IgnoreUnmatchedProperties()
         .Build();
 
     private static readonly ISerializer Serializer = new SerializerBuilder()

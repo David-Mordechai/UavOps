@@ -34,7 +34,7 @@ public class FakeWatchdogConfigServiceTests
 
         var result = await sut.AddConfiguredService(
             "Flight", "Nonexistent Path Service", @"%NoSuchPlaceholder%\definitely\not\real.exe",
-            null, null, null, null, null, null, CancellationToken.None);
+            null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeTrue();
     }
@@ -45,7 +45,7 @@ public class FakeWatchdogConfigServiceTests
         var sut = new FakeWatchdogConfigService();
 
         var result = await sut.AddConfiguredService(
-            "Flight", "Service One", "whatever.exe", null, null, null, null, null, null, CancellationToken.None);
+            "Flight", "Service One", "whatever.exe", null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeFalse();
     }
@@ -56,7 +56,7 @@ public class FakeWatchdogConfigServiceTests
         var sut = new FakeWatchdogConfigService();
 
         var result = await sut.AddConfiguredService(
-            "Flight", "Service Three", null, null, null, null, null, null, null, CancellationToken.None);
+            "Flight", "Service Three", null, null, null, null, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeTrue();
 
@@ -73,7 +73,7 @@ public class FakeWatchdogConfigServiceTests
 
         var result = await sut.UpdateConfiguredService(
             "Flight", "Service One", newDescription: null, executable: null,
-            args: ["--verbose"], id: null, disabled: null, retries: null, isManaged: null, healthEndPoint: null,
+            args: ["--verbose"], id: null, disabled: null, retries: null, isManaged: null, healthEndPoint: null, group: null,
             CancellationToken.None);
 
         result.Success.Should().BeTrue();
@@ -89,10 +89,10 @@ public class FakeWatchdogConfigServiceTests
     {
         var sut = new FakeWatchdogConfigService();
         await sut.UpdateConfiguredService(
-            "Flight", "Service One", null, null, null, null, disabled: true, null, null, null, CancellationToken.None);
+            "Flight", "Service One", null, null, null, null, disabled: true, null, null, null, null, CancellationToken.None);
 
         var result = await sut.UpdateConfiguredService(
-            "Flight", "Service One", null, null, null, null, disabled: false, null, null, null, CancellationToken.None);
+            "Flight", "Service One", null, null, null, null, disabled: false, null, null, null, null, CancellationToken.None);
 
         result.Success.Should().BeTrue();
         var listed = await sut.ListConfiguredServices("Flight", CancellationToken.None);

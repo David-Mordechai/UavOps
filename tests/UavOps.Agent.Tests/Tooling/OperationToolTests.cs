@@ -45,7 +45,8 @@ public class OperationToolTests
             new OperationParameterDescriptor("disabled", typeof(bool?)),
             new OperationParameterDescriptor("retries", typeof(int?)),
             new OperationParameterDescriptor("isManaged", typeof(bool?)),
-            new OperationParameterDescriptor("healthEndPoint", typeof(string))
+            new OperationParameterDescriptor("healthEndPoint", typeof(string)),
+            new OperationParameterDescriptor("group", typeof(string))
         ]);
 
     private static OperationTool CreateSut(OperationDescriptor descriptor, AgentToolConfig config, object operationService)
@@ -208,7 +209,7 @@ public class OperationToolTests
         var watchdogConfigService = Substitute.For<IWatchdogConfigService>();
         watchdogConfigService.UpdateConfiguredService(
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<List<string>?>(),
-            Arg.Any<string?>(), Arg.Any<bool?>(), Arg.Any<int?>(), Arg.Any<bool?>(), Arg.Any<string?>(),
+            Arg.Any<string?>(), Arg.Any<bool?>(), Arg.Any<int?>(), Arg.Any<bool?>(), Arg.Any<string?>(), Arg.Any<string?>(),
             Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OperationResult.Ok(new { updated = "x", yaml = "- description: 'Test Service'\n  executable: 'x.exe'" })));
 
