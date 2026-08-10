@@ -33,7 +33,22 @@ public class OperationToolTests
             new OperationParameterDescriptor("waypoints", typeof(List<Waypoint>))
         ]);
 
-    private static OperationTool CreateSut(OperationDescriptor descriptor, AgentToolConfig config, IOperationService operationService)
+    private static OperationDescriptor UpdateConfiguredServiceDescriptor() => new(
+        "UpdateConfiguredService", typeof(IWatchdogConfigService).GetMethod(nameof(IWatchdogConfigService.UpdateConfiguredService))!,
+        [
+            new OperationParameterDescriptor("configurationName", typeof(string)),
+            new OperationParameterDescriptor("description", typeof(string)),
+            new OperationParameterDescriptor("newDescription", typeof(string)),
+            new OperationParameterDescriptor("executable", typeof(string)),
+            new OperationParameterDescriptor("args", typeof(List<string>)),
+            new OperationParameterDescriptor("id", typeof(string)),
+            new OperationParameterDescriptor("disabled", typeof(bool?)),
+            new OperationParameterDescriptor("retries", typeof(int?)),
+            new OperationParameterDescriptor("isManaged", typeof(bool?)),
+            new OperationParameterDescriptor("healthEndPoint", typeof(string))
+        ]);
+
+    private static OperationTool CreateSut(OperationDescriptor descriptor, AgentToolConfig config, object operationService)
     {
         var hub = Substitute.For<IHubContext<ChatHub>>();
         var toolLogger = new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, hub);
@@ -140,6 +155,75 @@ public class OperationToolTests
         var itemProps = waypointsSchema.GetProperty("items").GetProperty("properties");
         itemProps.TryGetProperty("lat", out _).Should().BeTrue();
         itemProps.TryGetProperty("altitudeFt", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public void JsonSchema_NullableValueTypeParameter_IsTypedAsItsUnderlyingType_AndNotRequired()
+    {
+        // Regression: bool?/int? parameters (e.g. IWatchdogConfigService.UpdateConfiguredService's
+        // disabled/retries/isManaged) must NOT be reflected as a nested object describing
+        // Nullable<T>'s own HasValue/Value shape — that previously produced a schema the model
+        // dutifully filled in as {"hasValue":true,"value":true}, which then failed to deserialize
+        // back into a real bool? and caused repeated failed tool-call retries in production.
+        var config = new AgentToolConfig
+        {
+            Operation = "UpdateConfiguredService",
+            Description = "Update a service",
+            Parameters = new Dictionary<string, string>
+            {
+                ["configurationName"] = "config", ["description"] = "desc", ["newDescription"] = "new desc",
+                ["executable"] = "exe", ["args"] = "args", ["id"] = "id",
+                ["disabled"] = "disabled", ["retries"] = "retries", ["isManaged"] = "managed", ["healthEndPoint"] = "health"
+            }
+        };
+
+        var sut = CreateSut(UpdateConfiguredServiceDescriptor(), config, Substitute.For<IWatchdogConfigService>());
+        var properties = sut.JsonSchema.GetProperty("properties");
+
+        properties.GetProperty("disabled").GetProperty("type").GetString().Should().Be("boolean");
+        properties.GetProperty("isManaged").GetProperty("type").GetString().Should().Be("boolean");
+        properties.GetProperty("retries").GetProperty("type").GetString().Should().Be("integer");
+        properties.GetProperty("disabled").TryGetProperty("properties", out _).Should().BeFalse(); // not a nested HasValue/Value object
+
+        var required = sut.JsonSchema.GetProperty("required").EnumerateArray().Select(e => e.GetString()).ToList();
+        required.Should().Contain(["configurationName", "description"]);
+        required.Should().NotContain(["disabled", "retries", "isManaged"]);
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_ResultContainsYamlField_BuffersItForTheTurnsFinalReply()
+    {
+        // Regression: relying on the model to faithfully relay a returned "yaml" snippet in its
+        // own final reply proved unreliable in production (same class of issue as the nullable
+        // schema bug above) — the tool must surface it deterministically instead, mirroring
+        // SimulatorLessonJobProcessor's proactive lesson-outcome notifications. Buffered (not sent
+        // as its own chat message) so ChatHub can fold it into the turn's single final reply — see
+        // ToolInvocationLogger.BufferProactiveMessage/TakeProactiveMessages.
+        var config = new AgentToolConfig
+        {
+            Operation = "UpdateConfiguredService",
+            Description = "Update a service",
+            Parameters = new Dictionary<string, string> { ["configurationName"] = "c", ["description"] = "d" }
+        };
+        var watchdogConfigService = Substitute.For<IWatchdogConfigService>();
+        watchdogConfigService.UpdateConfiguredService(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string?>(), Arg.Any<string?>(), Arg.Any<List<string>?>(),
+            Arg.Any<string?>(), Arg.Any<bool?>(), Arg.Any<int?>(), Arg.Any<bool?>(), Arg.Any<string?>(),
+            Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OperationResult.Ok(new { updated = "x", yaml = "- description: 'Test Service'\n  executable: 'x.exe'" })));
+
+        var hub = Substitute.For<IHubContext<ChatHub>>();
+        var toolLogger = new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, hub);
+        var confirmationGate = new ConfirmationGate(hub, new ConfigurationBuilder().Build(), NullLogger<ConfirmationGate>.Instance);
+        var sut = new OperationTool(UpdateConfiguredServiceDescriptor(), config, watchdogConfigService, toolLogger, confirmationGate, "WatchdogConfigAgent", "corr1");
+
+        await sut.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["configurationName"] = "Flight", ["description"] = "Test Service" }),
+            CancellationToken.None);
+
+        var buffered = toolLogger.TakeProactiveMessages("corr1");
+        buffered.Should().ContainSingle();
+        buffered[0].Should().Contain("```yaml").And.Contain("- description: 'Test Service'");
     }
 
     [Fact]

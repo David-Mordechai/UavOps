@@ -30,6 +30,39 @@ function scrollToBottom() {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
+// Renders a message's text into `container`, turning ```lang\n...\n``` fenced blocks into actual
+// <pre><code> elements instead of showing the literal backtick markdown as plain text — the only
+// markdown construct agent replies use today (e.g. WatchdogConfigAgent's proactive config
+// snippets), so a small targeted parser here avoids pulling in a full markdown library. Code
+// content is always set via textContent, never innerHTML, so it can't be interpreted as markup.
+function renderMessageText(container, text) {
+  container.innerHTML = "";
+  const codeBlockPattern = /```(\w*)\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = codeBlockPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      container.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+
+    const pre = document.createElement("pre");
+    const code = document.createElement("code");
+    if (match[1]) {
+      code.className = "language-" + match[1];
+    }
+    code.textContent = match[2].replace(/\n$/, "");
+    pre.appendChild(code);
+    container.appendChild(pre);
+
+    lastIndex = codeBlockPattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    container.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
+}
+
 function renderOperatorMessage(text) {
   const el = document.createElement("div");
   el.className = "message message-operator";
@@ -81,7 +114,7 @@ connection.on("ReceiveChatMessage", (user, text, duration, correlationId) => {
   }
   const isResolution = turns.has(correlationId);
   const turn = ensureAgentTurn(correlationId, user);
-  turn.textEl.textContent = text;
+  renderMessageText(turn.textEl, text);
   turn.durationEl.textContent = duration.toFixed(2) + "s";
 
   if (isResolution) {

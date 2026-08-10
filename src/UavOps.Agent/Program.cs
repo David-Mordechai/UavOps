@@ -38,7 +38,8 @@ var agentsConfig = AgentConfigLoader.LoadFromDirectory(Path.Combine(builder.Envi
 var catalog = new OperationCatalog(typeof(IOperationService));
 var simulatorCatalog = new OperationCatalog(typeof(ISimulatorService));
 var watchdogCatalog = new OperationCatalog(typeof(IWatchdogService));
-AgentConfigValidator.Validate(agentsConfig, catalog, simulatorCatalog, watchdogCatalog);
+var watchdogConfigCatalog = new OperationCatalog(typeof(IWatchdogConfigService));
+AgentConfigValidator.Validate(agentsConfig, catalog, simulatorCatalog, watchdogCatalog, watchdogConfigCatalog);
 
 var simulatorOptions = builder.Configuration.GetSection(SimulatorOptions.SectionName).Get<SimulatorOptions>()
     ?? new SimulatorOptions();
@@ -90,6 +91,7 @@ builder.Services.AddSingleton(simulatorCatalog);
 builder.Services.AddSingleton(simulatorOptions);
 builder.Services.AddSingleton(watchdogCatalog);
 builder.Services.AddSingleton(watchdogOptions);
+builder.Services.AddSingleton(watchdogConfigCatalog);
 
 // A real queue (not just a "busy" flag) so a second lesson request while one is already running
 // waits its turn instead of being rejected — consumed by SimulatorLessonJobProcessor below.
@@ -123,6 +125,11 @@ if (watchdogBackend == WatchdogBackend.Real)
     // Only meaningful under Real — there's no watchdog HTTP endpoint to poll under Fake, so this
     // hosted service (unlike SimulatorLessonJobProcessor) is registered conditionally.
     builder.Services.AddHostedService<WatchdogHealthPoller>();
+
+    builder.Services.AddSingleton<IServiceConfigFileStore, ServiceConfigFileStore>();
+    builder.Services.AddSingleton<IExecutablePathResolver, ExecutablePathResolver>();
+    builder.Services.AddSingleton<IServiceExecutableLocator, ServiceExecutableLocator>();
+    builder.Services.AddSingleton<IWatchdogConfigService, WatchdogConfigService>();
 }
 else
 {
@@ -174,6 +181,8 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
         sp.GetRequiredService<ISimulatorService>(),
         watchdogCatalog,
         sp.GetRequiredService<IWatchdogService>(),
+        watchdogConfigCatalog,
+        sp.GetRequiredService<IWatchdogConfigService>(),
         sp.GetRequiredService<AgentRetrievalIndex>(),
         sp.GetRequiredService<RetrievalOptions>(),
         sp.GetRequiredService<ToolInvocationLogger>(),
@@ -208,6 +217,7 @@ app.MapGet("/healthz", () => Results.Ok(new
     operations = catalog.Operations.Count,
     simulatorOperations = simulatorCatalog.Operations.Count,
     watchdogOperations = watchdogCatalog.Operations.Count,
+    watchdogConfigOperations = watchdogConfigCatalog.Operations.Count,
     retrievalAgents = retrievalIndex.Count
 }));
 

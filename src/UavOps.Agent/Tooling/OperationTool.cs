@@ -108,7 +108,44 @@ public sealed class OperationTool : AIFunction
         var task = (Task<OperationResult>)_descriptor.Method.Invoke(_operationService, methodArgs)!;
         var result = await task;
 
-        return result.Success ? JsonSerializer.Serialize(result.Value, ResultSerializeOptions) : $"Error: {result.ErrorMessage}";
+        if (!result.Success)
+        {
+            return $"Error: {result.ErrorMessage}";
+        }
+
+        var json = JsonSerializer.Serialize(result.Value, ResultSerializeOptions);
+        BufferYamlSnippetIfPresent(json);
+        return json;
+    }
+
+    /// <summary>If the result includes a top-level "yaml" string property, buffers it to be
+    /// folded into this turn's final chat reply — a generic, reusable convention (not specific to
+    /// any one domain) so operations whose output an operator needs to visually verify (e.g.
+    /// <c>IWatchdogConfigService.AddConfiguredService</c>/<c>UpdateConfiguredService</c>) don't
+    /// depend on a small model reliably choosing to relay it verbatim in its own final reply —
+    /// the same "don't trust the model with something that must be reliable" reasoning already
+    /// behind <c>ChatConfirmationParser</c>'s fixed vocabulary and the proactive lesson-outcome
+    /// notifications in <c>SimulatorLessonJobProcessor</c>. Buffered rather than sent immediately
+    /// so it lands in the same chat bubble as the model's own final answer instead of a separate
+    /// one — see <c>ToolInvocationLogger.BufferProactiveMessage</c>/<c>ChatHub</c>.</summary>
+    private void BufferYamlSnippetIfPresent(string resultJson)
+    {
+        using var doc = JsonDocument.Parse(resultJson);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object
+            || !doc.RootElement.TryGetProperty("yaml", out var yamlProp)
+            || yamlProp.ValueKind != JsonValueKind.String)
+        {
+            return;
+        }
+
+        var snippet = yamlProp.GetString();
+        if (string.IsNullOrWhiteSpace(snippet))
+        {
+            return;
+        }
+
+        var message = $"Here's the resulting configuration:\n\n```yaml\n{snippet.TrimEnd()}\n```";
+        _toolLogger.BufferProactiveMessage(_correlationId, message);
     }
 
     private static object? ConvertArgument(object? raw, Type targetType)
@@ -150,7 +187,15 @@ public sealed class OperationTool : AIFunction
 
             var description = config.Parameters.TryGetValue(p.Name, out var d) ? d : null;
             properties[p.Name] = SchemaNode(p.ClrType, description);
-            required.Add(p.Name); // every IOperationService parameter is non-optional today
+
+            // A Nullable<T> value-type parameter (e.g. bool?, int?) is the one case reflection
+            // can detect as genuinely optional — everything else (including nullable reference
+            // types like string?, which erase to the same Type at runtime as non-nullable string)
+            // stays required, as before.
+            if (Nullable.GetUnderlyingType(p.ClrType) is null)
+            {
+                required.Add(p.Name);
+            }
         }
 
         var root = new JsonObject
@@ -165,6 +210,13 @@ public sealed class OperationTool : AIFunction
 
     private static JsonObject SchemaNode(Type clrType, string? description)
     {
+        // Unwrap Nullable<T> (e.g. bool?, int?) before every check below — otherwise a nullable
+        // value type's own CLR shape (HasValue/Value) gets reflected as if it were the schema,
+        // describing e.g. a bool? parameter as an object {"hasValue":..., "value":...} instead of
+        // a plain boolean. Reference-type nullability (string?) erases to the same Type at
+        // runtime, so this only ever applies to Nullable<T> structs.
+        clrType = Nullable.GetUnderlyingType(clrType) ?? clrType;
+
         var node = new JsonObject { ["type"] = JsonTypeFor(clrType) };
 
         if (description is not null)

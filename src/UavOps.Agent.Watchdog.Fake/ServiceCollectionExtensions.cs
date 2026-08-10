@@ -11,6 +11,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddFakeWatchdog(this IServiceCollection services)
     {
         services.AddSingleton<IWatchdogService, FakeWatchdogService>();
+        services.AddSingleton<IWatchdogConfigService, FakeWatchdogConfigService>();
         return services;
     }
 }

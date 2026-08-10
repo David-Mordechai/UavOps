@@ -16,7 +16,7 @@ public static class AgentConfigValidator
     private const string RootAgentName = "BrainAgent";
     private const string OperatorPromptKind = "OperatorPrompt";
 
-    public static void Validate(Dictionary<string, AgentConfig> agents, OperationCatalog catalog, OperationCatalog simulatorCatalog, OperationCatalog watchdogCatalog)
+    public static void Validate(Dictionary<string, AgentConfig> agents, OperationCatalog catalog, OperationCatalog simulatorCatalog, OperationCatalog watchdogCatalog, OperationCatalog watchdogConfigCatalog)
     {
         var errors = new List<string>();
 
@@ -56,11 +56,15 @@ public static class AgentConfigValidator
                 {
                     resolved = watchdogCatalog.TryResolve(tool.Operation, out descriptor) && descriptor is not null;
                 }
+                if (!resolved)
+                {
+                    resolved = watchdogConfigCatalog.TryResolve(tool.Operation, out descriptor) && descriptor is not null;
+                }
 
                 if (!resolved || descriptor is null)
                 {
                     errors.Add($"Agent '{agentName}' references unknown operation '{tool.Operation}'. " +
-                                "Check the spelling against IOperationService's/ISimulatorService's/IWatchdogService's method names.");
+                                "Check the spelling against IOperationService's/ISimulatorService's/IWatchdogService's/IWatchdogConfigService's method names.");
                     continue;
                 }
 

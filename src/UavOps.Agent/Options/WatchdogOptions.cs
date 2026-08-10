@@ -51,4 +51,24 @@ public sealed class WatchdogOptions
     /// name <c>ServiceController</c> needs). The two don't match 1:1, so Start/Stop/Restart fail
     /// with a clear error for any name missing from this map rather than guessing.</summary>
     public Dictionary<string, string> ServiceNameMap { get; set; } = new();
+
+    /// <summary>Local folder (on this machine) containing one subfolder per named configuration
+    /// (e.g. "Flight", "Simulator"), each holding one service-definition YAML file — see
+    /// <c>Agents.MaintenanceAgent.IServiceConfigFileStore</c>. Only meaningful under
+    /// <see cref="WatchdogBackend.Real"/>.</summary>
+    public string ServiceConfigBasePath { get; set; } = "";
+
+    /// <summary>Filename of the service-definition YAML file inside each configuration subfolder.
+    /// Defaults to <c>"config.yml"</c> (the sample file's own name) — override if the real
+    /// deployment uses a different filename.</summary>
+    public string ServiceConfigFileName { get; set; } = "config.yml";
+
+    /// <summary>Placeholder token (e.g. <c>"%MoavHome%"</c>) → its real, per-environment expansion
+    /// (e.g. <c>"C:\Moav"</c>), used to verify an <c>executable</c> path actually exists on disk
+    /// before it's written into a service-definition file — see
+    /// <c>Agents.MaintenanceAgent.IExecutablePathResolver</c>. The expanded path is only ever used
+    /// for this local existence check; the config file itself always keeps the original,
+    /// unexpanded placeholder form, since the watchdog expands these tokens itself at its own
+    /// runtime.</summary>
+    public Dictionary<string, string> ExecutablePlaceholders { get; set; } = new();
 }

@@ -201,6 +201,23 @@ main:has(.thread .message)::before {
   word-break: break-word;
 }
 
+.message-text pre {
+  margin: 0.5rem 0 0;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.message-text pre code {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+
 /* ---- Reasoning trace ---------------------------------------------------- */
 .trace {
   display: none; /* hidden until it has at least one step — see .has-steps */

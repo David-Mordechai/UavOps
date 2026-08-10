@@ -44,6 +44,8 @@ public class LiveAgentResponseTests(ITestOutputHelper output)
         var simulatorInfraService = Substitute.For<ISimulatorService>();
         var watchdogCatalog = new OperationCatalog(typeof(IWatchdogService));
         var watchdogService = Substitute.For<IWatchdogService>();
+        var watchdogConfigCatalog = new OperationCatalog(typeof(IWatchdogConfigService));
+        var watchdogConfigService = Substitute.For<IWatchdogConfigService>();
 
         var embeddingGenerator = new OllamaApiClient(new Uri(ollamaOptions.Endpoint), ollamaOptions.EmbeddingModel);
         var retrievalIndex = await AgentRetrievalIndex.BuildAsync(agentsConfig, embeddingGenerator, CancellationToken.None);
@@ -73,6 +75,8 @@ public class LiveAgentResponseTests(ITestOutputHelper output)
             simulatorInfraService,
             watchdogCatalog,
             watchdogService,
+            watchdogConfigCatalog,
+            watchdogConfigService,
             retrievalIndex,
             retrievalOptions,
             new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, mockHubContext),

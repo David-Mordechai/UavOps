@@ -6,4 +6,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Only for [YamlMember(ScalarStyle = ...)] on ServiceConfigEntry, so
+         Agents.MaintenanceAgent.ServiceConfigFileStore can quote string values (not keys) to match
+         the watchdog config file's own documented examples, without a second, YAML-specific DTO. -->
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+
 </Project>

@@ -32,6 +32,8 @@ public sealed class AgentFactory(
     ISimulatorService simulatorService,
     OperationCatalog watchdogCatalog,
     IWatchdogService watchdogService,
+    OperationCatalog watchdogConfigCatalog,
+    IWatchdogConfigService watchdogConfigService,
     AgentRetrievalIndex retrievalIndex,
     RetrievalOptions retrievalOptions,
     ToolInvocationLogger toolLogger,
@@ -82,6 +84,10 @@ public sealed class AgentFactory(
             else if (watchdogCatalog.TryResolve(toolConfig.Operation, out var watchdogDescriptor) && watchdogDescriptor is not null)
             {
                 tools.Add(new OperationTool(watchdogDescriptor, toolConfig, watchdogService, toolLogger, confirmationGate, name, correlationId));
+            }
+            else if (watchdogConfigCatalog.TryResolve(toolConfig.Operation, out var watchdogConfigDescriptor) && watchdogConfigDescriptor is not null)
+            {
+                tools.Add(new OperationTool(watchdogConfigDescriptor, toolConfig, watchdogConfigService, toolLogger, confirmationGate, name, correlationId));
             }
             else
             {
