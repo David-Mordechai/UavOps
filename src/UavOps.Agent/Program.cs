@@ -221,6 +221,8 @@ app.MapGet("/healthz", () => Results.Ok(new
     retrievalAgents = retrievalIndex.Count
 }));
 
+app.MapGet("/api/agent-graph", () => Results.Ok(AgentGraphProjector.Build(agentsConfig)));
+
 app.Run();
 
 public partial class Program;

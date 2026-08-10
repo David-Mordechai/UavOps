@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UavOps.Agent — Agent Graph</title>
+  <link rel="stylesheet" href="lib/vis-network.min.css" />
+  <link rel="stylesheet" href="chat.css" />
+  <link rel="stylesheet" href="graph.css" />
+</head>
+<body>
+  <header>
+    <h1>UavOps.Agent — Agent Graph</h1>
+    <div class="header-actions">
+      <a class="nav-link" href="index.html">← Chat</a>
+    </div>
+  </header>
+
+  <div id="graph-container"></div>
+
+  <div class="legend">
+    <div class="legend-item"><span class="legend-swatch legend-root"></span>Root agent</div>
+    <div class="legend-item"><span class="legend-swatch legend-agent"></span>Agent</div>
+    <div class="legend-item"><span class="legend-swatch legend-agent-retrieval"></span>Agent (dynamic delegation)</div>
+    <div class="legend-item"><span class="legend-swatch legend-tool"></span>Tool</div>
+    <div class="legend-hint">Hover a node for an example chat utterance.</div>
+  </div>
+
+  <script src="lib/vis-network.min.js"></script>
+  <script src="graph.js"></script>
+</body>
+</html>

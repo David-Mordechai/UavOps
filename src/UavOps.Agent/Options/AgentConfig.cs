@@ -18,6 +18,12 @@ public sealed class AgentToolConfig
     public string Operation { get; set; } = "";
     public string Description { get; set; } = "";
 
+    /// <summary>An example chat utterance an operator could type that would plausibly trigger this
+    /// tool — shown on hover in the agent-graph UI (see <see cref="AgentGraphProjector"/>). Always
+    /// required (checked by <see cref="Options.AgentConfigValidator"/>), unlike
+    /// <see cref="AgentConfig.ExampleUtterance"/> which is root-exempt.</summary>
+    public string ExampleUtterance { get; set; } = "";
+
     /// <summary>"Operation" (default) resolves <see cref="Operation"/> against a catalog via
     /// reflection, as above. "OperatorPrompt" builds a bespoke ask-the-operator-and-wait tool
     /// instead (see <c>Agents.AskOperatorChoiceTool</c>) — <see cref="Operation"/> is then just
@@ -49,6 +55,12 @@ public sealed class AgentConfig
     /// <summary>Shown to a parent agent as this agent's tool description when it is one of that
     /// parent's delegates, and embedded for retrieval ranking (see <see cref="Children"/>).</summary>
     public string? Description { get; set; }
+
+    /// <summary>An example chat utterance an operator could type that would plausibly cause a
+    /// parent to delegate to this agent — shown on hover in the agent-graph UI (see
+    /// <see cref="AgentGraphProjector"/>). Required (validated non-blank) for every agent except
+    /// the root <c>BrainAgent</c>, same exemption as <see cref="Description"/>.</summary>
+    public string? ExampleUtterance { get; set; }
 
     /// <summary>Optional explicit, ordered list of this agent's delegates. When present (even as
     /// an empty list), this is used verbatim instead of embedding retrieval — for structural/

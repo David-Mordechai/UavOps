@@ -23,7 +23,8 @@ public class AgentConfigValidatorTests
             {
                 Instructions = "x",
                 Description = "x",
-                Tools = [new AgentToolConfig { Operation = "DoesNotExist", Description = "x" }]
+                ExampleUtterance = "x",
+                Tools = [new AgentToolConfig { Operation = "DoesNotExist", Description = "x", ExampleUtterance = "x" }]
             }
         };
 
@@ -41,7 +42,8 @@ public class AgentConfigValidatorTests
             {
                 Instructions = "x",
                 Description = "x",
-                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "x" }] // no Parameters described at all
+                ExampleUtterance = "x",
+                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "x", ExampleUtterance = "x" }] // no Parameters described at all
             }
         };
 
@@ -59,12 +61,14 @@ public class AgentConfigValidatorTests
             {
                 Instructions = "x",
                 Description = "x",
+                ExampleUtterance = "x",
                 Tools =
                 [
                     new AgentToolConfig
                     {
                         Operation = "SetSpeed",
                         Description = "x",
+                        ExampleUtterance = "x",
                         Parameters = new Dictionary<string, string> { ["speedKts"] = "the speed" },
                         FixedParameters = new Dictionary<string, string> { ["tailNumber"] = "UAV-1" }
                     }
@@ -82,7 +86,7 @@ public class AgentConfigValidatorTests
     {
         var agents = new Dictionary<string, AgentConfig>
         {
-            ["FlightControlAgent"] = new AgentConfig { Instructions = "", Description = "x" }
+            ["FlightControlAgent"] = new AgentConfig { Instructions = "", Description = "x", ExampleUtterance = "x" }
         };
 
         var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog());
@@ -95,7 +99,7 @@ public class AgentConfigValidatorTests
     {
         var agents = new Dictionary<string, AgentConfig>
         {
-            ["FlightControlAgent"] = new AgentConfig { Instructions = "x", Description = "" }
+            ["FlightControlAgent"] = new AgentConfig { Instructions = "x", Description = "", ExampleUtterance = "x" }
         };
 
         var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog());
@@ -112,13 +116,46 @@ public class AgentConfigValidatorTests
             {
                 Instructions = "x",
                 Description = "x",
-                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "" }]
+                ExampleUtterance = "x",
+                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "", ExampleUtterance = "x" }]
             }
         };
 
         var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*SetSpeed*Description*");
+    }
+
+    [Fact]
+    public void Validate_MissingExampleUtteranceOnNonRootAgent_Throws()
+    {
+        var agents = new Dictionary<string, AgentConfig>
+        {
+            ["FlightControlAgent"] = new AgentConfig { Instructions = "x", Description = "x", ExampleUtterance = "" }
+        };
+
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*FlightControlAgent*ExampleUtterance*");
+    }
+
+    [Fact]
+    public void Validate_ToolMissingExampleUtterance_Throws()
+    {
+        var agents = new Dictionary<string, AgentConfig>
+        {
+            ["FlightControlAgent"] = new AgentConfig
+            {
+                Instructions = "x",
+                Description = "x",
+                ExampleUtterance = "x",
+                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "x", ExampleUtterance = "" }]
+            }
+        };
+
+        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog());
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*SetSpeed*ExampleUtterance*");
     }
 
     [Fact]
@@ -140,7 +177,7 @@ public class AgentConfigValidatorTests
         var agents = new Dictionary<string, AgentConfig>
         {
             ["BrainAgent"] = new AgentConfig { Instructions = "x", Children = ["MoavAgent"] },
-            ["MoavAgent"] = new AgentConfig { Instructions = "x", Description = "Handles live ops.", Children = [] }
+            ["MoavAgent"] = new AgentConfig { Instructions = "x", Description = "Handles live ops.", ExampleUtterance = "x", Children = [] }
         };
 
         var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog());
@@ -157,13 +194,15 @@ public class AgentConfigValidatorTests
             {
                 Instructions = "x",
                 Description = "x",
+                ExampleUtterance = "x",
                 Tools =
                 [
                     new AgentToolConfig
                     {
                         Kind = "OperatorPrompt",
                         Operation = "AskOperatorWhichLesson",
-                        Description = "Ask which lesson to run."
+                        Description = "Ask which lesson to run.",
+                        ExampleUtterance = "x"
                         // Deliberately no Parameters entry and not a real catalog operation —
                         // an OperatorPrompt tool isn't resolved against any catalog, so neither
                         // should trip validation.
@@ -186,7 +225,8 @@ public class AgentConfigValidatorTests
             {
                 Instructions = "x",
                 Description = "x",
-                Tools = [new AgentToolConfig { Operation = "ListSimulatorLessons", Description = "x" }]
+                ExampleUtterance = "x",
+                Tools = [new AgentToolConfig { Operation = "ListSimulatorLessons", Description = "x", ExampleUtterance = "x" }]
             }
         };
 
@@ -204,12 +244,14 @@ public class AgentConfigValidatorTests
             {
                 Instructions = "x",
                 Description = "Handles flight controls.",
+                ExampleUtterance = "x",
                 Tools =
                 [
                     new AgentToolConfig
                     {
                         Operation = "SetSpeed",
                         Description = "x",
+                        ExampleUtterance = "x",
                         Parameters = new Dictionary<string, string>
                         {
                             ["tailNumber"] = "the tail number",

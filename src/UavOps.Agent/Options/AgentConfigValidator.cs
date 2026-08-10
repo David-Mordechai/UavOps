@@ -34,6 +34,11 @@ public static class AgentConfigValidator
                     errors.Add($"Agent '{agentName}' tool '{tool.Operation}' is missing a 'Description'.");
                 }
 
+                if (string.IsNullOrWhiteSpace(tool.ExampleUtterance))
+                {
+                    errors.Add($"Agent '{agentName}' tool '{tool.Operation}' is missing an 'ExampleUtterance'.");
+                }
+
                 if (tool.Kind == OperatorPromptKind)
                 {
                     // Bespoke ask-the-operator tool (AskOperatorChoiceTool) — not reflected off
@@ -98,6 +103,12 @@ public static class AgentConfigValidator
             {
                 errors.Add($"Agent '{agentName}' is missing a non-blank 'Description' (required for retrieval, " +
                             "and shown as this agent's tool description whenever it's delegated to).");
+            }
+
+            if (agentName != RootAgentName && string.IsNullOrWhiteSpace(config.ExampleUtterance))
+            {
+                errors.Add($"Agent '{agentName}' is missing a non-blank 'ExampleUtterance' (required so the " +
+                            "agent graph UI can show an example operator utterance that would trigger it).");
             }
         }
 

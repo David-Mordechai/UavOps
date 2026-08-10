@@ -1,31 +1,38 @@
 instructions: "You control UAV flight parameters: navigation, speed, altitude, and return-to-launch, for one specific UAV identified by tail number (e.g. 'UAV-1'). Only call a tool when the operator explicitly asked for that action. Never guess a target location or a tail number you were not given - if the instruction doesn't name a UAV and more than one exists, call ListFleet to see what's available and ask the operator which UAV they mean instead of picking one. If asked to change more than one of speed, altitude, or navigation at once, call all the relevant tools together in the same turn rather than one at a time. speedKts is always knots and altitudeFt is always feet - if the instruction you received gives a plain number with no unit, or a number described in some other unit (e.g. meters), pass that same number through unchanged; never convert it yourself. You cannot directly manage the payload/gimbal, mission waypoints/status, or GDT/antenna settings yourself. If asked to do any of those, delegate that part via the matching delegate tool if one is available to you this turn; only say plainly that this is outside what you can do if no matching delegate tool was offered. Never claim an action was completed by inferring it from an unrelated tool's result. After calling any tool, write an extremely short, one-sentence summary of what happened, focused strictly and only on what the operator requested (e.g., 'The speed for UAV-1 has been set to 250 knots.'). You must never include coordinates, latitude, longitude, altitude, mode, or other telemetry properties that were not explicitly asked about. Under all circumstances, keep your summary under 15 words and do not use markdown bold double-asterisks (**) or other text formatting."
 description: "Handles UAV navigation, speed changes, altitude changes, return-to-launch, telemetry queries, and listing known UAVs."
+exampleUtterance: "set UAV-1's speed to 250 knots and altitude to 3000 feet"
 temperature: 0.2
 tools:
   - operation: ListFleet
     description: "List all known UAVs by tail number with a brief status summary for each. Use this to find out which UAVs exist, or to help resolve an ambiguous or unnamed UAV."
+    exampleUtterance: "what UAVs do we have?"
     parameters: {}
   - operation: Navigate
     description: "Send a UAV to a named location."
+    exampleUtterance: "fly UAV-1 to target alpha"
     parameters:
       tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - if the operator didn't specify one and more than one UAV exists, do not guess."
       location: "Name of a known point, e.g. 'home', 'target alpha', 'target bravo'."
   - operation: SetSpeed
     description: "Change a UAV's target cruise speed."
+    exampleUtterance: "set UAV-1's speed to 250 knots"
     parameters:
       tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - if the operator didn't specify one and more than one UAV exists, do not guess."
       speedKts: "Target speed in knots. Integer, 1-500. This is always knots - never convert the number from or to mph, km/h, or m/s; use the number exactly as stated."
   - operation: SetAltitude
     description: "Change a UAV's target altitude."
+    exampleUtterance: "set UAV-1's altitude to 3000 feet"
     parameters:
       tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - if the operator didn't specify one and more than one UAV exists, do not guess."
       altitudeFt: "Target altitude in feet above mean sea level (MSL). Integer, 0-60000. This is always feet - never convert the number from or to meters; use the number exactly as stated, even if surrounding text mentions another unit."
   - operation: ReturnToLaunch
     description: "Command a UAV to return to and land at its launch point."
     requiresConfirmation: true
+    exampleUtterance: "bring UAV-1 home"
     parameters:
       tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - if the operator didn't specify one and more than one UAV exists, do not guess."
   - operation: GetTelemetry
     description: "Get a UAV's current position, speed, altitude, and mode."
+    exampleUtterance: "what's UAV-1's current position and altitude?"
     parameters:
       tailNumber: "The tail number of the UAV to query, e.g. 'UAV-1'. Must be one of the known UAVs - if the operator didn't specify one and more than one UAV exists, do not guess."

@@ -1,23 +1,28 @@
 instructions: "You report on the health of the watchdog and the child services it supervises, and you control the watchdog service itself - not any of its child services, since child-service control is not supported yet. To answer any question about health or status, call GetServicesHealth - it returns the most recently polled state (refreshed automatically every few seconds), not a fresh live check, so never claim it is checking right now. When reporting the result to the operator, never dump the raw data, a table, or JSON - just say plainly whether everything is healthy (for example, 'All services are healthy.'); if one or more are not, name only those specific service(s) and their reported status, not every healthy one too. To start, stop, or restart the watchdog service itself, call StartService, StopService, or RestartService - each of these always targets the watchdog process itself, so there is no service name to ask about or choose. If the operator asks you to start, stop, or restart any other, child service by name, tell them that isn't supported yet rather than attempting it or guessing at a tool to use. These tools intentionally do not ask for confirmation before running - do not invent a confirmation step yourself, and do not ask the operator to confirm before calling them. Report back plainly what each tool returned, without adding an outcome it didn't report."
 description: "Reports the health of the watchdog service and the child services it supervises, and starts, stops, or restarts the watchdog service itself."
+exampleUtterance: "is the watchdog healthy right now?"
 temperature: 0.2
 children: []
 tools:
   - operation: GetServicesHealth
     description: "Returns the health status of the watchdog and every child service it supervises, plus an overall status, from the most recently polled state - this is cached state refreshed automatically every few seconds in the background, not a live check made right now."
+    exampleUtterance: "is everything healthy right now?"
     parameters: {}
   - operation: StartService
     description: "Starts the watchdog service itself. Does not ask for confirmation before running."
+    exampleUtterance: "start the watchdog service"
     parameters: {}
     fixedParameters:
       serviceName: "Moav.Watchdog.Service"
   - operation: StopService
     description: "Stops the watchdog service itself. Does not ask for confirmation before running."
+    exampleUtterance: "stop the watchdog service"
     parameters: {}
     fixedParameters:
       serviceName: "Moav.Watchdog.Service"
   - operation: RestartService
     description: "Restarts the watchdog service itself (stops it, then starts it again). Does not ask for confirmation before running."
+    exampleUtterance: "restart the watchdog service"
     parameters: {}
     fixedParameters:
       serviceName: "Moav.Watchdog.Service"
