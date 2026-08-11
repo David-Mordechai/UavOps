@@ -1,15 +1,17 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>04b6ee4b-bc67-4479-bfa0-0e620ce3699f</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Agents.AI" Version="1.13.0" />
     <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.0" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.0" />
     <PackageReference Include="OllamaSharp" Version="5.4.27" ExcludeAssets="analyzers" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.1" />

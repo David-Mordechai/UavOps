@@ -49,7 +49,20 @@ public sealed class AgentToolConfig
 /// </summary>
 public sealed class AgentConfig
 {
+    /// <summary>Not read from this agent's own YAML file — deliberately populated from the
+    /// <c>AgentModels</c> section of appsettings.json instead (see <c>Program.cs</c>), so which
+    /// model/provider serves every agent is visible and editable in one place rather than
+    /// scattered across each agent's file. Null means the app-wide Ollama default.</summary>
     public string? Model { get; set; }
+
+    /// <summary>Which backend <see cref="Model"/> is resolved against — "OpenAI" (any OpenAI-
+    /// compatible endpoint, see <see cref="OpenAiOptions"/>), or omitted/null (the default) for
+    /// the local Ollama endpoint. Same <c>AgentModels</c>-appsettings.json origin as
+    /// <see cref="Model"/>, not YAML. Selected per agent, never globally, since a hosted
+    /// provider's request limits (e.g. a free-tier daily cap) make it unsuitable as the app-wide
+    /// default.</summary>
+    public string? Provider { get; set; }
+
     public string Instructions { get; set; } = "";
 
     /// <summary>Shown to a parent agent as this agent's tool description when it is one of that

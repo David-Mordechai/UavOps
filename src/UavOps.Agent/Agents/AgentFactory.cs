@@ -15,15 +15,15 @@ namespace UavOps.Agent.Agents;
 /// <summary>
 /// Builds the agent graph fresh for each chat turn. Rebuilding is necessary (not just
 /// cheap-and-easy) because every tool instance closes over the turn's correlationId, so logs
-/// and traces for that turn are attributable end-to-end. Chat clients (one per distinct model
-/// in use) are cached across turns.
+/// and traces for that turn are attributable end-to-end. Chat clients (one per distinct
+/// provider+model pair in use — see <see cref="AgentConfig.Provider"/>) are cached across turns.
 ///
 /// Delegate selection for each agent is either explicit (<see cref="AgentConfig.Children"/>, when
 /// present) or embedding retrieval (<see cref="AgentRetrievalIndex"/>, the fallback for any agent
 /// that doesn't declare <c>children:</c>) — see <see cref="BuildAgentRecursive"/>.
 /// </summary>
 public sealed class AgentFactory(
-    Func<string, IChatClient> chatClientFactory,
+    Func<string, string?, IChatClient> chatClientFactory,
     string defaultModel,
     Dictionary<string, AgentConfig> agents,
     OperationCatalog catalog,
@@ -124,7 +124,7 @@ public sealed class AgentFactory(
 
     private AIAgent BuildAgent(string name, AgentConfig config, List<AITool> tools)
     {
-        var chatClient = GetChatClient(config.Model);
+        var chatClient = GetChatClient(config.Model, config.Provider);
 
         var options = new ChatClientAgentOptions
         {
@@ -146,9 +146,12 @@ public sealed class AgentFactory(
         return new ChatClientAgent(chatClient, options);
     }
 
-    private IChatClient GetChatClient(string? modelOverride)
+    private IChatClient GetChatClient(string? modelOverride, string? provider)
     {
         var model = modelOverride ?? defaultModel;
-        return _chatClients.GetOrAdd(model, chatClientFactory);
+        // Provider has to be part of the cache key, not just the model name — an Ollama model and
+        // an OpenRouter model could otherwise collide on an identical name string.
+        var cacheKey = $"{provider ?? "Ollama"}::{model}";
+        return _chatClients.GetOrAdd(cacheKey, _ => chatClientFactory(model, provider));
     }
 }

@@ -1,6 +1,9 @@
 using Microsoft.Extensions.AI;
 using OllamaSharp;
+using OpenAI;
+using OpenAI.Chat;
 using Serilog;
+using System.ClientModel;
 using UavOps.Agent.Agents;
 using UavOps.Agent.Agents.MaintenanceAgent;
 using UavOps.Agent.Agents.MoavAgent.Hubs;
@@ -26,11 +29,30 @@ var ollamaOptions = builder.Configuration.GetSection(OllamaOptions.SectionName).
 var remoteOperationOptions = builder.Configuration.GetSection(RemoteOperationOptions.SectionName).Get<RemoteOperationOptions>()
     ?? new RemoteOperationOptions();
 
+var openAiOptions = builder.Configuration.GetSection(OpenAiOptions.SectionName).Get<OpenAiOptions>()
+    ?? new OpenAiOptions();
+
 var operationBackend = Enum.TryParse<OperationBackend>(builder.Configuration["OperationBackend"], ignoreCase: true, out var backend)
     ? backend
     : OperationBackend.Simulated;
 
 var agentsConfig = AgentConfigLoader.LoadFromDirectory(Path.Combine(builder.Environment.ContentRootPath, "AgentsConfig"));
+
+// Single place to see/change which backend+model every agent uses, instead of that being
+// scattered across each agent's own YAML file (which stays focused on behavior/content). Applied
+// directly onto the already-loaded AgentConfig objects, before validation runs so it sees the
+// final provider/model each agent will actually use.
+var agentModels = builder.Configuration.GetSection("AgentModels").Get<Dictionary<string, AgentModelOptions>>()
+    ?? [];
+foreach (var (agentName, modelOptions) in agentModels)
+{
+    if (!agentsConfig.TryGetValue(agentName, out var config))
+    {
+        throw new InvalidOperationException($"'AgentModels' configures agent '{agentName}', which does not exist in AgentsConfig.");
+    }
+    config.Provider = modelOptions.Provider;
+    config.Model = modelOptions.Model;
+}
 
 // Reflects over IOperationService's/ISimulatorService's methods — no network call, no
 // remotely-fetched spec — and validates every agent's Tools[] against them before the app is
@@ -39,7 +61,7 @@ var catalog = new OperationCatalog(typeof(IOperationService));
 var simulatorCatalog = new OperationCatalog(typeof(ISimulatorService));
 var watchdogCatalog = new OperationCatalog(typeof(IWatchdogService));
 var watchdogConfigCatalog = new OperationCatalog(typeof(IWatchdogConfigService));
-AgentConfigValidator.Validate(agentsConfig, catalog, simulatorCatalog, watchdogCatalog, watchdogConfigCatalog);
+AgentConfigValidator.Validate(agentsConfig, catalog, simulatorCatalog, watchdogCatalog, watchdogConfigCatalog, openAiOptions);
 
 var simulatorOptions = builder.Configuration.GetSection(SimulatorOptions.SectionName).Get<SimulatorOptions>()
     ?? new SimulatorOptions();
@@ -82,6 +104,7 @@ var retrievalOptions = builder.Configuration.GetSection(RetrievalOptions.Section
     ?? new RetrievalOptions();
 
 builder.Services.AddSingleton(ollamaOptions);
+builder.Services.AddSingleton(openAiOptions);
 builder.Services.AddSingleton(retrievalOptions);
 builder.Services.AddSingleton(retrievalIndex);
 builder.Services.AddSingleton(remoteOperationOptions);
@@ -163,16 +186,29 @@ builder.Services.AddSingleton<ToolInvocationLogger>();
 builder.Services.AddSingleton<ConfirmationGate>();
 builder.Services.AddSingleton<OperatorPromptGate>();
 
-builder.Services.AddSingleton<Func<string, IChatClient>>(sp => modelName =>
+builder.Services.AddSingleton<Func<string, string?, IChatClient>>(sp => (modelName, provider) =>
 {
-    var options = sp.GetRequiredService<OllamaOptions>();
-    var ollama = new OllamaApiClient(new Uri(options.Endpoint), modelName);
-    return new FunctionInvokingChatClient(ollama) { AllowConcurrentInvocation = true };
+    IChatClient inner;
+    if (string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase))
+    {
+        // AgentConfigValidator already guarantees ApiKey is set for any agent that reaches this
+        // branch — the null-forgiving operator below reflects that, not an unchecked assumption.
+        var options = sp.GetRequiredService<OpenAiOptions>();
+        var chatClient = new ChatClient(modelName, new ApiKeyCredential(options.ApiKey!),
+            new OpenAIClientOptions { Endpoint = new Uri(options.Endpoint) });
+        inner = chatClient.AsIChatClient();
+    }
+    else
+    {
+        var options = sp.GetRequiredService<OllamaOptions>();
+        inner = new OllamaApiClient(new Uri(options.Endpoint), modelName);
+    }
+    return new FunctionInvokingChatClient(inner) { AllowConcurrentInvocation = true };
 });
 
 builder.Services.AddSingleton<AgentFactory>(sp =>
     new AgentFactory(
-        sp.GetRequiredService<Func<string, IChatClient>>(),
+        sp.GetRequiredService<Func<string, string?, IChatClient>>(),
         ollamaOptions.DefaultModel,
         sp.GetRequiredService<Dictionary<string, AgentConfig>>(),
         catalog,

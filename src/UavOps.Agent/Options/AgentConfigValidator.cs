@@ -16,7 +16,9 @@ public static class AgentConfigValidator
     private const string RootAgentName = "BrainAgent";
     private const string OperatorPromptKind = "OperatorPrompt";
 
-    public static void Validate(Dictionary<string, AgentConfig> agents, OperationCatalog catalog, OperationCatalog simulatorCatalog, OperationCatalog watchdogCatalog, OperationCatalog watchdogConfigCatalog)
+    private static readonly string[] KnownProviders = ["Ollama", "OpenAI"];
+
+    public static void Validate(Dictionary<string, AgentConfig> agents, OperationCatalog catalog, OperationCatalog simulatorCatalog, OperationCatalog watchdogCatalog, OperationCatalog watchdogConfigCatalog, OpenAiOptions openAiOptions)
     {
         var errors = new List<string>();
 
@@ -25,6 +27,23 @@ public static class AgentConfigValidator
             if (string.IsNullOrWhiteSpace(config.Instructions))
             {
                 errors.Add($"Agent '{agentName}' is missing 'Instructions'.");
+            }
+
+            if (config.Provider is not null && !KnownProviders.Contains(config.Provider, StringComparer.OrdinalIgnoreCase))
+            {
+                errors.Add($"Agent '{agentName}' has unknown provider '{config.Provider}' (from 'AgentModels' in " +
+                            $"appsettings.json) — must be one of: {string.Join(", ", KnownProviders)}.");
+            }
+
+            // Config-only check (no network call, same as everything else here) — turns "forgot to
+            // set the secret" into an immediate startup error instead of a confusing failure the
+            // first time this agent tries to respond.
+            if (string.Equals(config.Provider, "OpenAI", StringComparison.OrdinalIgnoreCase)
+                && string.IsNullOrWhiteSpace(openAiOptions.ApiKey))
+            {
+                errors.Add($"Agent '{agentName}' has provider: OpenAI (from 'AgentModels' in appsettings.json) but " +
+                            "no API key is configured. Set one via " +
+                            "`dotnet user-secrets set \"OpenAI:ApiKey\" \"...\" --project src/UavOps.Agent`.");
             }
 
             foreach (var tool in config.Tools)
