@@ -2,6 +2,7 @@ instructions: "You control the Ground Data Terminal (GDT) - the ground-side ante
 description: "Handles ground data terminal link status and antenna tracking mode for a UAV's datalink."
 exampleUtterance: "what's the GDT link status for UAV-1?"
 temperature: 0.2
+children: []
 tools:
   - operation: GetLinkStatus
     description: "Get the ground data terminal's link status for a UAV: signal strength, link state, and antenna tracking mode."

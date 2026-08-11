@@ -19,11 +19,26 @@
   <div id="graph-container"></div>
 
   <div class="legend">
-    <div class="legend-item"><span class="legend-swatch legend-root"></span>Root agent</div>
+    <div class="legend-item">
+      <span class="legend-swatch legend-root">
+        <svg class="legend-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 3.5c-1.7 0-3 1.3-3 3 0 .3 0 .6.1.9C4.7 8 4 9.1 4 10.3c0 1 .5 1.9 1.2 2.4-.4.6-.7 1.3-.7 2.1 0 1.8 1.4 3.3 3.1 3.4.3 1.3 1.5 2.3 3 2.3.6 0 1.2-.2 1.7-.5"/>
+          <path d="M15 3.5c1.7 0 3 1.3 3 3 0 .3 0 .6-.1.9 1.4.6 2.1 1.7 2.1 2.9 0 1-.5 1.9-1.2 2.4.4.6.7 1.3.7 2.1 0 1.8-1.4 3.3-3.1 3.4-.3 1.3-1.5 2.3-3 2.3-.6 0-1.2-.2-1.7-.5"/>
+          <path d="M12 3.5v17"/>
+        </svg>
+      </span>
+      Root agent
+    </div>
     <div class="legend-item"><span class="legend-swatch legend-agent"></span>Agent</div>
-    <div class="legend-item"><span class="legend-swatch legend-agent-retrieval"></span>Agent (dynamic delegation)</div>
-    <div class="legend-item"><span class="legend-swatch legend-tool"></span>Tool</div>
-    <div class="legend-hint">Hover a node for an example chat utterance.</div>
+    <div class="legend-item">
+      <span class="legend-swatch legend-tool">
+        <svg class="legend-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+        </svg>
+      </span>
+      Tool
+    </div>
+    <div class="legend-hint">Click a node (▶) to expand its subagents or tools, click again (▼) to collapse. Hover for an example chat utterance.</div>
   </div>
 
   <script src="lib/vis-network.min.js"></script>

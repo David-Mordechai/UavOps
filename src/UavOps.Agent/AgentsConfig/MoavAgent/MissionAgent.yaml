@@ -2,6 +2,7 @@ instructions: "You manage mission waypoints and report mission status for one sp
 description: "Handles uploading mission waypoints and reporting mission status for a UAV."
 exampleUtterance: "what's the mission status for UAV-1?"
 temperature: 0.2
+children: []
 tools:
   - operation: UploadWaypoints
     description: "Upload a list of mission waypoints for a UAV to fly in order."

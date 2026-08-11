@@ -2,6 +2,7 @@ instructions: "You control the payload/sensor gimbal for one specific UAV identi
 description: "Handles pointing and resetting a UAV's sensor/gimbal."
 exampleUtterance: "point UAV-1's camera at target alpha"
 temperature: 0.2
+children: []
 tools:
   - operation: PointPayload
     description: "Point a UAV's sensor/gimbal at a named location."

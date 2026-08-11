@@ -2,6 +2,7 @@ instructions: "You control UAV flight parameters: navigation, speed, altitude, a
 description: "Handles UAV navigation, speed changes, altitude changes, return-to-launch, telemetry queries, and listing known UAVs."
 exampleUtterance: "set UAV-1's speed to 250 knots and altitude to 3000 feet"
 temperature: 0.2
+children: []
 tools:
   - operation: ListFleet
     description: "List all known UAVs by tail number with a brief status summary for each. Use this to find out which UAVs exist, or to help resolve an ambiguous or unnamed UAV."
