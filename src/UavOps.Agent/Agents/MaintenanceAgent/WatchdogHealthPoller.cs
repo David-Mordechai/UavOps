@@ -12,6 +12,12 @@ namespace UavOps.Agent.Agents.MaintenanceAgent;
 /// One bad poll (endpoint down, malformed JSON, timeout) is logged and skipped rather than
 /// stopping the loop — same reasoning <c>SimulatorLessonJobProcessor</c>'s per-job try/catch
 /// exists for: a single failure must not take down the whole background service.
+///
+/// If <see cref="WatchdogOptions.HealthCheckUrl"/> is unset (the out-of-the-box default under
+/// <see cref="WatchdogBackend.Real"/>, since it's environment-specific), the loop exits
+/// immediately after a single informational log line instead of retrying against a blank URL
+/// every <see cref="WatchdogOptions.PollIntervalSeconds"/> and logging a warning each time —
+/// polling is opt-in via configuring the URL, not an error condition on its own.
 /// </summary>
 public sealed class WatchdogHealthPoller(
     IHttpClientFactory httpClientFactory,
@@ -21,6 +27,12 @@ public sealed class WatchdogHealthPoller(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (string.IsNullOrWhiteSpace(options.HealthCheckUrl))
+        {
+            logger.LogInformation("Watchdog health polling disabled — set Watchdog:HealthCheckUrl to enable it.");
+            return;
+        }
+
         var interval = TimeSpan.FromSeconds(Math.Max(1, options.PollIntervalSeconds));
 
         while (!stoppingToken.IsCancellationRequested)
