@@ -376,9 +376,17 @@ async function main() {
 
   const graph = new AgentGraph(document.getElementById("graph-container"), data);
 
-  // chat.css/graph.css otherwise handle dark mode passively via @media — this page is the one
-  // deliberate exception, since canvas-rendered colors can't be literal CSS custom properties.
+  // theme.css otherwise handles theme changes passively via CSS custom properties — this page is
+  // the one deliberate exception, since canvas-rendered colors can't be literal var() references
+  // and need to be resolved to real strings and re-drawn. Two distinct triggers can change which
+  // tokens are in effect: the OS-level color-scheme preference (only matters when the operator
+  // hasn't explicitly toggled a theme — see theme.css's cascade), and the operator explicitly
+  // clicking the theme toggle (theme.js), which doesn't change the OS setting at all so this
+  // matchMedia listener alone would never see it.
   window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    graph.applyThemeColors(readThemeColors());
+  });
+  document.addEventListener("themechange", () => {
     graph.applyThemeColors(readThemeColors());
   });
 }

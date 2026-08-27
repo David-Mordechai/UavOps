@@ -1,76 +1,11 @@
-/* ---- Design tokens (duplicated from chat.css — no shared-tokens file/build step in this app) --- */
-:root {
-  color-scheme: light dark;
-
-  --bg: #f6f7f9;
-  --bg-elevated: #ffffff;
-  --bg-subtle: #eef0f3;
-  --border: #d8dce2;
-  --border-strong: #b9c0ca;
-
-  --text: #1a1d23;
-  --text-muted: #5b6472;
-  --text-faint: #8a92a0;
-
-  --accent: #2f6feb;
-  --accent-text: #ffffff;
-  --accent-soft: #e8f0fe;
-
-  --radius: 10px;
-  --radius-sm: 6px;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
-
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-
-  /* Graph-canvas-only tokens (read into JS via cssVar() — canvas can't consume var() directly,
-     see graph.js). Kept separate from --border/--shadow above rather than reusing them: the
-     canvas needs stronger edge contrast than a 1px DOM border does to stay legible against a flat
-     fill, tuned independently per theme below. */
-  --graph-edge: rgba(78, 91, 112, 0.4);
-  --graph-edge-hover: var(--accent);
-  --graph-node-shadow: rgba(16, 24, 40, 0.16);
-  --graph-glow: radial-gradient(circle at 50% 42%, rgba(47, 111, 235, 0.07), transparent 55%);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16181d;
-    --bg-elevated: #1e2128;
-    --bg-subtle: #262a32;
-    --border: #33383f;
-    --border-strong: #464c56;
-
-    --text: #eceef1;
-    --text-muted: #a3abb8;
-    --text-faint: #767f8c;
-
-    --accent: #5b8def;
-    --accent-text: #0b1220;
-    --accent-soft: #1c2a44;
-
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.24);
-
-    /* Dark canvas backgrounds wash out a border-strength gray badly, so the edge color needs to
-       lean lighter/more opaque here than the light-theme value above to stay readable. */
-    --graph-edge: rgba(163, 171, 184, 0.32);
-    --graph-node-shadow: rgba(0, 0, 0, 0.45);
-    --graph-glow: radial-gradient(circle at 50% 42%, rgba(91, 141, 239, 0.1), transparent 55%);
-  }
-}
+/* Design tokens (including the graph-canvas-only --graph-* ones), reset, and header/nav chrome
+   live in theme.css (shared with index.html) — this file only has graph-page-specific layout. */
 
 /* ---- Layout ------------------------------------------------------------ */
-html, body {
-  height: 100%;
-}
-
+/* html/body sizing, flex column, font/color/background all come from theme.css's shared body
+   rule — this page just additionally suppresses page scroll, since vis-network's canvas manages
+   its own space within #graph-container instead. */
 body {
-  margin: 0;
-  font-family: var(--font);
-  color: var(--text);
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
 }
 

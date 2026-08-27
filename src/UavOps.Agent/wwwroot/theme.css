@@ -1,0 +1,294 @@
+/* ---- Design tokens ---------------------------------------------------
+   Single source of truth for both pages (index.html + graph.html both load
+   this before their own page-specific stylesheet) — previously each page's
+   CSS file duplicated this entire block verbatim, which is exactly the kind
+   of drift risk a shared file avoids.
+
+   Three cascading layers, in this order, so an explicit user choice always
+   wins over the OS setting, which itself only ever applies when the user
+   hasn't made an explicit choice:
+
+     1. :root            — dark is the unconditional default.
+     2. @media (prefers-color-scheme: light), guarded by :not([data-theme])
+                          — falls back to light only when the operator
+                            hasn't toggled a theme (see theme.js).
+     3. html[data-theme="light"|"dark"] — explicit toggle override, always
+                          wins because it's declared last and is at least as
+                          specific as layer 2's guarded selector regardless
+                          of which way the OS preference points. The "dark"
+                          block re-asserts the same values as layer 1 on
+                          purpose: without it, "OS prefers light + operator
+                          explicitly picked dark" would fall through to
+                          light, since layer 2 doesn't know about the
+                          operator's choice on its own.
+------------------------------------------------------------------------- */
+:root {
+  color-scheme: dark light;
+
+  --bg: #0f0f10;
+  --bg-elevated: #171719;
+  --bg-subtle: #1f2023;
+  --border: #2a2b2f;
+  --border-strong: #3a3b40;
+
+  --text: #ececf1;
+  --text-muted: #9a9ba1;
+  --text-faint: #6b6c72;
+
+  --accent: #5b8def;
+  --accent-text: #0b1220;
+  --accent-soft: #1c2a44;
+
+  --success: #4bb768;
+  --success-bg: #163524;
+  --danger: #e5735d;
+  --danger-bg: #3a2220;
+  --warning: #e0a940;
+  --warning-bg: #3a2f14;
+
+  --radius: 12px;
+  --radius-sm: 8px;
+  --radius-pill: 999px;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.24);
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Graph-canvas-only tokens (read into JS via cssVar() in graph.js — a <canvas> can't consume
+     var() directly). Kept separate from --border/--shadow above: the canvas needs stronger edge
+     contrast than a 1px DOM border does to stay legible against a flat fill. */
+  --graph-edge: rgba(163, 171, 184, 0.32);
+  --graph-edge-hover: var(--accent);
+  --graph-node-shadow: rgba(0, 0, 0, 0.45);
+  --graph-glow: radial-gradient(circle at 50% 42%, rgba(91, 141, 239, 0.1), transparent 55%);
+}
+
+@media (prefers-color-scheme: light) {
+  html:not([data-theme]) {
+    color-scheme: light dark;
+
+    --bg: #f6f7f9;
+    --bg-elevated: #ffffff;
+    --bg-subtle: #eef0f3;
+    --border: #d8dce2;
+    --border-strong: #b9c0ca;
+
+    --text: #1a1d23;
+    --text-muted: #5b6472;
+    --text-faint: #8a92a0;
+
+    --accent: #2f6feb;
+    --accent-text: #ffffff;
+    --accent-soft: #e8f0fe;
+
+    --success: #1a7f37;
+    --success-bg: #e6f4ea;
+    --danger: #c1391f;
+    --danger-bg: #fbeae7;
+    --warning: #9a6700;
+    --warning-bg: #fff5e0;
+
+    --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
+
+    --graph-edge: rgba(78, 91, 112, 0.4);
+    --graph-node-shadow: rgba(16, 24, 40, 0.16);
+    --graph-glow: radial-gradient(circle at 50% 42%, rgba(47, 111, 235, 0.07), transparent 55%);
+  }
+}
+
+html[data-theme="light"] {
+  color-scheme: light dark;
+
+  --bg: #f6f7f9;
+  --bg-elevated: #ffffff;
+  --bg-subtle: #eef0f3;
+  --border: #d8dce2;
+  --border-strong: #b9c0ca;
+
+  --text: #1a1d23;
+  --text-muted: #5b6472;
+  --text-faint: #8a92a0;
+
+  --accent: #2f6feb;
+  --accent-text: #ffffff;
+  --accent-soft: #e8f0fe;
+
+  --success: #1a7f37;
+  --success-bg: #e6f4ea;
+  --danger: #c1391f;
+  --danger-bg: #fbeae7;
+  --warning: #9a6700;
+  --warning-bg: #fff5e0;
+
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
+
+  --graph-edge: rgba(78, 91, 112, 0.4);
+  --graph-node-shadow: rgba(16, 24, 40, 0.16);
+  --graph-glow: radial-gradient(circle at 50% 42%, rgba(47, 111, 235, 0.07), transparent 55%);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark light;
+
+  --bg: #0f0f10;
+  --bg-elevated: #171719;
+  --bg-subtle: #1f2023;
+  --border: #2a2b2f;
+  --border-strong: #3a3b40;
+
+  --text: #ececf1;
+  --text-muted: #9a9ba1;
+  --text-faint: #6b6c72;
+
+  --accent: #5b8def;
+  --accent-text: #0b1220;
+  --accent-soft: #1c2a44;
+
+  --success: #4bb768;
+  --success-bg: #163524;
+  --danger: #e5735d;
+  --danger-bg: #3a2220;
+  --warning: #e0a940;
+  --warning-bg: #3a2f14;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.24);
+
+  --graph-edge: rgba(163, 171, 184, 0.32);
+  --graph-node-shadow: rgba(0, 0, 0, 0.45);
+  --graph-glow: radial-gradient(circle at 50% 42%, rgba(91, 141, 239, 0.1), transparent 55%);
+}
+
+/* ---- Reset (shared by both pages) ------------------------------------ */
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+}
+
+button, input {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+/* ---- Shared header / nav chrome --------------------------------------- */
+header {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tab {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 0.4rem 0.3rem;
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab[aria-current="page"] {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+}
+
+.status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-connected { color: var(--success); background: var(--success-bg); border-color: transparent; }
+.status-connecting { color: var(--warning); background: var(--warning-bg); border-color: transparent; }
+.status-disconnected { color: var(--danger); background: var(--danger-bg); border-color: transparent; }
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.icon-btn:hover {
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+
+.icon-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* theme.js toggles this class on #themeToggle to pick which glyph shows —
+   see theme.js applyIconState(). Doing it via a class on the button (rather
+   than three-way attribute-selector combinations mirroring the token cascade
+   above) avoids re-deriving that same light/dark/explicit logic a second
+   time purely for icon visibility. */
+#themeToggle .icon-moon { display: none; }
+#themeToggle.is-light .icon-sun { display: none; }
+#themeToggle.is-light .icon-moon { display: inline; }

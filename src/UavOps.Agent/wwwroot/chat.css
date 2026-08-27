@@ -1,155 +1,5 @@
-/* ---- Design tokens ------------------------------------------------- */
-:root {
-  color-scheme: light dark;
-
-  --bg: #f6f7f9;
-  --bg-elevated: #ffffff;
-  --bg-subtle: #eef0f3;
-  --border: #d8dce2;
-  --border-strong: #b9c0ca;
-
-  --text: #1a1d23;
-  --text-muted: #5b6472;
-  --text-faint: #8a92a0;
-
-  --accent: #2f6feb;
-  --accent-text: #ffffff;
-  --accent-soft: #e8f0fe;
-
-  --success: #1a7f37;
-  --success-bg: #e6f4ea;
-  --danger: #c1391f;
-  --danger-bg: #fbeae7;
-  --warning: #9a6700;
-  --warning-bg: #fff5e0;
-
-  --radius: 10px;
-  --radius-sm: 6px;
-  --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 1px rgba(16, 24, 40, 0.04);
-
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #16181d;
-    --bg-elevated: #1e2128;
-    --bg-subtle: #262a32;
-    --border: #33383f;
-    --border-strong: #464c56;
-
-    --text: #eceef1;
-    --text-muted: #a3abb8;
-    --text-faint: #767f8c;
-
-    --accent: #5b8def;
-    --accent-text: #0b1220;
-    --accent-soft: #1c2a44;
-
-    --success: #4bb768;
-    --success-bg: #163524;
-    --danger: #e5735d;
-    --danger-bg: #3a2220;
-    --warning: #e0a940;
-    --warning-bg: #3a2f14;
-
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.24);
-  }
-}
-
-/* ---- Reset ----------------------------------------------------------- */
-* { box-sizing: border-box; }
-
-html, body {
-  height: 100%;
-}
-
-body {
-  margin: 0;
-  font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.5;
-  color: var(--text);
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-}
-
-button, input {
-  font-family: inherit;
-  font-size: inherit;
-  color: inherit;
-}
-
-code {
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-}
-
-/* ---- Header ------------------------------------------------------------ */
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.9rem 1.5rem;
-  background: var(--bg-elevated);
-  border-bottom: 1px solid var(--border);
-}
-
-header h1 {
-  font-size: 0.95rem;
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  margin: 0;
-  color: var(--text);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.nav-link {
-  font-size: 0.82rem;
-  font-weight: 500;
-  color: var(--text-muted);
-  text-decoration: none;
-  padding: 0.3rem 0.6rem;
-  border-radius: var(--radius-sm);
-}
-
-.nav-link:hover {
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.status {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-size: 0.78rem;
-  font-weight: 500;
-  padding: 0.25rem 0.65rem;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--bg-subtle);
-  color: var(--text-muted);
-}
-
-.status::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.status-connected { color: var(--success); background: var(--success-bg); border-color: transparent; }
-.status-connecting { color: var(--warning); background: var(--warning-bg); border-color: transparent; }
-.status-disconnected { color: var(--danger); background: var(--danger-bg); border-color: transparent; }
+/* Design tokens, reset, and header/nav chrome live in theme.css (shared with graph.html) — this
+   file only has chat-page-specific layout: the message thread and composer. */
 
 /* ---- Message list ------------------------------------------------------ */
 main {
@@ -158,7 +8,7 @@ main {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1.5rem 1rem;
+  padding: 1.75rem 1rem 2rem;
 }
 
 main::before {
@@ -176,40 +26,68 @@ main:has(.thread .message)::before {
 
 .thread {
   width: 100%;
-  max-width: 720px;
+  max-width: 900px;
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 1.4rem;
 }
 
-.message {
-  max-width: 85%;
-  padding: 0.65rem 0.85rem;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
+/* ---- Operator (user) message — kept as a distinguishable right-aligned bubble ------------- */
 .message-operator {
   align-self: flex-end;
+  max-width: 85%;
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
   background: var(--accent);
   color: var(--accent-text);
 }
 
-.message-operator .message-meta { color: color-mix(in srgb, var(--accent-text) 75%, transparent); }
+.message-operator .message-meta {
+  color: color-mix(in srgb, var(--accent-text) 75%, transparent);
+}
 
+/* ---- Agent message — flat full-width row with an avatar, no card boundary ------------------ */
 .message-agent {
-  align-self: flex-start;
-  background: var(--bg-elevated);
-  color: var(--text);
-  border: 1px solid var(--border);
+  align-self: stretch;
+  width: 100%;
+}
+
+.message-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.avatar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.avatar-agent {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.avatar-agent svg {
+  width: 16px;
+  height: 16px;
+}
+
+.message-body {
+  flex: 1;
+  min-width: 0;
 }
 
 .message-meta {
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-faint);
+  color: var(--text-muted);
   margin-bottom: 0.3rem;
   display: flex;
   align-items: center;
@@ -243,10 +121,9 @@ main:has(.thread .message)::before {
   display: none; /* hidden until it has at least one step — see .has-steps */
   margin-top: 0.6rem;
   font-size: 0.8rem;
-  background: var(--bg-subtle);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
   color: var(--text-muted);
+  border-left: 2px solid var(--border-strong);
+  padding-left: 0.65rem;
 }
 
 .trace.has-steps {
@@ -255,7 +132,7 @@ main:has(.thread .message)::before {
 
 .trace summary {
   cursor: pointer;
-  padding: 0.45rem 0.65rem;
+  padding: 0.3rem 0;
   font-weight: 500;
   color: var(--text-muted);
   list-style: none;
@@ -277,8 +154,7 @@ main:has(.thread .message)::before {
 }
 
 .trace-steps {
-  border-top: 1px solid var(--border);
-  padding: 0.4rem 0.65rem 0.55rem;
+  padding: 0.3rem 0 0.15rem;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -309,10 +185,10 @@ main:has(.thread .message)::before {
 }
 
 .choice-option {
-  padding: 0.4rem 0.8rem;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-elevated);
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid transparent;
+  background: var(--bg-subtle);
   color: var(--text);
   font-size: 0.82rem;
   font-weight: 500;
@@ -329,57 +205,66 @@ main:has(.thread .message)::before {
   opacity: 0.5;
 }
 
-/* ---- Composer -------------------------------------------------------------- */
+/* ---- Composer — rounded floating pill ----------------------------------- */
 #composer {
   display: flex;
-  gap: 0.6rem;
-  padding: 0.9rem 1.5rem;
-  background: var(--bg-elevated);
-  border-top: 1px solid var(--border);
-}
-
-#composer > * {
-  max-width: 720px;
-}
-
-#composer {
   justify-content: center;
+  padding: 1rem 1.5rem 1.25rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
 }
 
 #composer-inner {
   display: flex;
-  gap: 0.6rem;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
-  max-width: 720px;
+  max-width: 900px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 0.35rem 0.4rem 0.35rem 1.1rem;
+  box-shadow: var(--shadow);
+}
+
+#composer-inner:focus-within {
+  border-color: var(--border-strong);
 }
 
 #messageInput {
   flex: 1;
-  padding: 0.6rem 0.85rem;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0;
   color: var(--text);
+}
+
+#messageInput:focus {
+  outline: none;
 }
 
 #messageInput::placeholder {
   color: var(--text-faint);
 }
 
-#messageInput:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
 #composer button[type="submit"] {
-  padding: 0.6rem 1.3rem;
-  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   border: none;
+  border-radius: 50%;
   background: var(--accent);
   color: var(--accent-text);
-  font-weight: 600;
   cursor: pointer;
+}
+
+#composer button[type="submit"] svg {
+  width: 16px;
+  height: 16px;
 }
 
 #composer button[type="submit"]:hover { filter: brightness(1.08); }

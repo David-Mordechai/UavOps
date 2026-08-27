@@ -63,6 +63,18 @@ function renderMessageText(container, text) {
   }
 }
 
+// Same brain-glyph path data as graph.js's brainIconDataUri, inlined as literal <svg> markup here
+// (rather than a canvas data URI, since this is real DOM) so the agent avatar matches the graph
+// page's root-agent icon for a bit of visual continuity between the two views.
+const AGENT_AVATAR_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M9 3.5c-1.7 0-3 1.3-3 3 0 .3 0 .6.1.9C4.7 8 4 9.1 4 10.3c0 1 .5 1.9 1.2 2.4-.4.6-.7 1.3-.7 2.1 0 1.8 1.4 3.3 3.1 3.4.3 1.3 1.5 2.3 3 2.3.6 0 1.2-.2 1.7-.5"/>' +
+  '<path d="M15 3.5c1.7 0 3 1.3 3 3 0 .3 0 .6-.1.9 1.4.6 2.1 1.7 2.1 2.9 0 1-.5 1.9-1.2 2.4.4.6.7 1.3.7 2.1 0 1.8-1.4 3.3-3.1 3.4-.3 1.3-1.5 2.3-3 2.3-.6 0-1.2-.2-1.7-.5"/>' +
+  '<path d="M12 3.5v17"/>' +
+  '<path d="M9 8.2c.9.4 1.4 1.2 1.4 2.1 0 .7-.3 1.3-.8 1.8"/>' +
+  '<path d="M15 8.2c-.9.4-1.4 1.2-1.4 2.1 0 .7.3 1.3.8 1.8"/>' +
+  "</svg>";
+
 function renderOperatorMessage(text) {
   const el = document.createElement("div");
   el.className = "message message-operator";
@@ -81,10 +93,15 @@ function ensureAgentTurn(correlationId, agentName) {
   const bubble = document.createElement("div");
   bubble.className = "message message-agent";
   bubble.innerHTML =
+    '<div class="message-row">' +
+    '<span class="avatar avatar-agent" aria-hidden="true">' + AGENT_AVATAR_SVG + "</span>" +
+    '<div class="message-body">' +
     '<div class="message-meta"><span class="agent-name"></span> · <span class="duration">thinking…</span></div>' +
     '<div class="message-text">…</div>' +
     '<div class="choice-options"></div>' +
-    '<details class="trace"><summary>Reasoning (<span class="step-count">0</span> steps)</summary><div class="trace-steps"></div></details>';
+    '<details class="trace"><summary>Reasoning (<span class="step-count">0</span> steps)</summary><div class="trace-steps"></div></details>' +
+    "</div>" +
+    "</div>";
 
   threadEl.appendChild(bubble);
   scrollToBottom();

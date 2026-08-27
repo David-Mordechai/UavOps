@@ -4,15 +4,34 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>UavOps.Agent — Agent Graph</title>
+  <!-- Keep in sync with the identical snippet in index.html's <head> — see its comment. -->
+  <script>
+    (function () {
+      var t = localStorage.getItem("uavops-theme");
+      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
   <link rel="stylesheet" href="lib/vis-network.min.css" />
-  <link rel="stylesheet" href="chat.css" />
+  <link rel="stylesheet" href="theme.css" />
   <link rel="stylesheet" href="graph.css" />
 </head>
 <body>
   <header>
-    <h1>UavOps.Agent — Agent Graph</h1>
+    <div class="brand">UavOps.Agent</div>
+    <nav class="tabs" aria-label="Views">
+      <a class="tab" href="index.html">Chat</a>
+      <a class="tab" href="graph.html" aria-current="page">Agent Graph</a>
+    </nav>
     <div class="header-actions">
-      <a class="nav-link" href="index.html">← Chat</a>
+      <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle color theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+        </svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        </svg>
+      </button>
     </div>
   </header>
 
@@ -43,5 +62,6 @@
 
   <script src="lib/vis-network.min.js"></script>
   <script src="graph.js"></script>
+  <script src="theme.js"></script>
 </body>
 </html>
