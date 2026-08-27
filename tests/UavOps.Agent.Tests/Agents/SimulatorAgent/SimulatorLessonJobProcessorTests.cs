@@ -48,7 +48,7 @@ public class SimulatorLessonJobProcessorTests
             .GetAwaiter().GetResult();
 
         return new AgentFactory(
-            _ => new FakeChatClient(),
+            (_, _) => new FakeChatClient(),
             "test-model",
             agents,
             new OperationCatalog(typeof(IOperationService)),

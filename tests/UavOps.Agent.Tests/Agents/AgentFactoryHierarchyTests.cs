@@ -40,7 +40,7 @@ public class AgentFactoryHierarchyTests
         var operatorPromptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance);
 
         return new AgentFactory(
-            _ => new FakeChatClient(),
+            (_, _) => new FakeChatClient(),
             "test-model",
             agents,
             new OperationCatalog(typeof(IOperationService)),

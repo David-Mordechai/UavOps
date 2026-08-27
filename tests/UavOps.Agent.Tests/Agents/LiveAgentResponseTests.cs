@@ -56,7 +56,7 @@ public class LiveAgentResponseTests(ITestOutputHelper output)
             MaxDelegationDepth = 2
         };
 
-        Func<string, IChatClient> chatClientFactory = modelName =>
+        Func<string, string?, IChatClient> chatClientFactory = (modelName, _) =>
         {
             var ollama = new OllamaApiClient(new Uri(ollamaOptions.Endpoint), modelName);
             return new FunctionInvokingChatClient(ollama) { AllowConcurrentInvocation = true };
