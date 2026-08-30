@@ -18,6 +18,16 @@ namespace UavOps.Agent.Agents;
 /// and traces for that turn are attributable end-to-end. Chat clients (one per distinct
 /// provider+model pair in use — see <see cref="AgentConfig.Provider"/>) are cached across turns.
 ///
+/// The one exception is the root <c>BrainAgent</c> object itself: it's cached across turns (see
+/// <see cref="GetOrCreatePersistentBrainAgentAsync"/>), together with a single reused
+/// <see cref="AgentSession"/>, so it carries real multi-turn conversation memory — required by
+/// the Agent Framework's own session-reuse contract (a session is tied to the agent instance/
+/// configuration that created it). Its *tools* are still rebuilt fresh every turn exactly as
+/// before, via <see cref="BuildRootToolsForTurn"/>, and supplied per call through
+/// <c>ChatClientAgentRunOptions</c> — so correlationId-scoped tracing is unaffected. Child agents
+/// reached via delegation are unaffected altogether: still built fresh per turn, still carry no
+/// memory of their own, still receive only the synthesized delegation instruction.
+///
 /// Delegate selection for each agent is either explicit (<see cref="AgentConfig.Children"/>, when
 /// present) or embedding retrieval (<see cref="AgentRetrievalIndex"/>, the fallback for any agent
 /// that doesn't declare <c>children:</c>) — see <see cref="BuildAgentRecursive"/>.
@@ -36,6 +46,7 @@ public sealed class AgentFactory(
     IWatchdogConfigService watchdogConfigService,
     AgentRetrievalIndex retrievalIndex,
     RetrievalOptions retrievalOptions,
+    MemoryOptions memoryOptions,
     ToolInvocationLogger toolLogger,
     ConfirmationGate confirmationGate,
     OperatorPromptGate operatorPromptGate,
@@ -46,10 +57,57 @@ public sealed class AgentFactory(
 
     private readonly ConcurrentDictionary<string, IChatClient> _chatClients = new();
 
-    public async Task<AIAgent> BuildMainAgentForTurn(string correlationId, string operatorText, CancellationToken cancellationToken)
+    // Guards first-time creation of the persistent BrainAgent + its session (see
+    // GetOrCreatePersistentBrainAgentAsync) against concurrent turns racing to create it — SignalR
+    // allows overlapping SendMessage calls (MaximumParallelInvocationsPerClient = 10).
+    private readonly SemaphoreSlim _brainAgentLock = new(1, 1);
+    private AIAgent? _brainAgent;
+    private AgentSession? _brainAgentSession;
+
+    /// <summary>Returns the single, long-lived BrainAgent instance and its reused conversation
+    /// session, creating both on first use. The instance carries no tools of its own — this
+    /// turn's tools are built separately via <see cref="BuildRootToolsForTurn"/> and supplied by
+    /// the caller through per-call run options, so nothing here needs to change per turn.</summary>
+    public async Task<(AIAgent Agent, AgentSession Session)> GetOrCreatePersistentBrainAgentAsync(CancellationToken cancellationToken)
+    {
+        if (_brainAgent is not null && _brainAgentSession is not null)
+        {
+            return (_brainAgent, _brainAgentSession);
+        }
+
+        await _brainAgentLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_brainAgent is null || _brainAgentSession is null)
+            {
+#pragma warning disable MEAI001 // MessageCountingChatReducer is an experimental Microsoft.Extensions.AI API — acceptable here, it's just a message-count bound with no external side effects.
+                var historyProvider = new InMemoryChatHistoryProvider(new InMemoryChatHistoryProviderOptions
+                {
+                    ChatReducer = new MessageCountingChatReducer(memoryOptions.MaxHistoryMessages)
+                });
+#pragma warning restore MEAI001
+                var agent = BuildAgent(RootAgentName, agents[RootAgentName], tools: [], historyProvider);
+                _brainAgent = agent;
+                _brainAgentSession = await agent.CreateSessionAsync(cancellationToken);
+            }
+
+            return (_brainAgent, _brainAgentSession);
+        }
+        finally
+        {
+            _brainAgentLock.Release();
+        }
+    }
+
+    /// <summary>Builds just this turn's tool list for the root agent (BrainAgent) — the same
+    /// correlationId-scoped tree construction <see cref="BuildAgentRecursive"/> already does for
+    /// every agent, without also wrapping the result in a new root <see cref="ChatClientAgent"/>
+    /// (the persistent one from <see cref="GetOrCreatePersistentBrainAgentAsync"/> is reused
+    /// instead).</summary>
+    public async Task<List<AITool>> BuildRootToolsForTurn(string correlationId, string operatorText, CancellationToken cancellationToken)
     {
         var query = await retrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
-        return BuildAgentRecursive(RootAgentName, agents[RootAgentName], correlationId, query, operatorText,
+        return BuildAgentTools(RootAgentName, agents[RootAgentName], correlationId, query, operatorText,
             visited: ImmutableHashSet<string>.Empty, depth: retrievalOptions.MaxDelegationDepth);
     }
 
@@ -60,6 +118,13 @@ public sealed class AgentFactory(
     public AIAgent BuildPersonaOnlyAgent(string agentName) => BuildAgent(agentName, agents[agentName], tools: []);
 
     private AIAgent BuildAgentRecursive(string name, AgentConfig config, string correlationId,
+        Embedding<float> query, string operatorText, ImmutableHashSet<string> visited, int depth)
+    {
+        var tools = BuildAgentTools(name, config, correlationId, query, operatorText, visited, depth);
+        return BuildAgent(name, config, tools);
+    }
+
+    private List<AITool> BuildAgentTools(string name, AgentConfig config, string correlationId,
         Embedding<float> query, string operatorText, ImmutableHashSet<string> visited, int depth)
     {
         visited = visited.Add(name);
@@ -119,10 +184,10 @@ public sealed class AgentFactory(
             tools.Add(new DelegateAgentTool(candidateName, description, subAgent, toolLogger, name, correlationId));
         }
 
-        return BuildAgent(name, config, tools);
+        return tools;
     }
 
-    private AIAgent BuildAgent(string name, AgentConfig config, List<AITool> tools)
+    private AIAgent BuildAgent(string name, AgentConfig config, List<AITool> tools, ChatHistoryProvider? chatHistoryProvider = null)
     {
         var chatClient = GetChatClient(config.Model, config.Provider);
 
@@ -131,6 +196,10 @@ public sealed class AgentFactory(
             Name = name,
             Description = config.Description,
             UseProvidedChatClientAsIs = true, // our client is already wrapped with concurrent function invocation below — don't let ChatClientAgent re-wrap it
+            // Only the persistent root agent (see GetOrCreatePersistentBrainAgentAsync) gets one of
+            // these — every other agent built here is a single-turn, throwaway object, so leaving
+            // this null keeps their (already stateless) behavior unchanged.
+            ChatHistoryProvider = chatHistoryProvider,
             ChatOptions = new ChatOptions
             {
                 Instructions = config.Instructions,

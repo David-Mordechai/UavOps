@@ -103,9 +103,13 @@ catch (Exception ex)
 var retrievalOptions = builder.Configuration.GetSection(RetrievalOptions.SectionName).Get<RetrievalOptions>()
     ?? new RetrievalOptions();
 
+var memoryOptions = builder.Configuration.GetSection(MemoryOptions.SectionName).Get<MemoryOptions>()
+    ?? new MemoryOptions();
+
 builder.Services.AddSingleton(ollamaOptions);
 builder.Services.AddSingleton(openAiOptions);
 builder.Services.AddSingleton(retrievalOptions);
+builder.Services.AddSingleton(memoryOptions);
 builder.Services.AddSingleton(retrievalIndex);
 builder.Services.AddSingleton(remoteOperationOptions);
 builder.Services.AddSingleton(agentsConfig);
@@ -221,6 +225,7 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
         sp.GetRequiredService<IWatchdogConfigService>(),
         sp.GetRequiredService<AgentRetrievalIndex>(),
         sp.GetRequiredService<RetrievalOptions>(),
+        sp.GetRequiredService<MemoryOptions>(),
         sp.GetRequiredService<ToolInvocationLogger>(),
         sp.GetRequiredService<ConfirmationGate>(),
         sp.GetRequiredService<OperatorPromptGate>(),

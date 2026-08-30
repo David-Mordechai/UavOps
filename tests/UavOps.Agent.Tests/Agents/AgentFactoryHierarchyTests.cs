@@ -53,6 +53,7 @@ public class AgentFactoryHierarchyTests
             Substitute.For<IWatchdogConfigService>(),
             retrievalIndex,
             new RetrievalOptions(),
+            new MemoryOptions(),
             toolLogger,
             confirmationGate,
             operatorPromptGate,
@@ -71,17 +72,14 @@ public class AgentFactoryHierarchyTests
         return await AgentRetrievalIndex.BuildAsync(agents, generator, CancellationToken.None);
     }
 
-    private static List<string> DelegateToolNames(AIAgent agent)
-    {
-        var options = (ChatClientAgentOptions)agent.GetService(typeof(ChatClientAgentOptions))!;
-        return options.ChatOptions!.Tools!.OfType<AIFunction>().Select(f => f.Name).ToList();
-    }
+    private static List<string> DelegateToolNames(List<AITool> tools) =>
+        tools.OfType<AIFunction>().Select(f => f.Name).ToList();
 
     [Theory]
     [InlineData("set UAV-1 speed to 200 knots")]
     [InlineData("start the simulator and run lesson 3")]
     [InlineData("what is the weather like today")]
-    public async Task BuildMainAgentForTurn_AlwaysOffersExactlyItsDeclaredChildren_RegardlessOfOperatorText(string operatorText)
+    public async Task BuildRootToolsForTurn_AlwaysOffersExactlyItsDeclaredChildren_RegardlessOfOperatorText(string operatorText)
     {
         var agents = new Dictionary<string, AgentConfig>
         {
@@ -92,13 +90,13 @@ public class AgentFactoryHierarchyTests
         var retrievalIndex = await BuildFixedIndexAsync(agents);
         var sut = CreateSut(agents, retrievalIndex);
 
-        var brainAgent = await sut.BuildMainAgentForTurn("corr1", operatorText, CancellationToken.None);
+        var tools = await sut.BuildRootToolsForTurn("corr1", operatorText, CancellationToken.None);
 
-        DelegateToolNames(brainAgent).Should().BeEquivalentTo(["MoavAgent", "SimulatorAgent"]);
+        DelegateToolNames(tools).Should().BeEquivalentTo(["MoavAgent", "SimulatorAgent"]);
     }
 
     [Fact]
-    public async Task BuildMainAgentForTurn_ExplicitEmptyChildren_IsALeaf_EvenThoughRetrievalWouldOfferCandidates()
+    public async Task BuildRootToolsForTurn_ExplicitEmptyChildren_IsALeaf_EvenThoughRetrievalWouldOfferCandidates()
     {
         // MoavAgent declares Children: [] explicitly, so it must build with zero delegate tools
         // even though "OtherAgent" exists and would otherwise be a retrieval candidate.
@@ -113,8 +111,8 @@ public class AgentFactoryHierarchyTests
         var retrievalIndex = await BuildFixedIndexAsync(moavAgents);
         var sut = CreateSut(moavAgents, retrievalIndex);
 
-        var moavAsRoot = await sut.BuildMainAgentForTurn("corr1", "anything", CancellationToken.None);
+        var tools = await sut.BuildRootToolsForTurn("corr1", "anything", CancellationToken.None);
 
-        DelegateToolNames(moavAsRoot).Should().BeEmpty();
+        DelegateToolNames(tools).Should().BeEmpty();
     }
 }

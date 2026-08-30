@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Agents.AI;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
@@ -79,14 +80,17 @@ public class LiveAgentResponseTests(ITestOutputHelper output)
             watchdogConfigService,
             retrievalIndex,
             retrievalOptions,
+            new MemoryOptions(),
             new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, mockHubContext),
             new ConfirmationGate(mockHubContext, mockConfig, NullLogger<ConfirmationGate>.Instance, null),
             new OperatorPromptGate(mockHubContext, NullLogger<OperatorPromptGate>.Instance, null),
             NullLogger<AgentFactory>.Instance
         );
 
-        var mainAgent = await factory.BuildMainAgentForTurn("corr-123", "set speed to 250 to uav 1", CancellationToken.None);
-        var result = await mainAgent.RunAsync("set speed to 250 to uav 1");
+        var (mainAgent, session) = await factory.GetOrCreatePersistentBrainAgentAsync(CancellationToken.None);
+        var tools = await factory.BuildRootToolsForTurn("corr-123", "set speed to 250 to uav 1", CancellationToken.None);
+        var runOptions = new ChatClientAgentRunOptions(new ChatOptions { Tools = tools, AllowMultipleToolCalls = true });
+        var result = await mainAgent.RunAsync("set speed to 250 to uav 1", session, runOptions, CancellationToken.None);
 
         output.WriteLine("=== RESULT RESPONSE ===");
         output.WriteLine(result.Text);

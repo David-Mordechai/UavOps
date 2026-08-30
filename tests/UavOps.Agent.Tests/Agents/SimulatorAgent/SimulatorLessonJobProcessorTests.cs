@@ -61,6 +61,7 @@ public class SimulatorLessonJobProcessorTests
             Substitute.For<IWatchdogConfigService>(),
             retrievalIndex,
             new RetrievalOptions(),
+            new MemoryOptions(),
             toolLogger,
             confirmationGate,
             operatorPromptGate,
