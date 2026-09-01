@@ -1,5 +1,5 @@
-/* Design tokens, reset, and header/nav chrome live in theme.css (shared with graph.html) — this
-   file only has chat-page-specific layout: the message thread and composer. */
+/* Design tokens, reset, and header/nav chrome live in theme.css — this file only has the Chat
+   view's own layout: the message thread and composer. */
 
 /* ---- Message list ------------------------------------------------------ */
 main {

@@ -1,6 +1,7 @@
-// Theme toggle, shared by index.html and graph.html. Pairs with the inline no-flash snippet at
-// the top of each page's <head> (which only handles the very first paint) — this file handles the
-// actual click interaction, persistence, and icon state for the rest of the page's lifetime.
+// Theme toggle, shared by the Chat and Agent Graph views (both part of the one index.html page).
+// Pairs with the inline no-flash snippet in <head> (which only handles the very first paint) —
+// this file handles the actual click interaction, persistence, and icon state for the rest of the
+// page's lifetime.
 const THEME_KEY = "uavops-theme";
 const themeToggle = document.getElementById("themeToggle");
 

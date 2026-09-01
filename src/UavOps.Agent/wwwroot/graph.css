@@ -1,10 +1,12 @@
 /* Design tokens (including the graph-canvas-only --graph-* ones), reset, and header/nav chrome
-   live in theme.css (shared with index.html) — this file only has graph-page-specific layout. */
+   live in theme.css — this file only has the Agent Graph view's own layout. */
 
 /* ---- Layout ------------------------------------------------------------ */
 /* html/body sizing, flex column, font/color/background all come from theme.css's shared body
-   rule — this page just additionally suppresses page scroll, since vis-network's canvas manages
-   its own space within #graph-container instead. */
+   rule — this additionally suppresses page scroll, since vis-network's canvas manages its own
+   space within #graph-container instead. Applies globally (not scoped to the Graph view being
+   active) but is harmless for Chat too, which already scrolls internally within #messages rather
+   than relying on the body/page to scroll. */
 body {
   overflow: hidden;
 }

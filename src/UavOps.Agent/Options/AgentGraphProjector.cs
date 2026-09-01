@@ -1,8 +1,8 @@
 namespace UavOps.Agent.Options;
 
 /// <summary>
-/// Projects the already-loaded/validated <c>AgentsConfig</c> into the node/edge shape the
-/// `/graph.html` UI's graph library (vis-network) consumes directly — kept as a small static class
+/// Projects the already-loaded/validated <c>AgentsConfig</c> into the node/edge shape the chat
+/// UI's Agent Graph tab's graph library (vis-network) consumes directly — kept as a small static class
 /// rather than inlined into <c>Program.cs</c> (unlike the flat one-level `/healthz` object) because
 /// this has nested agent×tool×parameter loops plus the root-exempt and retrieval-based branches,
 /// the same complexity level already extracted into a dedicated static class elsewhere
