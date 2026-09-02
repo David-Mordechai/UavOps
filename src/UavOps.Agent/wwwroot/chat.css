@@ -99,6 +99,11 @@ main:has(.thread .message)::before {
   word-break: break-word;
 }
 
+.message-resolution {
+  margin-top: 0.4rem;
+  color: var(--text-muted);
+}
+
 .message-text pre {
   margin: 0.5rem 0 0;
   padding: 0.6rem 0.75rem;

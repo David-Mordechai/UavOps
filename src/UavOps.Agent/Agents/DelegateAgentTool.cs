@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using UavOps.Agent.Agents.MoavAgent;
 using UavOps.Agent.Tooling;
 
 namespace UavOps.Agent.Agents;
@@ -47,6 +48,10 @@ public sealed class DelegateAgentTool : AIFunction
             new { instruction },
             async () =>
             {
+                // Lets any tailNumber-taking tool this child (or a further-nested delegate) calls
+                // check the tail number against the actual instruction it was given, not the root
+                // operator message it never sees - see DelegatedInstructionContext's doc comment.
+                using var _ = DelegatedInstructionContext.Push(instruction);
                 var response = await _subAgent.RunAsync(instruction, cancellationToken: cancellationToken);
                 return response.Text;
             },

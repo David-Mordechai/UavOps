@@ -131,15 +131,24 @@ connection.on("ReceiveChatMessage", (user, text, duration, correlationId) => {
   }
   const isResolution = turns.has(correlationId);
   const turn = ensureAgentTurn(correlationId, user);
-  renderMessageText(turn.textEl, text);
-  turn.durationEl.textContent = duration.toFixed(2) + "s";
 
   if (isResolution) {
-    // A gate (ConfirmationGate/OperatorPromptGate) resolving or timing out reuses this same
-    // correlationId for its follow-up message — any choice buttons offered for the prompt are no
-    // longer valid to click, whether or not the operator actually used one.
+    // A gate (ConfirmationGate/OperatorPromptGate) resolving, re-prompting after an unrecognized
+    // reply, or timing out reuses this same correlationId for its follow-up message(s). Appending
+    // as a new line rather than overwriting turn.textEl keeps the original question visible —
+    // replacing it left a bare "Got it — proceeding with: No." with no indication what it was
+    // answering. Each follow-up gets its own line, so a re-prompt exchange still reads in order.
+    const followUp = document.createElement("div");
+    followUp.className = "message-text message-resolution";
+    renderMessageText(followUp, text);
+    // Insert right before the choices row, not right after textEl - so a second follow-up (e.g. a
+    // re-prompt, then its eventual resolution) lands after the first one instead of before it.
+    turn.choicesEl.insertAdjacentElement("beforebegin", followUp);
     turn.choicesEl.innerHTML = "";
+  } else {
+    renderMessageText(turn.textEl, text);
   }
+  turn.durationEl.textContent = duration.toFixed(2) + "s";
 
   if (user === "BrainAgent") {
     // The turn's bubble is created as soon as its first trace event arrives, which can be well

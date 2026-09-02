@@ -1,0 +1,247 @@
+using System.Text.Json;
+using FluentAssertions;
+using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
+using UavOps.Agent.Agents.MoavAgent;
+using UavOps.Agent.Agents.MoavAgent.Operations;
+using UavOps.Agent.Contracts;
+using UavOps.Agent.Hubs;
+using UavOps.Agent.Tooling;
+using Xunit;
+
+namespace UavOps.Agent.Tests.Agents.MoavAgent;
+
+public class TailNumberDisambiguationToolTests
+{
+    /// <summary>A minimal inner AIFunction standing in for the wrapped OperationTool - just
+    /// records the tailNumber it was actually invoked with, so tests can assert exactly which
+    /// UAV(s) execution reached without needing a real IOperationService/reflection round trip
+    /// (that combination is already covered by OperationToolTests).</summary>
+    private sealed class FakeInnerTool : AIFunction
+    {
+        public List<string?> InvokedTailNumbers { get; } = [];
+
+        public override string Name => "SetSpeed";
+        public override string Description => "Change a UAV's speed.";
+        public override JsonElement JsonSchema { get; } = JsonDocument.Parse("{}").RootElement;
+
+        protected override ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
+        {
+            arguments.TryGetValue("tailNumber", out var raw);
+            var tailNumber = raw?.ToString();
+            InvokedTailNumbers.Add(tailNumber);
+            return ValueTask.FromResult<object?>($"ok:{tailNumber}");
+        }
+    }
+
+    private static List<UavSummary> ThreeUavFleet() =>
+    [
+        new UavSummary("UAV-1", "Orbiting", 0, 0),
+        new UavSummary("UAV-2", "Orbiting", 0, 0),
+        new UavSummary("UAV-3", "Orbiting", 0, 0)
+    ];
+
+    /// <summary>Builds a real TailNumberDisambiguationTool wired to a hub mock that reacts to the
+    /// operator prompt exactly like ChatHub does - mirrors AskOperatorChoiceToolTests/
+    /// OperationToolTests's CreateSutWithConfirmation, since this tool needs to exercise
+    /// InvokeCoreAsync itself, including its own ask-and-wait round trip.</summary>
+    private static (TailNumberDisambiguationTool Tool, FakeInnerTool Inner, IOperationService OperationService, IClientProxy Proxy) CreateSut(
+        List<UavSummary>? fleet, string? chatReply, string operatorText = "", TailNumberResolutionScope? scope = null)
+    {
+        var replySent = false;
+        OperatorPromptGate? promptGate = null;
+        var proxy = Substitute.For<IClientProxy>();
+        proxy.SendCoreAsync("ReceiveChatMessage", Arg.Any<object?[]>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                if (chatReply is not null && !replySent)
+                {
+                    replySent = true;
+                    _ = promptGate!.TryHandleChatReplyAsync(chatReply, CancellationToken.None);
+                }
+                return Task.CompletedTask;
+            });
+        var clients = Substitute.For<IHubClients>();
+        clients.All.Returns(proxy);
+        var hub = Substitute.For<IHubContext<ChatHub>>();
+        hub.Clients.Returns(clients);
+        promptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromSeconds(30));
+
+        var operationService = Substitute.For<IOperationService>();
+        operationService.ListFleet(Arg.Any<CancellationToken>()).Returns(
+            fleet is not null ? OperationResult.Ok(fleet) : OperationResult.Invalid("fleet lookup failed"));
+
+        var inner = new FakeInnerTool();
+        var tool = new TailNumberDisambiguationTool(
+            inner, operationService, promptGate, scope ?? new TailNumberResolutionScope(),
+            "FlightControlAgent", "corr1", operatorText);
+
+        return (tool, inner, operationService, proxy);
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_AllSentinel_FleetHasMultipleUavs_AsksConfirmation_ConfirmedFansOutToAll()
+    {
+        // The model's own "ALL" recognition is not trusted to execute unconfirmed (measured
+        // unreliable across model configurations - see ResolveAllUavsRequestAsync's doc comment) -
+        // a real yes/no confirmation must fire before any multi-UAV fan-out happens.
+        List<string>? offeredChoices = null;
+        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "Yes");
+        proxy.When(p => p.SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>()))
+            .Do(callInfo => offeredChoices = ((IReadOnlyList<string>)callInfo.ArgAt<object?[]>(1)[1]!).ToList());
+
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "ALL" }), CancellationToken.None);
+
+        offeredChoices.Should().BeEquivalentTo(["Yes", "No"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
+        result!.ToString().Should().Contain("UAV-1:").And.Contain("UAV-2:").And.Contain("UAV-3:");
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_AllSentinel_CaseInsensitive_ConfirmedFansOut()
+    {
+        var (tool, inner, _, _) = CreateSut(ThreeUavFleet(), chatReply: "Yes");
+
+        await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "all" }), CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_AllSentinel_ConfirmationDeclined_FallsBackToPerUavChoice()
+    {
+        var replyIndex = 0;
+        var replies = new[] { "No", "UAV-2" };
+        OperatorPromptGate? promptGate = null;
+        var proxy = Substitute.For<IClientProxy>();
+        proxy.SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                if (replyIndex < replies.Length)
+                {
+                    _ = promptGate!.TryHandleChatReplyAsync(replies[replyIndex++], CancellationToken.None);
+                }
+                return Task.CompletedTask;
+            });
+        var clients = Substitute.For<IHubClients>();
+        clients.All.Returns(proxy);
+        var hub = Substitute.For<IHubContext<ChatHub>>();
+        hub.Clients.Returns(clients);
+        promptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromSeconds(30));
+
+        var operationService = Substitute.For<IOperationService>();
+        operationService.ListFleet(Arg.Any<CancellationToken>()).Returns(OperationResult.Ok(ThreeUavFleet()));
+        var inner = new FakeInnerTool();
+        var tool = new TailNumberDisambiguationTool(
+            inner, operationService, promptGate, new TailNumberResolutionScope(), "FlightControlAgent", "corr1", "");
+
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "ALL" }), CancellationToken.None);
+
+        // Declined the "apply to all" confirmation, then picked UAV-2 from the follow-up ask -
+        // never fanned out, only UAV-2 was ever touched.
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2"]);
+        result!.ToString().Should().Contain("UAV-2").And.Contain("ONLY UAV-2");
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_AllSentinel_FleetHasExactlyOneUav_ResolvesDirectly_NeverSendsLiteralAll()
+    {
+        var (tool, inner, _, _) = CreateSut([new UavSummary("UAV-1", "Orbiting", 0, 0)], chatReply: null);
+
+        await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "ALL" }), CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1"]);
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_AllSentinel_FleetLookupFails_ReturnsNotExecuted_NeverInvokesInner()
+    {
+        var (tool, inner, _, _) = CreateSut(fleet: null, chatReply: null);
+
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "ALL" }), CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().BeEmpty();
+        result!.ToString().Should().Contain("Not executed");
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_ExplicitTailNumberInDelegatedInstruction_StillTrustedWithoutAsking()
+    {
+        // Regression guard for requirement 3: an explicitly-named tail number must still be
+        // trusted directly, with no ask and no "ALL" handling involved at all.
+        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: null);
+
+        using var _ = DelegatedInstructionContext.Push("UAV-2 set speed to 250");
+        await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2" }), CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2"]);
+        await proxy.DidNotReceive().SendCoreAsync("ReceiveChatMessage", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_UngroundedGuess_OffersAllAsAChoice_OperatorSelectsIt_FansOut()
+    {
+        List<string>? offeredChoices = null;
+        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "ALL", operatorText: "set speed to 250");
+        proxy.When(p => p.SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>()))
+            .Do(callInfo => offeredChoices = ((IReadOnlyList<string>)callInfo.ArgAt<object?[]>(1)[1]!).ToList());
+
+        // Model guessed "UAV-1" even though the operator never named a UAV - ungrounded.
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);
+
+        offeredChoices.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3", "ALL"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
+        result!.ToString().Should().Contain("UAV-1:").And.Contain("UAV-2:").And.Contain("UAV-3:");
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_UngroundedGuess_OperatorSelectsSpecificUav_ConfirmsTargetInResult()
+    {
+        var (tool, inner, _, _) = CreateSut(ThreeUavFleet(), chatReply: "UAV-3", operatorText: "set speed to 250");
+
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-3"]);
+        result!.ToString().Should().Contain("UAV-3").And.Contain("ONLY UAV-3");
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_SharedScope_SecondCallReusesAllResolution_WithoutAskingAgain()
+    {
+        // Mirrors how SetSpeed and SetAltitude share one TailNumberResolutionScope for the same
+        // FlightControlAgent turn (see AgentFactory.BuildAgentTools) - once the operator answers
+        // "ALL" for the first tailNumber-taking call, a second one in the same turn must reuse it.
+        var scope = new TailNumberResolutionScope();
+        var (firstTool, firstInner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "ALL", operatorText: "set speed to 250", scope: scope);
+
+        await firstTool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);
+
+        // Second tool instance (a different operation, e.g. SetAltitude) sharing the same scope -
+        // reuse the fresh proxy/promptGate wiring isn't possible via CreateSut (it builds its own
+        // hub), so build the second tool directly against the same scope's already-resolved value.
+        var secondInner = new FakeInnerTool();
+        var operationService = Substitute.For<IOperationService>();
+        operationService.ListFleet(Arg.Any<CancellationToken>()).Returns(OperationResult.Ok(ThreeUavFleet()));
+        var hub = Substitute.For<IHubContext<ChatHub>>();
+        var secondPromptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromMilliseconds(200));
+        var secondTool = new TailNumberDisambiguationTool(
+            secondInner, operationService, secondPromptGate, scope, "FlightControlAgent", "corr1", "set speed to 250");
+
+        await secondTool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);
+
+        firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
+        secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
+    }
+}

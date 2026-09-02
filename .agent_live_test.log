@@ -1,0 +1,53 @@
+Using launch settings from src\UavOps.Agent\Properties\launchSettings.json...
+Building...
+[20:06:38 INF] Watchdog health polling disabled — set Watchdog:HealthCheckUrl to enable it.
+[20:06:38 INF] Now listening on: http://localhost:5299
+[20:06:38 INF] Application started. Press Ctrl+C to shut down.
+[20:06:38 INF] Hosting environment: Development
+[20:06:38 INF] Content root path: D:\PlayGround\UavOps\src\UavOps.Agent
+[20:06:40 INF] Request starting HTTP/1.1 GET http://localhost:5299/healthz - null null
+[20:06:40 INF] Executing endpoint 'HTTP: GET /healthz'
+[20:06:40 INF] Setting HTTP status code 200.
+[20:06:40 INF] Writing value of type '<>f__AnonymousType14`10' as Json.
+[20:06:40 INF] Executed endpoint 'HTTP: GET /healthz'
+[20:06:40 INF] Request finished HTTP/1.1 GET http://localhost:5299/healthz - 200 null application/json; charset=utf-8 32.6434ms
+[20:06:46 INF] Request starting HTTP/1.1 POST http://localhost:5299/chatHub/negotiate?negotiateVersion=1 - null 0
+[20:06:46 INF] Executing endpoint '/chatHub/negotiate'
+[20:06:46 INF] Executed endpoint '/chatHub/negotiate'
+[20:06:46 INF] Request finished HTTP/1.1 POST http://localhost:5299/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 4.7963ms
+[20:06:46 INF] Request starting HTTP/1.1 GET http://localhost:5299/chatHub?id=0XiVEEarA5GOOvEJnLUA-Q - null null
+[20:06:46 INF] Executing endpoint '/chatHub'
+[20:06:46 INF] correlationId=canon-0 agent=BrainAgent delegates=["MoavAgent", "SimulatorAgent", "MaintenanceAgent"]
+[20:06:46 INF] correlationId=canon-0 agent=MoavAgent delegates=["FlightControlAgent", "PayloadControlAgent", "MissionAgent", "GdtControlAgent"]
+[20:06:46 INF] correlationId=canon-0 agent=SimulatorAgent delegates=["SimulatorInfrastructureAgent"]
+[20:06:46 INF] correlationId=canon-0 agent=MaintenanceAgent delegates=["WatchdogServiceAgent", "WatchdogConfigAgent"]
+[20:06:49 INF] [Tool] correlationId=canon-0 agent=FlightControlAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=6
+[20:06:49 INF] [Tool] correlationId=canon-0 agent=FlightControlAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":292} result={"lat":31.812,"lng":34.66,"speedKts":292,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[20:06:49 INF] [Tool] correlationId=canon-0 agent=FlightControlAgent tool=SetAltitude args={"tailNumber":"UAV-1","altitudeFt":3800} result={"lat":31.812,"lng":34.66,"speedKts":292,"altitudeFt":3800,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[20:06:50 INF] [Tool] correlationId=canon-0 agent=MoavAgent tool=FlightControlAgent args={"instruction":"fly UAV-1 to target alpha and set speed to 292 and altitude to 3800"} result=UAV-1 is now flying to alpha at 292 knots and 3800 feet. durationMs=1953
+[20:06:50 INF] [Tool] correlationId=canon-0 agent=BrainAgent tool=MoavAgent args={"instruction":"fly UAV-1 to target alpha and set speed to 292 and altitude to 3800"} result=UAV-1 is now flying to target alpha at 292 knots and 3800 feet. durationMs=3234
+[20:06:51 INF] correlationId=canon-1 agent=BrainAgent delegates=["MoavAgent", "SimulatorAgent", "MaintenanceAgent"]
+[20:06:51 INF] correlationId=canon-1 agent=MoavAgent delegates=["FlightControlAgent", "PayloadControlAgent", "MissionAgent", "GdtControlAgent"]
+[20:06:51 INF] correlationId=canon-1 agent=SimulatorAgent delegates=["SimulatorInfrastructureAgent"]
+[20:06:51 INF] correlationId=canon-1 agent=MaintenanceAgent delegates=["WatchdogServiceAgent", "WatchdogConfigAgent"]
+[20:06:53 INF] [Tool] correlationId=canon-1 agent=FlightControlAgent tool=Navigate args={"tailNumber":"UAV-2","location":"bravo"} result={"lat":31.79,"lng":34.63,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[20:06:53 INF] [Tool] correlationId=canon-1 agent=MoavAgent tool=FlightControlAgent args={"instruction":"fly UAV-2 to target bravo"} result=UAV-2 is now flying to target bravo. durationMs=1223
+[20:06:54 INF] [Tool] correlationId=canon-1 agent=BrainAgent tool=MoavAgent args={"instruction":"fly UAV-2 to target bravo"} result=UAV-2 is now flying to target bravo. durationMs=2289
+[20:06:54 INF] correlationId=canon-2 agent=BrainAgent delegates=["MoavAgent", "SimulatorAgent", "MaintenanceAgent"]
+[20:06:54 INF] correlationId=canon-2 agent=MoavAgent delegates=["FlightControlAgent", "PayloadControlAgent", "MissionAgent", "GdtControlAgent"]
+[20:06:54 INF] correlationId=canon-2 agent=SimulatorAgent delegates=["SimulatorInfrastructureAgent"]
+[20:06:54 INF] correlationId=canon-2 agent=MaintenanceAgent delegates=["WatchdogServiceAgent", "WatchdogConfigAgent"]
+[20:06:55 INF] [Tool] correlationId=canon-2 agent=PayloadControlAgent tool=PointPayload args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.805,"lng":34.648,"speedKts":105,"altitudeFt":4000,"mode":"Orbiting","payloadLockedOn":"alpha"} durationMs=0
+[20:06:56 INF] [Tool] correlationId=canon-2 agent=MoavAgent tool=PayloadControlAgent args={"instruction":"point payload at target alpha for UAV-3"} result=Pointed UAV-3's payload at alpha. durationMs=786
+[20:06:56 INF] [Tool] correlationId=canon-2 agent=BrainAgent tool=MoavAgent args={"instruction":"point payload at target alpha for UAV-3"} result=Done. UAV-3's payload is now pointed at target alpha. durationMs=1878
+[20:06:57 INF] correlationId=canon-3 agent=BrainAgent delegates=["MoavAgent", "SimulatorAgent", "MaintenanceAgent"]
+[20:06:57 INF] correlationId=canon-3 agent=MoavAgent delegates=["FlightControlAgent", "PayloadControlAgent", "MissionAgent", "GdtControlAgent"]
+[20:06:57 INF] correlationId=canon-3 agent=SimulatorAgent delegates=["SimulatorInfrastructureAgent"]
+[20:06:57 INF] correlationId=canon-3 agent=MaintenanceAgent delegates=["WatchdogServiceAgent", "WatchdogConfigAgent"]
+[20:06:58 INF] [Tool] correlationId=canon-3 agent=FlightControlAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":292,"altitudeFt":3800,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[20:06:59 INF] [Tool] correlationId=canon-3 agent=MoavAgent tool=FlightControlAgent args={"instruction":"fly UAV-1 to target alpha"} result=UAV-1 is now flying to alpha. durationMs=1259
+[20:07:00 INF] [Tool] correlationId=canon-3 agent=PayloadControlAgent tool=PointPayload args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":292,"altitudeFt":3800,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[20:07:00 INF] [Tool] correlationId=canon-3 agent=MoavAgent tool=PayloadControlAgent args={"instruction":"point payload at target alpha for UAV-1"} result=Pointed UAV-1's payload at alpha. durationMs=809
+[20:07:01 INF] [Tool] correlationId=canon-3 agent=BrainAgent tool=MoavAgent args={"instruction":"fly UAV-1 to target alpha and point payload at target alpha"} result=UAV-1 is now flying to target alpha and its payload is pointed at target alpha. durationMs=3912
+[20:07:01 INF] Executed endpoint '/chatHub'
+[20:07:01 INF] Request finished HTTP/1.1 GET http://localhost:5299/chatHub?id=0XiVEEarA5GOOvEJnLUA-Q - 101 null null 15154.1864ms

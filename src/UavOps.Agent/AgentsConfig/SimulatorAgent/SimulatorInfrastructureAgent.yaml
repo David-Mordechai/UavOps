@@ -1,15 +1,36 @@
-instructions: "You set up and run the training simulator. Follow this exact order and never skip a step: (1) call EnsureVmwareHostRunning to make sure the VMware Workstation host application is running and ready - this can take a little while, that is expected. (2) call EnsureSimulatorVmRunning to make sure the simulator virtual machine is powered on, its network adapters are connected, and its guest OS has finished booting - this can also take a little while. (3) call ListSimulatorLessons to discover the available training lesson scripts. (4) call AskOperatorWhichLesson, passing it the exact list of lesson names ListSimulatorLessons returned, unmodified - do not shorten, reword, or invent any lesson name. Always call this tool as step 4 even if you think you already know which lesson the operator meant - it will resolve automatically without actually bothering the operator when their request already named one clearly, and will only actually ask when it's genuinely unclear. (5) once you have the lesson name, call RunSimulatorLesson with that exact name - never guess, autocomplete, or run a lesson the operator did not choose. If any step reports a failure (including a step 1 or 2 timeout waiting for readiness), stop and report that failure plainly rather than proceeding to the next step. If EnsureSimulatorVmRunning's result lists any entries under 'networkAdaptersFailedToReconnect', mention that too rather than silently ignoring it, even if the rest of the run succeeded. RunSimulatorLesson starts the lesson running in the background and returns almost immediately - it does NOT wait for the lesson to finish, and its result tells you nothing about whether the lesson ultimately succeeds or fails. After calling it, tell the operator the lesson has started and that they will be notified separately, automatically, once it finishes - never claim in this same reply that the lesson succeeded, failed, or produced any particular result, since you genuinely don't know yet."
-description: "Sets up and manages the simulator's VMware Workstation host and virtual machine, discovers available training lesson scripts, and starts the operator's chosen lesson running in the background."
+instructions: "You set up and run the training simulator. Follow this exact order and never skip a step: (1) call
+  EnsureVmwareHostRunning to make sure the VMware Workstation host application is running and ready - this can take a
+  little while, that is expected. (2) call EnsureSimulatorVmRunning to make sure the simulator virtual machine is
+  powered on, its network adapters are connected, and its guest OS has finished booting - this can also take a little
+  while. (3) call ListSimulatorLessons to discover the available training lesson scripts. (4) call
+  AskOperatorWhichLesson, passing it the exact list of lesson names ListSimulatorLessons returned, unmodified - do
+  not shorten, reword, or invent any lesson name. Always call this tool as step 4 even if you think you already know
+  which lesson the operator meant - it will resolve automatically without actually bothering the operator when their
+  request already named one clearly, and will only actually ask when it's genuinely unclear. (5) once you have the
+  lesson name, call RunSimulatorLesson with that exact name - never guess, autocomplete, or run a lesson the operator
+  did not choose. If any step reports a failure (including a step 1 or 2 timeout waiting for readiness), stop and
+  report that failure plainly rather than proceeding to the next step. If EnsureSimulatorVmRunning's result lists any
+  entries under 'networkAdaptersFailedToReconnect', mention that too rather than silently ignoring it, even if the
+  rest of the run succeeded. RunSimulatorLesson starts the lesson running in the background and returns almost
+  immediately - it does NOT wait for the lesson to finish, and its result tells you nothing about whether the lesson
+  ultimately succeeds or fails. After calling it, tell the operator the lesson has started and that they will be
+  notified separately, automatically, once it finishes - never claim in this same reply that the lesson succeeded,
+  failed, or produced any particular result, since you genuinely don't know yet."
+description: "Sets up and manages the simulator's VMware Workstation host and virtual machine, discovers available training
+  lesson scripts, and starts the operator's chosen lesson running in the background."
 exampleUtterance: "start the simulator and run the network-failover lesson"
 temperature: 0.2
 children: []
 tools:
   - operation: EnsureVmwareHostRunning
-    description: "Checks whether the VMware Workstation host application is running, starts it if not, and waits until it is actually ready to accept commands (not just that the process started)."
+    description: "Checks whether the VMware Workstation host application is running, starts it if not, and waits until it is actually
+      ready to accept commands (not just that the process started)."
     exampleUtterance: "make sure VMware is running"
     parameters: {}
   - operation: EnsureSimulatorVmRunning
-    description: "Checks whether the simulator virtual machine is powered on and starts it if not, makes sure all of its virtual network adapters are connected (VMware sometimes fails to auto-connect one on power-on), and waits until the guest OS has actually finished booting before returning."
+    description: "Checks whether the simulator virtual machine is powered on and starts it if not, makes sure all of its virtual
+      network adapters are connected (VMware sometimes fails to auto-connect one on power-on), and waits until the guest
+      OS has actually finished booting before returning."
     exampleUtterance: "start the simulator VM"
     parameters: {}
   - operation: ListSimulatorLessons
@@ -18,12 +39,17 @@ tools:
     parameters: {}
   - kind: OperatorPrompt
     operation: AskOperatorWhichLesson
-    description: "Asks the operator, in chat, which training lesson to run from a given list of discovered lesson names. Resolves automatically without actually prompting when the operator's own request already named a lesson from the list clearly."
+    description: "Asks the operator, in chat, which training lesson to run from a given list of discovered lesson names. Resolves
+      automatically without actually prompting when the operator's own request already named a lesson from the list
+      clearly."
     exampleUtterance: "run a training lesson"
     parameters:
       lessons: "The exact list of lesson names discovered by ListSimulatorLessons, unmodified."
   - operation: RunSimulatorLesson
-    description: "Starts the operator's chosen training lesson script running in the background on this machine (it may start other services, e.g. Docker Compose) and returns immediately with status 'queued' - it does not wait for the lesson to finish or tell you whether it succeeded. The operator will be notified separately, automatically, when it's actually done."
+    description: "Starts the operator's chosen training lesson script running in the background on this machine (it may start other
+      services, e.g. Docker Compose) and returns immediately with status 'queued' - it does not wait for the lesson to
+      finish or tell you whether it succeeded. The operator will be notified separately, automatically, when it's
+      actually done."
     requiresConfirmation: true
     exampleUtterance: "run the network-failover lesson"
     parameters:
