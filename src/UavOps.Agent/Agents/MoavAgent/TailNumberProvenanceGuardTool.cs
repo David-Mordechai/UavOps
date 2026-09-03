@@ -21,9 +21,16 @@ namespace UavOps.Agent.Agents.MoavAgent;
 ///    leaf-level <see cref="TailNumberDisambiguationTool"/> guard entirely (that guard correctly
 ///    trusts any tail number literally present in the instruction it was given - exactly what lets
 ///    an invented one slip through undetected). Checked before delegating: if the instruction names
-///    a real, known tail number that was never present anywhere in the operator's own original
-///    message, the delegation is blocked - a real value MoavAgent itself introduced can only mean
-///    MoavAgent invented it, regardless of what it looks like.
+///    a real, known tail number that never appears anywhere in the text MoavAgent was actually given
+///    this turn, the delegation is blocked - a real value MoavAgent introduced beyond that can only
+///    mean MoavAgent invented it, regardless of what it looks like. "The text MoavAgent was actually
+///    given" is <see cref="DelegatedInstructionContext.Current"/> - BrainAgent now carries real
+///    multi-turn memory and may legitimately resolve a reference to something established earlier
+///    in the conversation ("fly it to alpha" -> "fly UAV-1 to alpha") before ever delegating to
+///    MoavAgent, so grounding against only the operator's raw *this-turn* message
+///    (<c>_rootOperatorText</c>) would falsely flag a tail number BrainAgent had every
+///    right to include. Falls back to the root operator text only when nothing was delegated in
+///    between (mirrors <see cref="TailNumberDisambiguationTool"/>'s own fallback).
 ///
 /// 2. A specialist answering an ambiguous instruction with plain text instead of calling a tool at
 ///    all - observed directly: FlightControlAgent sometimes responds "I need to know which UAV..."
@@ -77,6 +84,7 @@ public sealed class TailNumberProvenanceGuardTool : AIFunction
 
         var fleet = await _operationService.ListFleet(cancellationToken);
         var tails = fleet.Success && fleet.Value is List<UavSummary> t ? t : null;
+        var groundingText = DelegatedInstructionContext.Current ?? _rootOperatorText;
 
         if (tails is not null)
         {
@@ -84,7 +92,7 @@ public sealed class TailNumberProvenanceGuardTool : AIFunction
                 .Select(x => x.TailNumber)
                 .Where(tail =>
                     instruction.Contains(tail, StringComparison.OrdinalIgnoreCase) &&
-                    !_rootOperatorText.Contains(tail, StringComparison.OrdinalIgnoreCase))
+                    !groundingText.Contains(tail, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             if (invented.Count > 0)

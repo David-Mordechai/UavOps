@@ -232,6 +232,103 @@ letting the model invent tail numbers, guess/convert units, or resolve pronouns 
 agent-to-agent handoffs (each delegate only sees the instruction text its parent gives it, not the
 full conversation) — preserve that style if you touch them.
 
+### BrainAgent delegation reliability: CreatePlan, forced tool-choice, and an open fabrication bug (in progress — branch `plan-execute-and-fabrication-fixes`)
+
+Small/local models proved unreliable at two related things during real operator testing: (1)
+BrainAgent itself sometimes answered a new, actionable request with a confident-sounding success
+claim without delegating to any child at all, and (2) a leaf/actor agent (e.g.
+`FlightControlAgent`) sometimes claimed a command succeeded without calling any of its real
+operation tools. Both are "the model lies instead of acting" — never something to patch by
+detecting the lie after the fact; the fix has to make the lie structurally impossible or force a
+grounded re-query, per repeated operator direction throughout this investigation.
+
+**`CreatePlanTool`** (`Agents/CreatePlanTool.cs`) is BrainAgent's *only* tool, replacing giving it
+each of `MoavAgent`/`SimulatorAgent`/`MaintenanceAgent` as independently-callable tools of their
+own. It takes an ordered list of `{agent, instruction}` steps and its own code (not another model
+decision) walks every step in order, invoking the real delegate tool for each — so "should I
+actually delegate, or just say it happened" is no longer a free choice available on every turn. An
+empty step list is a valid response for a purely conversational turn (a greeting, a recall question
+answered from real history). Each step's `agent` property in the tool's JSON schema carries every
+available agent's real config `description` inline, not just its bare name — an earlier version
+listed bare names only and was observed live to misroute simple, unambiguous requests (e.g. "fly
+UAV-1 to target alpha" going to the simulator's lesson-picker instead of `MoavAgent`, "what UAVs do
+we have" going to `MaintenanceAgent`) because the model had no behavioral signal to route on.
+Giving each child its own top-level tool (the old design) let the model use its native
+function-selection training, which a shared parameter description can't fully replace — if routing
+quality regresses again, this schema-embedding approach is the first thing to revisit. A related,
+narrower miss found the same way: `MoavAgent.yaml`'s own `description` didn't mention "antenna
+tracking" by name, so "set antenna tracking to manual for UAV-1" misrouted to `MaintenanceAgent` —
+fixed by adding that language to the description; watch for more of these as new phrasing is
+tried, since the fix is always "make the routing description name the thing explicitly," never a
+code-level keyword match.
+
+**`RequireToolOnFirstTurnChatClient`** (`Agents/RequireToolOnFirstTurnChatClient.cs`) is an
+`IChatClient` decorator that forces `ChatOptions.ToolMode = ChatToolMode.RequireAny` (maps to the
+OpenAI-compatible `tool_choice: "required"`) on an agent's first completion of a new turn — scoped
+to messages *after* the most recent `ChatRole.User` message, not "has any tool message ever
+appeared in this conversation" (the first version of this check was wrong for exactly this reason:
+correct only for memory-less single-turn agents, but BrainAgent is now a persistent multi-turn
+agent whose history keeps old turns' tool messages around forever, so the naive check would only
+ever force once, on the very first message of the whole session). Applied to every leaf/actor agent
+(`children: []` + `tools.Count > 0`) and, additionally, to BrainAgent specifically (its only tool
+being `CreatePlanTool`, which validly returns an empty plan for non-actionable turns) — never to
+other router-tier agents (`MoavAgent`, `SimulatorAgent`, `MaintenanceAgent`).
+
+**`FleetWideActionConfirmationTool`** (`Agents/MoavAgent/FleetWideActionConfirmationTool.cs`) wraps
+the BrainAgent→MoavAgent delegate edge: if the delegated instruction names every currently-known
+real tail number but the operator's own raw message this turn did not also name them all, forces
+the existing "Apply this to all N known UAVs?" confirmation before the delegation proceeds — closes
+the gap where BrainAgent (which has real memory) could silently expand "all of them" into an
+explicit tail list itself and skip the confirmation MoavAgent would otherwise apply.
+
+**Known open issue — leaf-agent fabrication under concurrent delegation, NOT fixed by the above.**
+Reproduced live via the real chat UI (not a synthetic test), operator: "fly all of them to target
+alpha and set speed to 250 and altitude to 3000, also point all payloads there" against a real
+3-UAV fleet. MoavAgent fans out to `FlightControlAgent` and `PayloadControlAgent` once per UAV,
+allowed to run concurrently (`AllowConcurrentInvocation`/`AllowMultipleToolCalls`, see above).
+`PayloadControlAgent`'s 3-way fan-out was correct — every one of the 3 `PointPayload` calls has a
+real, matching trace entry. `FlightControlAgent`'s fan-out was not: only one of the three (UAV-2)
+has real `Navigate`/`SetSpeed`/`SetAltitude` trace entries; the other two (UAV-1, UAV-3) reported
+specific, confident success text ("UAV-1 is now flying to target alpha at 250 knots and 3000 feet")
+with **zero** underlying tool calls anywhere in the trace, in roughly half the wall-clock time of
+the UAV-2 call that actually did the work (~2s fabricated vs. ~4.6s real) — a strong tell that no
+tool round-trip happened at all for those two.
+
+This is the same class of bug `RequireToolOnFirstTurnChatClient` was built to close, and it did not
+close it here, despite: (a) the underlying vLLM/Qwen backend having been verified via direct
+concurrent curl calls to honor `tool_choice: "required"` reliably (3/3 correct, tested before
+implementing the wrapper), and (b) a scripted live-verification pass immediately after implementing
+all of the above running this *exact* "fly all" scenario once and getting real tool calls for all 3
+UAVs. That inconsistency between runs (curl test: reliable; scripted harness run: passed once; real
+operator session: failed) means this bug is flaky/load-dependent, not deterministic — any fix
+attempt must be validated against several repeated runs of the same scenario, not a single pass,
+before being reported as working.
+
+Root cause is **not yet confirmed**. Two hypotheses, neither yet checked:
+1. The backend doesn't actually honor `tool_choice: "required"` reliably once the *real* request
+   shape is sent (full agent instructions + real tool schemas attached, three simultaneous such
+   requests) — the curl verification used a simplified payload, not this framework's actual request
+   shape under this framework's actual concurrency pattern.
+2. The model DID attempt a tool call that failed or had malformed/mismatched arguments, producing a
+   `ChatRole.Tool` message (error content) without ever reaching `OperationTool`/
+   `ToolInvocationLogger` (which only logs a *real* invocation) — `RequireToolOnFirstTurnChatClient`'s
+   turn-scoping check only looks for *any* `ChatRole.Tool` message after the last user turn, not a
+   *successful* one, so a failed first attempt would wrongly stop it from forcing `RequireAny` again
+   on the next completion, leaving the model free to answer in plain text.
+
+**Not yet started**: add debug-level logging around `RequireToolOnFirstTurnChatClient`'s
+forced/unforced decision and `FlightControlAgent`'s raw completions (whether `tool_calls` is
+present at all, and any argument-parsing/invocation errors) to distinguish hypothesis 1 from 2, then
+reproduce the exact "fly all" scenario several times before attempting another fix. Do not attempt
+a fix without first confirming which hypothesis is real — this investigation has already twice
+rejected a guess-patch (detect-the-lie-after-the-fact, then a stateless-verification-fallback) in
+favor of a structural fix; repeating that mistake here would waste another round-trip. All of the
+above (`CreatePlanTool`, `RequireToolOnFirstTurnChatClient`, `FleetWideActionConfirmationTool`, the
+routing-description fixes) is unit-tested (`dotnet test tests/UavOps.Agent.Tests` — 293/293 passing
+as of this writing) and live-verified working *except* for this one open issue — start a fresh
+session by reading this section, then reproducing the exact scenario above a few times to confirm
+it still happens before touching any code.
+
 ### The operation layer (`Agents/MoavAgent/Operations/`, `Agents/MoavAgent/Simulation/`, `Agents/MoavAgent/Operations/Remote/`)
 
 `Agents/MoavAgent/Operations/IOperationService.cs` is the single source of truth for what an "operation" is — 12

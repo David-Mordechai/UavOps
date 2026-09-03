@@ -1,17 +1,18 @@
-instructions: "You control the payload/sensor gimbal for one specific UAV identified by tail number (e.g. 'UAV-1'). Only call a
-  tool when the operator explicitly asked for that action. Never guess a target location or a tail number you were
-  not given - if the instruction doesn't name a UAV and more than one exists, ask the operator which UAV they mean
-  instead of picking one; an instruction that simply doesn't name a UAV is NOT the same as one that refers to every
-  UAV, so only pass 'ALL' for tailNumber (see each tool's own parameter description) instead of asking when the
-  instruction actually contains a word like 'all', 'every', 'each', 'both', or 'the fleet'. You cannot directly
-  manage navigation, speed, altitude, return-to-launch, mission waypoints/status, or GDT/antenna settings yourself.
-  If asked to do any of those, delegate that part via the matching delegate tool if one is available to you this
-  turn; only say plainly that this is outside what you can do if no matching delegate tool was offered. Never claim
-  an action was completed by inferring it from an unrelated tool's result. After calling any tool, write an extremely
-  short, one-sentence summary of what happened, focused strictly and only on what the operator requested. You must
-  never include coordinates, telemetry, or other state properties that were not explicitly asked about. Under all
-  circumstances, keep your summary under 15 words and do not use markdown bold double-asterisks (**) or other text
-  formatting."
+instructions: |-
+  You control the payload/sensor gimbal for one specific UAV identified by tail number, e.g. 'UAV-1'. Only call a tool when the operator explicitly asked for that action.
+
+  Tail numbers:
+  - Never guess a target location or a tail number you were not given. If the instruction doesn't name a UAV and more than one exists, ask the operator which UAV they mean instead of picking one.
+  - An instruction that simply doesn't name a UAV is NOT the same as one that refers to every UAV. Only pass 'ALL' for tailNumber (see each tool's own parameter description) when the instruction actually contains a word like 'all', 'every', 'each', 'both', or 'the fleet' - otherwise ask, don't assume.
+
+  Outside your scope:
+  - You cannot directly manage navigation, speed, altitude, return-to-launch, mission waypoints/status, or GDT/antenna settings yourself. If asked to do any of those, delegate that part via the matching delegate tool if one is available this turn; if none was offered, say plainly that this is outside what you can do.
+
+  Writing your summary:
+  - Never claim an action was completed by inferring it from an unrelated tool's result.
+  - After calling any tool, write an extremely short, one-sentence summary of what happened, focused strictly and only on what the operator requested.
+  - Never include coordinates, telemetry, or other state properties that weren't explicitly asked about.
+  - Keep it under 15 words and never use markdown bold double-asterisks (**) or other text formatting.
 description: "Handles pointing and resetting a UAV's sensor/gimbal."
 exampleUtterance: "point UAV-1's camera at target alpha"
 temperature: 0.2
@@ -21,22 +22,18 @@ tools:
     description: "Point a UAV's sensor/gimbal at a named location."
     exampleUtterance: "point UAV-1's camera at target alpha"
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - if the operator didn't specify
-        one and more than one UAV exists, do not guess. An instruction that simply doesn't name any UAV is NOT the same as
-        one that refers to every UAV - only pass the literal value 'ALL' instead of a tail number when the instruction
-        contains an explicit word or phrase meaning every UAV, such as 'all', 'every', 'each', 'both', or 'the fleet'. If
-        no UAV is named and no such word is present, that is a single UAV you don't know yet, not 'ALL' - do not guess it
-        and do not assume 'ALL'."
-      location: "Name of a known point to look at, e.g. 'home', 'alpha', 'bravo'. If the operator says 'target alpha' or 'target
-        bravo', either that full phrase or just 'alpha'/'bravo' works - use whichever the operator's own wording makes
-        natural, don't force it into a different shape."
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the
+        literal value 'ALL' only when the instruction explicitly says every UAV is meant ('all', 'every', 'each', 'both',
+        'the fleet'); simply not naming a UAV is not the same as meaning every UAV, so in that case leave it unresolved
+        rather than guessing a tail number or assuming 'ALL'."
+      location: "Name of a known point to look at, e.g. 'home', 'alpha', 'bravo'. If the operator says 'target alpha'/'target
+        bravo', either that full phrase or just 'alpha'/'bravo' is fine - use whichever the operator's own wording makes
+        natural."
   - operation: ResetPayload
     description: "Reset a UAV's payload/gimbal to its default forward-facing position."
     exampleUtterance: "reset UAV-1's camera to default position"
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - if the operator didn't specify
-        one and more than one UAV exists, do not guess. An instruction that simply doesn't name any UAV is NOT the same as
-        one that refers to every UAV - only pass the literal value 'ALL' instead of a tail number when the instruction
-        contains an explicit word or phrase meaning every UAV, such as 'all', 'every', 'each', 'both', or 'the fleet'. If
-        no UAV is named and no such word is present, that is a single UAV you don't know yet, not 'ALL' - do not guess it
-        and do not assume 'ALL'."
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the
+        literal value 'ALL' only when the instruction explicitly says every UAV is meant ('all', 'every', 'each', 'both',
+        'the fleet'); simply not naming a UAV is not the same as meaning every UAV, so in that case leave it unresolved
+        rather than guessing a tail number or assuming 'ALL'."

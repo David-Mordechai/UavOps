@@ -79,8 +79,12 @@ public class AgentFactoryHierarchyTests
     [InlineData("set UAV-1 speed to 200 knots")]
     [InlineData("start the simulator and run lesson 3")]
     [InlineData("what is the weather like today")]
-    public async Task BuildRootToolsForTurn_AlwaysOffersExactlyItsDeclaredChildren_RegardlessOfOperatorText(string operatorText)
+    public async Task BuildRootToolsForTurn_CreatePlanCoversExactlyItsDeclaredChildren_RegardlessOfOperatorText(string operatorText)
     {
+        // BrainAgent's own children are never independently-callable tools of their own - they're
+        // internal steps CreatePlanTool executes (see CreatePlanTool's own doc comment) - so what
+        // this test actually verifies is that CreatePlan's own schema lists exactly the explicit
+        // Children, regardless of operator text (proving explicit Children beats retrieval ranking).
         var agents = new Dictionary<string, AgentConfig>
         {
             ["BrainAgent"] = new AgentConfig { Instructions = "Route.", Children = ["MoavAgent", "SimulatorAgent"] },
@@ -92,27 +96,28 @@ public class AgentFactoryHierarchyTests
 
         var tools = await sut.BuildRootToolsForTurn("corr1", operatorText, CancellationToken.None);
 
-        DelegateToolNames(tools).Should().BeEquivalentTo(["MoavAgent", "SimulatorAgent"]);
+        DelegateToolNames(tools).Should().BeEquivalentTo(["CreatePlan"]);
+        var schemaText = tools.OfType<AIFunction>().Single().JsonSchema.GetRawText();
+        schemaText.Should().Contain("MoavAgent").And.Contain("SimulatorAgent");
     }
 
     [Fact]
-    public async Task BuildRootToolsForTurn_ExplicitEmptyChildren_IsALeaf_EvenThoughRetrievalWouldOfferCandidates()
+    public async Task BuildRootToolsForTurn_ExplicitEmptyChildren_CreatePlanHasNoAgents_EvenThoughRetrievalWouldOfferCandidates()
     {
-        // MoavAgent declares Children: [] explicitly, so it must build with zero delegate tools
-        // even though "OtherAgent" exists and would otherwise be a retrieval candidate.
-        // DelegateAgentTool doesn't expose its built sub-agent publicly, so this asserts
-        // indirectly: build MoavAgent's own config as the *root* via a second factory, using the
-        // same agent dictionary, and inspect its own delegate tools directly.
-        var moavAgents = new Dictionary<string, AgentConfig>
+        // BrainAgent declares Children: [] explicitly, so CreatePlan must end up with zero agents to
+        // delegate to, even though "OtherAgent" exists and would otherwise be a retrieval candidate.
+        var agents = new Dictionary<string, AgentConfig>
         {
-            ["BrainAgent"] = new AgentConfig { Instructions = "Live ops.", Description = "Handles live UAV fleet operations.", Children = [] },
+            ["BrainAgent"] = new AgentConfig { Instructions = "Route.", Description = "Routes.", Children = [] },
             ["OtherAgent"] = new AgentConfig { Instructions = "Other.", Description = "Some other unrelated specialist." }
         };
-        var retrievalIndex = await BuildFixedIndexAsync(moavAgents);
-        var sut = CreateSut(moavAgents, retrievalIndex);
+        var retrievalIndex = await BuildFixedIndexAsync(agents);
+        var sut = CreateSut(agents, retrievalIndex);
 
         var tools = await sut.BuildRootToolsForTurn("corr1", "anything", CancellationToken.None);
 
-        DelegateToolNames(tools).Should().BeEmpty();
+        DelegateToolNames(tools).Should().BeEquivalentTo(["CreatePlan"]);
+        var schemaText = tools.OfType<AIFunction>().Single().JsonSchema.GetRawText();
+        schemaText.Should().NotContain("OtherAgent");
     }
 }

@@ -15,28 +15,16 @@ public sealed class ToolInvocationLogger(ILogger<ToolInvocationLogger> logger, I
 {
     private readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _pendingProactiveMessages = new();
 
-    // Tracks, per turn, whether any tool (a real delegate call or a leaf operation call, success
-    // or failure alike - an attempt still counts) actually ran. MainAgentOrchestrator uses this to
-    // tell a genuinely-actioned turn apart from one where the model answered with bare text and no
-    // tool call at all - see its own doc comment for why that distinction matters. Cleared via
-    // <see cref="ClearInvocationTracking"/> once read, since correlationId is per-turn and never
-    // reused - otherwise this would grow unbounded for the life of the process.
-    private readonly ConcurrentDictionary<string, byte> _invokedCorrelationIds = new();
-
-    // Per-(correlationId, agentName) invocation count - finer-grained than _invokedCorrelationIds
-    // above, which only answers "did anything happen this whole turn". A caller that delegates to
-    // the same agent more than once in one turn (or needs to know whether one specific delegation
-    // call produced any real tool call, not just the turn as a whole) reads the count immediately
-    // before and after that one call - see TailNumberProvenanceGuardTool's silent-delegate fallback.
-    // Same cleanup obligation as above: caller must clear once done reading, correlationId is
-    // never reused.
+    // Per-(correlationId, agentName) invocation count. A caller that delegates to the same agent
+    // more than once in one turn (or needs to know whether one specific delegation call produced
+    // any real tool call at all) reads the count immediately before and after that one call - see
+    // TailNumberProvenanceGuardTool's silent-delegate fallback. Cleared via
+    // <see cref="ClearInvocationTracking"/> once a turn is done, since correlationId is per-turn
+    // and never reused - otherwise this would grow unbounded for the life of the process.
     private readonly ConcurrentDictionary<(string CorrelationId, string AgentName), int> _agentInvocationCounts = new();
-
-    public bool HasAnyToolBeenInvoked(string correlationId) => _invokedCorrelationIds.ContainsKey(correlationId);
 
     public void ClearInvocationTracking(string correlationId)
     {
-        _invokedCorrelationIds.TryRemove(correlationId, out _);
         foreach (var key in _agentInvocationCounts.Keys.Where(k => k.CorrelationId == correlationId).ToList())
         {
             _agentInvocationCounts.TryRemove(key, out _);
@@ -56,7 +44,6 @@ public sealed class ToolInvocationLogger(ILogger<ToolInvocationLogger> logger, I
     {
         var argsJson = JsonSerializer.Serialize(arguments);
         var sw = Stopwatch.StartNew();
-        _invokedCorrelationIds[correlationId] = 0;
         _agentInvocationCounts.AddOrUpdate((correlationId, agentName), 1, (_, count) => count + 1);
 
         try

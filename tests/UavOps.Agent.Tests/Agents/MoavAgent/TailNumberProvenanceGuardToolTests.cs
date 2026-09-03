@@ -206,4 +206,40 @@ public class TailNumberProvenanceGuardToolTests
         inner.InvokedInstructions.Should().ContainSingle();
         result!.ToString().Should().Contain("I need to know");
     }
+
+    [Fact]
+    public async Task InvokeCoreAsync_TailNumberGroundedInDelegatedInstruction_NotInRootOperatorText_Delegates()
+    {
+        // BrainAgent now carries real multi-turn memory and may resolve a cross-turn reference
+        // itself before ever delegating to MoavAgent (e.g. operator said "fly it to alpha" this
+        // turn, but BrainAgent resolved "it" -> UAV-1 from an earlier turn and handed MoavAgent
+        // "fly UAV-1 to alpha"). The real tail number MoavAgent then relays to FlightControlAgent
+        // must not be flagged as invented just because it isn't in this turn's raw operator text -
+        // DelegatedInstructionContext.Current (what MoavAgent was actually given) is the correct
+        // ground truth here, not the root operator text alone.
+        var (tool, inner, _) = CreateSut(ThreeUavFleet(), rootOperatorText: "fly it to alpha");
+
+        using var _ = DelegatedInstructionContext.Push("fly UAV-1 to alpha");
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["instruction"] = "fly UAV-1 to alpha" }), CancellationToken.None);
+
+        inner.InvokedInstructions.Should().ContainSingle().Which.Should().Contain("UAV-1");
+        result!.ToString().Should().Contain("ok:");
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_TailNumberInNeitherDelegatedInstructionNorRootText_StillBlocks()
+    {
+        // The DelegatedInstructionContext fallback must not turn into a free pass - a tail number
+        // absent from both the text MoavAgent was actually given and the root operator text is
+        // still an invented value and must still be blocked.
+        var (tool, inner, _) = CreateSut(ThreeUavFleet(), rootOperatorText: "set speed to 250");
+
+        using var _ = DelegatedInstructionContext.Push("set speed to 250");
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["instruction"] = "set speed to 250 for UAV-3" }), CancellationToken.None);
+
+        inner.InvokedInstructions.Should().BeEmpty();
+        result!.ToString().Should().Contain("Not delegated").And.Contain("UAV-3");
+    }
 }

@@ -19,20 +19,20 @@ namespace UavOps.Agent.Agents;
 /// and traces for that turn are attributable end-to-end. Chat clients (one per distinct
 /// provider+model pair in use — see <see cref="AgentConfig.Provider"/>) are cached across turns.
 ///
-/// The root <c>BrainAgent</c> exists in two forms. A cached, memory-carrying one (see
+/// The root <c>BrainAgent</c> is a single, cached, memory-carrying instance (see
 /// <see cref="GetOrCreatePersistentBrainAgentAsync"/>), together with a single reused
 /// <see cref="AgentSession"/> — required by the Agent Framework's own session-reuse contract (a
 /// session is tied to the agent instance/configuration that created it). Its *tools* are still
 /// rebuilt fresh every turn exactly as before, via <see cref="BuildRootToolsForTurn"/>, and
 /// supplied per call through <c>ChatClientAgentRunOptions</c> — so correlationId-scoped tracing is
-/// unaffected. And a brand new, memory-less one built fresh per call (see
-/// <see cref="BuildStatelessRootAgentForTurn"/>) — <see cref="MainAgentOrchestrator"/> always tries
-/// this one *first* for every turn, and only falls back to the memory-carrying one when it produces
-/// no tool call at all, precisely so a small local model's tendency to pattern-complete a fresh
-/// command against its own prior "success" turns can never fabricate an unexecuted action — see
-/// <see cref="MainAgentOrchestrator"/>'s own doc comment for the incident this fixes. Child agents
-/// reached via delegation are unaffected either way: still built fresh per turn, still carry no
-/// memory of their own, still receive only the synthesized delegation instruction.
+/// unaffected. Every turn goes through this same instance now — see
+/// <see cref="MainAgentOrchestrator"/>'s own doc comment for why the earlier design (a brand-new,
+/// memory-less agent tried first, falling back to this one only when it produced no tool call) was
+/// removed, and what's still validated live to justify that. Child agents reached via delegation
+/// are unaffected: still built fresh per turn, still carry no memory of their own, still receive
+/// only the synthesized delegation instruction — <c>BrainAgent</c> is expected to resolve any
+/// reference to something established earlier in the conversation *before* delegating, so a child
+/// never needs memory of its own to act on it (see <c>BrainAgent.yaml</c>'s own instructions).
 ///
 /// Delegate selection for each agent is either explicit (<see cref="AgentConfig.Children"/>, when
 /// present) or embedding retrieval (<see cref="AgentRetrievalIndex"/>, the fallback for any agent
@@ -115,18 +115,6 @@ public sealed class AgentFactory(
     {
         var query = await retrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
         return BuildAgentTools(RootAgentName, agents[RootAgentName], correlationId, query, operatorText,
-            visited: ImmutableHashSet<string>.Empty, depth: retrievalOptions.MaxDelegationDepth, new TailNumberResolutionScope());
-    }
-
-    /// <summary>Builds a brand new, memory-less root <see cref="AIAgent"/> for this one turn only -
-    /// the same shape the root agent had before the persistent-session feature existed.
-    /// <see cref="MainAgentOrchestrator"/> always tries this first, precisely because it carries no
-    /// history to pattern-complete a fresh command against - see its own doc comment for the full
-    /// reasoning.</summary>
-    public async Task<AIAgent> BuildStatelessRootAgentForTurn(string correlationId, string operatorText, CancellationToken cancellationToken)
-    {
-        var query = await retrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
-        return BuildAgentRecursive(RootAgentName, agents[RootAgentName], correlationId, query, operatorText,
             visited: ImmutableHashSet<string>.Empty, depth: retrievalOptions.MaxDelegationDepth, new TailNumberResolutionScope());
     }
 
@@ -223,6 +211,12 @@ public sealed class AgentFactory(
                 correlationId, name, candidateNames);
         }
 
+        // BrainAgent doesn't call its own children as independently-selectable tools - it must plan
+        // first, via the single CreatePlanTool below, which then executes each named step for real -
+        // see CreatePlanTool's own doc comment for why. Every other agent keeps calling its children
+        // directly, unchanged.
+        var brainAgentDelegates = name == RootAgentName ? new Dictionary<string, AIFunction>(StringComparer.Ordinal) : null;
+
         foreach (var candidateName in candidateNames)
         {
             var childConfig = agents[candidateName]; // existence validated at startup
@@ -239,7 +233,27 @@ public sealed class AgentFactory(
                     tailNumberScope, toolLogger, candidateName, correlationId, operatorText);
             }
 
-            tools.Add(delegateTool);
+            // Specifically the BrainAgent -> MoavAgent edge - see FleetWideActionConfirmationTool's
+            // own doc comment for why this needs its own guard, separate from the one above.
+            if (candidateName == MoavAgentName)
+            {
+                delegateTool = new FleetWideActionConfirmationTool((AIFunction)delegateTool, operationService, operatorPromptGate,
+                    tailNumberScope, candidateName, correlationId, operatorText);
+            }
+
+            if (brainAgentDelegates is not null)
+            {
+                brainAgentDelegates[candidateName] = (AIFunction)delegateTool;
+            }
+            else
+            {
+                tools.Add(delegateTool);
+            }
+        }
+
+        if (brainAgentDelegates is not null)
+        {
+            tools.Add(new CreatePlanTool(brainAgentDelegates, toolLogger, name, correlationId));
         }
 
         return tools;
@@ -248,6 +262,22 @@ public sealed class AgentFactory(
     private AIAgent BuildAgent(string name, AgentConfig config, List<AITool> tools, ChatHistoryProvider? chatHistoryProvider = null)
     {
         var chatClient = GetChatClient(config.Model, config.Provider);
+
+        // A leaf/actor agent - no children of its own, but real tools - exists only to act via those
+        // tools; it has no legitimate reason to reply in bare text before calling anything at all.
+        // Force that structurally rather than trust it (see RequireToolOnFirstTurnChatClient's own
+        // doc comment for the incident this fixes). Every current leaf/actor agent already has this
+        // exact structural signature (children: [] plus at least one real tool) vs. every router-tier
+        // agent (has children, no tools of its own) - no new YAML flag needed. Wraps only this
+        // per-call client instance, never GetChatClient's shared cached one, since router agents use
+        // the same model and must not be forced this way. BrainAgent is the one exception with real
+        // children that still gets this: its only tool is CreatePlanTool, and an empty-steps plan is
+        // a completely valid, forceable response to a purely conversational message - see
+        // CreatePlanTool's own doc comment.
+        if (((config.Children?.Count ?? 0) == 0 && tools.Count > 0) || name == RootAgentName)
+        {
+            chatClient = new RequireToolOnFirstTurnChatClient(chatClient);
+        }
 
         var options = new ChatClientAgentOptions
         {
