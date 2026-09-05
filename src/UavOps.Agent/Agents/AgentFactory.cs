@@ -58,7 +58,7 @@ public sealed class AgentFactory(
     OperatorPromptGate operatorPromptGate,
     ILogger<AgentFactory> logger)
 {
-    private const string RootAgentName = "BrainAgent";
+    public const string RootAgentName = "BrainAgent";
     private const string MoavAgentName = "MoavAgent";
     private const string OperatorPromptKind = "OperatorPrompt";
 
@@ -70,22 +70,25 @@ public sealed class AgentFactory(
     private readonly SemaphoreSlim _brainAgentLock = new(1, 1);
     private AIAgent? _brainAgent;
     private AgentSession? _brainAgentSession;
+    private InMemoryChatHistoryProvider? _brainAgentHistoryProvider;
 
-    /// <summary>Returns the single, long-lived BrainAgent instance and its reused conversation
-    /// session, creating both on first use. The instance carries no tools of its own — this
-    /// turn's tools are built separately via <see cref="BuildRootToolsForTurn"/> and supplied by
-    /// the caller through per-call run options, so nothing here needs to change per turn.</summary>
-    public async Task<(AIAgent Agent, AgentSession Session)> GetOrCreatePersistentBrainAgentAsync(CancellationToken cancellationToken)
+    /// <summary>Returns the single, long-lived BrainAgent instance, its reused conversation
+    /// session, and the history provider backing that session (so a caller can snapshot/restore
+    /// its message list — see <see cref="MainAgentOrchestrator"/>'s verified-retry logic), creating
+    /// all three on first use. The instance carries no tools of its own — this turn's tools are
+    /// built separately via <see cref="BuildRootToolsForTurn"/> and supplied by the caller through
+    /// per-call run options, so nothing here needs to change per turn.</summary>
+    public async Task<(AIAgent Agent, AgentSession Session, InMemoryChatHistoryProvider HistoryProvider)> GetOrCreatePersistentBrainAgentAsync(CancellationToken cancellationToken)
     {
-        if (_brainAgent is not null && _brainAgentSession is not null)
+        if (_brainAgent is not null && _brainAgentSession is not null && _brainAgentHistoryProvider is not null)
         {
-            return (_brainAgent, _brainAgentSession);
+            return (_brainAgent, _brainAgentSession, _brainAgentHistoryProvider);
         }
 
         await _brainAgentLock.WaitAsync(cancellationToken);
         try
         {
-            if (_brainAgent is null || _brainAgentSession is null)
+            if (_brainAgent is null || _brainAgentSession is null || _brainAgentHistoryProvider is null)
             {
 #pragma warning disable MEAI001 // MessageCountingChatReducer is an experimental Microsoft.Extensions.AI API — acceptable here, it's just a message-count bound with no external side effects.
                 var historyProvider = new InMemoryChatHistoryProvider(new InMemoryChatHistoryProviderOptions
@@ -96,9 +99,10 @@ public sealed class AgentFactory(
                 var agent = BuildAgent(RootAgentName, agents[RootAgentName], tools: [], historyProvider);
                 _brainAgent = agent;
                 _brainAgentSession = await agent.CreateSessionAsync(cancellationToken);
+                _brainAgentHistoryProvider = historyProvider;
             }
 
-            return (_brainAgent, _brainAgentSession);
+            return (_brainAgent, _brainAgentSession, _brainAgentHistoryProvider);
         }
         finally
         {

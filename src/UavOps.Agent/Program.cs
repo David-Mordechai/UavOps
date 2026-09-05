@@ -20,8 +20,15 @@ using UavOps.Agent.Watchdog.Fake;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// File sink alongside the console one so tool-call/agent-reasoning behavior (e.g. the
+// BrainAgent verified-retry logging in MainAgentOrchestrator) can be inspected after the fact
+// without needing to have been watching the console at the time - added after a live incident
+// where diagnosing a suspected fabrication required the operator to manually copy the chat UI's
+// reasoning panel, since nothing was persisted anywhere else.
 builder.Host.UseSerilog((context, configuration) =>
-    configuration.ReadFrom.Configuration(context.Configuration).WriteTo.Console());
+    configuration.ReadFrom.Configuration(context.Configuration)
+        .WriteTo.Console()
+        .WriteTo.File("logs/uavops-agent-.log", rollingInterval: RollingInterval.Day, retainedFileCountLimit: 14));
 
 var ollamaOptions = builder.Configuration.GetSection(OllamaOptions.SectionName).Get<OllamaOptions>()
     ?? throw new InvalidOperationException($"Missing '{OllamaOptions.SectionName}' configuration section.");
