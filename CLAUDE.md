@@ -5,31 +5,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A local-LLM agent layer for natural-language UAV command and control (.NET 8). A chat UI turns
-operator text (e.g. "fly UAV-1 to target alpha and set speed to 200") into fleet commands, via
-[Ollama](https://ollama.com) and a small local model (`granite4.1:3b` by default). Everything
-about which tools an agent exposes and how they're described to the model is config-driven
-(`AgentsConfig/*.yaml`), not code.
+operator text (e.g. "fly UAV-1 to target alpha and set speed to 200") into fleet, simulator, and
+watchdog commands, via a single flat agent (`BrainAgent`) backed by an OpenAI-compatible chat
+endpoint (Ollama locally by default, or a real OpenAI-compatible server such as vLLM — see
+`AgentModels` in `appsettings.json`). Everything about what BrainAgent can do and how each tool is
+described to the model is config-driven (`AgentsConfig/BrainAgent.yaml`), not code.
 
 Two processes end to end:
 
 - **`src/UavOps.Agent`** — the one server-side process: SignalR chat hub (`/chatHub`) for the
-  browser, SignalR operation hub (`/uavCommandHub`) for a fleet-commanding client, multi-agent
-  orchestration (agent-as-tool delegation, rooted at `BrainAgent`, which routes each request to
-  either live fleet operations or the training simulator), a reflection-based tool catalog, a
-  confirmation gate for mutating actions, structured tool-call logging, and a static SPA
-  (`wwwroot/`). Answers UAV operations via either an in-memory simulation
-  (`Agents/MoavAgent/Simulation/`, default) or a SignalR bridge
-  (`Agents/MoavAgent/Operations/Remote/`) to a connected fleet-commanding app, and drives the
-  separate training-simulator environment (a local VMware host/VM, plus lesson scripts run
-  directly on this machine) via `Agents/SimulatorAgent/` — see "Architecture" below. `.cs` files
-  under `Agents/` are arranged per agent branch — `Agents/MoavAgent/` (the live-fleet plumbing:
-  operations, simulation, the UAV-specific SignalR hub) and `Agents/SimulatorAgent/` (the real
-  VMware/lesson-runner implementation) — while genuinely cross-cutting infrastructure used by every
-  branch (`AgentFactory`, delegation, retrieval, `Tooling/`, `Options/`, `Hubs/ChatHub.cs`) stays at
-  the `Agents/`/top level. `BrainAgent` is a pure router with no files of its own. The fake/dev
-  stand-in simulator implementation (`FakeSimulatorService`/`FakeLessonExecutor`) and the shared
-  interfaces/DTOs both the real and fake implementations depend on (`ISimulatorService`,
-  `OperationResult`, etc.) live in two more small projects, `src/UavOps.Agent.Simulator.Fake` and
+  browser, SignalR operation hub (`/uavCommandHub`) for a fleet-commanding client, a single flat
+  `BrainAgent` holding every real operation across 4 domains (live fleet, training simulator,
+  watchdog health, watchdog service configuration) directly as tools — no agent-to-agent
+  delegation anywhere — narrowed each turn to a relevant top-K subset by real semantic-embedding
+  tool retrieval, a reflection-based tool catalog, a confirmation gate for mutating actions,
+  structured tool-call logging, and a static SPA (`wwwroot/`). Answers UAV operations via either an
+  in-memory simulation (`Agents/MoavAgent/Simulation/`, default) or a SignalR bridge
+  (`Agents/MoavAgent/Operations/Remote/`) to a connected fleet-commanding app, drives the separate
+  training-simulator environment (a local VMware host/VM, plus lesson scripts run directly on this
+  machine) via `Agents/SimulatorAgent/`, and monitors/configures a separately-running watchdog
+  process via `Agents/MaintenanceAgent/` — see "Architecture" below. `.cs` files under `Agents/`
+  are arranged per domain purely for organization — `Agents/MoavAgent/` (the live-fleet plumbing:
+  operations, simulation, the UAV-specific SignalR hub), `Agents/SimulatorAgent/` (the real
+  VMware/lesson-runner implementation), `Agents/MaintenanceAgent/` (the real watchdog
+  health-polling/service-config implementation) — while genuinely cross-cutting infrastructure used
+  by every domain (`AgentFactory`, tool retrieval, `Tooling/`, `Options/`, `Hubs/ChatHub.cs`) stays
+  at the `Agents/`/top level; a domain folder's position plays no role in what BrainAgent can call —
+  that's entirely `AgentsConfig/BrainAgent.yaml`'s `tools:` list. The fake/dev stand-in
+  implementations for the simulator and watchdog domains (`FakeSimulatorService`/
+  `FakeLessonExecutor`, `FakeWatchdogService`/`FakeWatchdogConfigService`) and the shared
+  interfaces/DTOs the real and fake implementations both depend on (`ISimulatorService`,
+  `IWatchdogService`, `IWatchdogConfigService`, `OperationResult`, etc.) live in three more small
+  projects, `src/UavOps.Agent.Simulator.Fake`, `src/UavOps.Agent.Watchdog.Fake`, and
   `src/UavOps.Agent.Contracts` — see "Simulator infrastructure" below for why.
 - **`src/UavOps.FleetClient`** (.NET Framework 4.7) — a class library a real fleet-commanding
   .NET Framework application references to connect to `UavOps.Agent`'s operation hub; see its
@@ -45,11 +52,23 @@ HTTP.
 
 ## Running it
 
-Requires the .NET 8 SDK and Ollama running locally with the main chat model (`ollama pull granite4.1:3b`) pulled.
+Requires the .NET 8 SDK, Ollama running locally with the main chat model (`ollama pull
+granite4.1:3b`) pulled, and a reachable **real embedding endpoint** for tool retrieval (see
+below) — there is no offline/fake fallback for embeddings anymore.
 
-For the semantic agent-retrieval index, the application supports two modes:
-1. **Ollama (Default)**: Pull the retrieval embedding model (`ollama pull nomic-embed-text`) in your local Ollama instance.
-2. **In-Memory**: Set `"EmbeddingModel": "InMemory"` in `appsettings.json` to run embeddings completely in-process (recomputes deterministic, normalized 384-dimensional vectors seeded by string hashes). This is highly recommended for offline/standalone development with zero external dependencies.
+**Chat model**: `Ollama:DefaultModel` (`appsettings.json`) is the app-wide default; `AgentModels`
+overrides BrainAgent specifically to point at any OpenAI-compatible endpoint instead (e.g. a vLLM
+server) — set `AgentModels:Provider` to `"OpenAI"` and `AgentModels:Model`/`OpenAI:Endpoint`
+accordingly, plus an API key via `dotnet user-secrets set "OpenAI:ApiKey" "..." --project
+src/UavOps.Agent` (`AgentConfigValidator` fails fast at startup if this is missing).
+
+**Tool retrieval embeddings** (`Embedding` section, required, no `"InMemory"`/Ollama fallback
+mode anymore): a real `Qwen/Qwen3-Embedding-8B`-class model served on an OpenAI-compatible
+`/v1/embeddings` endpoint (e.g. a second local vLLM instance). This is load-bearing for tool-call
+correctness, not a nice-to-have — see `ToolRetrievalIndex`'s own doc comment — so an unreachable
+embedding endpoint fails the app at boot (`Program.cs`), not silently at the first real operator
+turn. A hash-based fake was deliberately removed after `eval/tool-retrieval-lab/` found it ranks
+tools uncorrelated with meaning.
 
 No Docker.
 
@@ -57,12 +76,15 @@ No Docker.
 dotnet run --project src/UavOps.Agent --urls http://localhost:5262
 ```
 
-Then open http://localhost:5262. By default (`OperationBackend: Simulated` in `appsettings.json`)
-this is the only process you need — operations are answered in-memory. `UavOps.Agent`
-validates every agent's `AgentsConfig/*.yaml` against `IOperationService` **at startup**
-(reflection, no network call) — if a tool references an operation/parameter that doesn't exist,
-the app refuses to start and logs exactly what's wrong (see `AgentConfigValidator`). `GET /healthz`
-gives a quick sanity check (model in use, operation backend, number of operations discovered).
+Then open http://localhost:5262. By default (`OperationBackend: Simulated`, `SimulatorBackend:
+Fake`, `WatchdogBackend: Fake` in `appsettings.json`) this is the only process you need —
+everything is answered in-memory, no VMware/real watchdog process required. `UavOps.Agent`
+validates `AgentsConfig/BrainAgent.yaml`'s `tools:` list against all 4 real interfaces
+(`IOperationService`/`ISimulatorService`/`IWatchdogService`/`IWatchdogConfigService`) **at
+startup** (reflection, no network call) — if a tool references an operation/parameter that
+doesn't exist, the app refuses to start and logs exactly what's wrong (see
+`AgentConfigValidator`). `GET /healthz` gives a quick sanity check (model in use, each backend
+selection, number of operations discovered per catalog, number of tools in the retrieval index).
 
 To exercise the real (or mock) fleet-commanding path instead:
 
@@ -107,55 +129,96 @@ file in `eval/golden-commands/`; no code changes needed.
 ## Architecture: UavOps.Agent
 
 **Request flow**: `ChatHub.SendMessage` → `MainAgentOrchestrator.HandleAsync` →
-`AgentFactory.BuildMainAgentForTurn` builds the *entire* agent graph fresh for that turn, rooted at
-`BrainAgent` (an `AIAgent` from Microsoft.Agents.AI). `BrainAgent` is a pure router: it decides
-*live fleet* (`MoavAgent`) vs. *training simulator* (`SimulatorAgent`) and delegates to exactly
-one. `MoavAgent` is what used to be the whole entry point (`MainAgent`) before the simulator branch
-existed — it still fans out to the four live-fleet specialists (`FlightControlAgent`,
-`PayloadControlAgent`, `MissionAgent`, `GdtControlAgent`). `SimulatorAgent` delegates to
-`SimulatorInfrastructureAgent`, which owns the VMware/VM/local-lesson tools (see "Simulator
-infrastructure" below).
+`AgentFactory.GetOrCreatePersistentBrainAgentAsync` (the single, long-lived `BrainAgent`
+`ChatClientAgent`, created once and reused for the app's entire lifetime — see "Persistent session"
+below) + `AgentFactory.BuildToolsForTurn` (this turn's real, correlationId-scoped tool list,
+narrowed by retrieval — see below) → one `agent.RunAsync` call. **No agent-to-agent delegation
+anywhere** — this replaced an earlier multi-agent tree (`BrainAgent` → `MoavAgent`/
+`SimulatorAgent`/`MaintenanceAgent` → per-domain leaf specialists) after live testing and a pair of
+standalone baselines (`eval/single-agent-baseline/`, a pure-Python HTTP script, and
+`eval/single-agent-baseline-dotnet/`, matching this app's own `Microsoft.Agents.AI` construction
+path) established that the delegation-hop structure itself — not the model, not the .NET Agent
+Framework — was the source of fabricated success claims (a leaf agent, or `BrainAgent` itself,
+confidently reporting an action succeeded with zero underlying tool calls). Both baselines scored
+8/8 on the exact scenarios that fabricated live, using a flat, no-delegation design; a standalone
+lab (`eval/tool-retrieval-lab/`) then validated that a flat design scales correctly to far more
+tools than this app needs (1000 synthetic tools, 100% pass rate) once real embedding-based
+retrieval narrows what's offered each turn — both were then ported into this app directly.
 
-- **Agents are rebuilt every turn**, not cached, because every tool instance closes over that
-  turn's `correlationId` so logs/traces are attributable end-to-end. Only the underlying
-  `IChatClient` per Ollama model is cached across turns (`AgentFactory._chatClients`).
-- **Delegation is "agent-as-tool"**, not a hardcoded router: `DelegateAgentTool` wraps a domain
-  `AIAgent` as an `AIFunction` that its parent calls like any other tool — any agent can hold
-  these, not just the root. Each call is logged exactly like a real fleet-command call, attributed
-  to whichever agent actually built the tool (not a fixed name).
-- **Two ways an agent picks its delegates**, both in `AgentFactory.BuildAgentRecursive`:
-  - **Explicit (`children:` in YAML)** — an author-declared, deterministic list, always honored
-    regardless of anything else. Used for `BrainAgent`/`MoavAgent`/`SimulatorAgent` specifically
-    *because* the live-vs-simulator split is safety-relevant and must never depend on embedding
-    similarity noise — same reasoning `ChatConfirmationParser` already uses a fixed vocabulary
-    instead of LLM classification for yes/no approvals. `children: []` marks a deliberate leaf.
-  - **Embedding retrieval (`AgentRetrievalIndex`), the fallback** — for any agent that omits
-    `children:` entirely. Every such agent's `description` is embedded once at startup; each turn,
-    the operator's raw text is embedded once and the parent's candidates are the top-K
-    (`Retrieval:MaxDelegatesPerAgent`) most similar non-visited agents, recursed up to
-    `Retrieval:MaxDelegationDepth` levels (`visited` prevents cycles/self-delegation). This is a
-    leftover-but-live extension point from an earlier iteration of this design — nothing in the
-    current roster actually falls through to it (every agent in the tree declares `children:`
-    explicitly, even leaves), but it's kept rather than deleted for any future agent added without
-    an explicit position in the tree. Requires `Ollama:EmbeddingModel` — either a real Ollama
-    embedding model (e.g. `nomic-embed-text`) or the literal `"InMemory"` for a zero-dependency,
-    deterministic, offline `IEmbeddingGenerator` (`Agents/InMemoryEmbeddingGenerator.cs`).
-- **Domain agent tools are reflected from `IOperationService`**, not HTTP-backed:
-  `OperationTool` is an `AIFunction` for one `IOperationService` method, invoked in-process
-  via `MethodInfo.Invoke` (no separate HTTP invoker class — there's no network hop to make).
-  Critically, **the LLM never sees C# signatures or reflection details** — only the hand-written
-  `Description` and per-parameter descriptions from `AgentsConfig/*.yaml`. `OperationCatalog`
-  supplies only the mechanical parameter shape (names/CLR types), built once at startup by
-  reflecting over `IOperationService` — no network call, no remotely-fetched spec.
-  `AgentConfigValidator` cross-checks the two at startup: every configured tool's `operation` must
-  match a real `IOperationService` method name, and every parameter must have either a
-  `parameters` description or a `fixedParameters` value. Result JSON returned to the model is
-  camelCase (`OperationTool.ResultSerializeOptions`), matching the casing already used in tool
-  arguments and schemas — not the DTOs' native PascalCase.
-- **Concurrent tool calls**: `FunctionInvokingChatClient(ollama) { AllowConcurrentInvocation =
-  true }` plus `ChatOptions.AllowMultipleToolCalls = true` lets one model turn batch several tool
-  calls (e.g. `SetSpeed` + `SetAltitude`, or a parent agent delegating to two children at once)
-  and run them concurrently instead of one at a time.
+- **BrainAgent holds every real operation across all 4 catalogs directly** — fleet (12 ops),
+  simulator (4 ops + 1 `OperatorPrompt` tool), watchdog health (4 ops), watchdog config (5 ops) —
+  as tools of one flat agent, each wrapped the same way regardless of domain (see "Domain tools",
+  below). `AgentFactory.BuildAllTools` is one loop, no recursion.
+- **Tools are rebuilt fresh every turn**, not cached, because every tool instance closes over that
+  turn's `correlationId` so logs/traces are attributable end-to-end. `BrainAgent` itself — and its
+  one reused `AgentSession` — is the opposite: built once and cached for the app's lifetime (see
+  "Persistent session" below); only its *tools* are swapped in per turn via
+  `ChatClientAgentRunOptions`. The underlying `IChatClient` per model is also cached across turns
+  (`AgentFactory._chatClients`).
+- **Live semantic tool retrieval** (`ToolRetrievalIndex`, `Retrieval:TopK` in `appsettings.json`,
+  default 10): `BuildToolsForTurn` embeds the operator's raw turn text and ranks it by cosine
+  similarity against every tool's own `(name, description)` embedding (computed once at startup
+  from a template tool list, `AgentFactory.BuildTemplateTools`), returning only the top-K most
+  relevant tool names for that turn. No `children:`/agent-selection concept exists anymore (that
+  was `AgentRetrievalIndex`, deleted along with the delegation tree it served) — this is
+  tool-level, not agent-level, retrieval, and it is the *only* thing narrowing what a turn sees;
+  nothing is force-appended regardless of ranking. Requires a real embedding model
+  (`Options/EmbeddingOptions.cs`, see "Running it" above) — a hash-based fake was found, in the
+  standalone lab, to rank tools uncorrelated with meaning, which is actively dangerous once ranking
+  quality is load-bearing for correctness rather than a nice-to-have.
+- **`tool_choice` is left at its default, "auto" — never forced.** An earlier version of this flat
+  design forced `tool_choice: "required"` on an agent's first completion of a turn
+  (`RequireToolOnFirstTurnChatClient`, since deleted), carried over defensively from the old
+  multi-agent design without re-validating whether it was still needed. It was not: forcing
+  deterministically broke a bare greeting (confirmed 8/8 via a repeated live regression test) —
+  producing no tool call at all when forced, something auto-mode never did — while the two
+  standalone baselines above, both using unforced `tool_choice: "auto"`, never exhibited the
+  fabrication forcing was meant to prevent in the first place. Removing forcing (and the
+  verified-retry safety net that existed only to compensate for its failures) fixed the greeting
+  regression with no loss of the anti-fabrication property, since that property turned out to come
+  from the flat architecture itself, not from forcing.
+- **Persistent session, and a real, live-reproduced fabrication bug it caused**: `BrainAgent` and
+  its `AgentSession` are created once (`GetOrCreatePersistentBrainAgentAsync`, guarded by a
+  `SemaphoreSlim` against concurrent first-use) and reused for the app's entire running lifetime —
+  real multi-turn memory, not per-connection. Its history is bounded by
+  `Memory:MaxHistoryMessages` (default 40) via `InMemoryChatHistoryProviderOptions.ChatReducer` —
+  **not** `Microsoft.Extensions.AI`'s own `MessageCountingChatReducer`. That type was tried first
+  and found, from its actual shipped source, to unconditionally exclude *every* message containing
+  a `FunctionCallContent`/`FunctionResultContent` from its output, regardless of the target count —
+  not "trim once you exceed N", but "never include a tool call or its result, ever". Once
+  `BrainAgent`'s session ran even one reduction pass, every real tool call it had ever made became
+  invisible to the model on the next completion, while its own past plain-text success claims
+  remained — live-reproduced (`eval/single-agent-baseline-dotnet-persistent/`, one never-recreated
+  session, real production model/prompt/tools): the first round of a repeated scenario succeeded
+  with real tool calls, then **every round after that fabricated a confident success report with
+  zero tool calls**, because the model's own history contained nothing but "operator asked, I said
+  I did it" pairs with no tool trace at all to distinguish that pattern from one where it never
+  called anything real. Fixed with `Agents/ToolCallAwareChatReducer.cs`, which bounds history the
+  same way (target message count, plus the first system message) but operates on whole
+  conversation turns, never individual messages, so a kept turn's tool call and its result can
+  never be split apart or silently erased — the most recent turn is always kept in full even if it
+  alone exceeds the target. Verified 8/8 on the same reproduction after the fix, and again live
+  through the real chat UI, several rounds deep into real accumulated session history.
+- **Domain tools are reflected from 4 interfaces**, not HTTP-backed: `OperationTool` is an
+  `AIFunction` for one interface method (`IOperationService`, `ISimulatorService`,
+  `IWatchdogService`, or `IWatchdogConfigService`), invoked in-process via `MethodInfo.Invoke` (no
+  separate HTTP invoker class — there's no network hop to make). Critically, **the LLM never sees
+  C# signatures or reflection details** — only the hand-written `description` and per-parameter
+  descriptions from `AgentsConfig/BrainAgent.yaml`. Each interface has its own `OperationCatalog`
+  instance supplying only the mechanical parameter shape (names/CLR types), built once at startup
+  by reflecting over that interface — no network call, no remotely-fetched spec.
+  `AgentConfigValidator` cross-checks all four at startup: every configured tool's `operation` must
+  match a real method name on one of them, and every parameter must have either a `parameters`
+  description or a `fixedParameters` value. Fleet-domain tools whose operation takes a `tailNumber`
+  or `location` parameter get additional wrapping (`TailNumberDisambiguationTool`/
+  `LocationCanonicalizationTool` — see the operation-layer section below); non-fleet tools don't,
+  since only fleet operations can name a UAV the model might guess instead of asking. Result JSON
+  returned to the model is camelCase (`OperationTool.ResultSerializeOptions`), matching the casing
+  already used in tool arguments and schemas — not the DTOs' native PascalCase.
+- **Concurrent tool calls**: `FunctionInvokingChatClient(inner) { AllowConcurrentInvocation = true
+  }` plus `ChatOptions.AllowMultipleToolCalls = true` lets one model turn batch several tool calls
+  (e.g. `SetSpeed` + `SetAltitude`, or a fleet-wide fan-out across several UAVs) and run them
+  concurrently instead of one at a time.
 - **Confirmation gate** (`ConfirmationGate`): opt-in and per-tool, not inferred from anything
   about the command — a tool only goes through confirmation when its config sets
   `requiresConfirmation: true` *and* `ExecutionMode` is `"Confirm"` (`"Direct"` is a global
@@ -183,10 +246,9 @@ infrastructure" below).
   `ConfirmationGate`) — with concurrent tool invocation enabled, two mutating calls could
   otherwise both need approval at once, which would make a bare "yes" reply ambiguous about which
   one it answers.
-- **Logging**: every tool call — including agent-to-agent delegation at any level — goes through
-  `ToolInvocationLogger`, producing one structured log line (tool, args, result, duration,
-  correlation ID) and one `ReceiveAgentTrace` SignalR event, so the chat UI's reasoning panel and
-  the eval suite's trace assertions see identical data.
+- **Logging**: every tool call goes through `ToolInvocationLogger`, producing one structured log
+  line (tool, args, result, duration, correlation ID) and one `ReceiveAgentTrace` SignalR event, so
+  the chat UI's reasoning panel and the eval suite's trace assertions see identical data.
 - **SignalR concurrency note**: `MaximumParallelInvocationsPerClient = 10` is set once in
   `Program.cs` and covers both hubs mapped off it (`/chatHub`, `/uavCommandHub`) — needed because
   (a) the operator's chat reply to a pending confirmation is itself just another `SendMessage`
@@ -196,138 +258,49 @@ infrastructure" below).
   SignalR's default limit of 1 would otherwise queue these behind the in-progress call until they
   time out.
 
-### Configuring agents (`src/UavOps.Agent/AgentsConfig/*.yaml`)
+### Configuring BrainAgent (`src/UavOps.Agent/AgentsConfig/BrainAgent.yaml`)
 
-One YAML file per agent (filename, without extension, is the agent's name — not a field inside
-the file, so a filename/field mismatch can't happen), loaded by `AgentConfigLoader` at startup,
-which searches recursively (`SearchOption.AllDirectories`) so the files can be nested into
-per-agent subfolders that mirror `Agents/`'s layout purely for organization (`BrainAgent/`,
-`MoavAgent/` — the four live-fleet specialists plus `MoavAgent.yaml` itself, `SimulatorAgent/` —
-itself plus `SimulatorInfrastructureAgent.yaml`); an agent's position in that folder tree plays no
-role in the agent graph (that's `children:`, below). No code changes needed to change what an
-agent can do or how it's described to the model:
+**One YAML file**, loaded by `AgentConfigLoader.Load` at startup — no filename-as-agent-name
+convention, no recursive directory search, no per-agent subfolders; there is exactly one agent.
+No code changes needed to change what BrainAgent can do or how a tool is described to the model:
 
-- `instructions` — the agent's system prompt.
-- `description` — shown to a parent as this agent's tool description whenever it's delegated to,
-  *and* embedded for retrieval ranking when the agent doesn't declare `children:` (required and
-  validated non-blank for every agent except `BrainAgent`, the root).
+- `instructions` — BrainAgent's system prompt. Covers domain-routing notes (which tools belong to
+  which real-world domain, since retrieval can offer tools across all 4 at once), tail-number/
+  pronoun-resolution rules, multi-part-request counting, simulator startup ordering, watchdog
+  config rules, and reporting rules (never claim an action completed without a real tool call this
+  turn — see "Persistent session" above for why this rule has real teeth now that history can't
+  silently lose tool-call evidence).
 - `temperature` — sampling temperature (lower = more consistent tool-calling decisions for a
-  small model).
-- `children` — optional explicit, ordered list of this agent's delegates. Omit entirely to fall
-  back to embedding retrieval (see above); include (even as `children: []`) to make delegation
-  deterministic instead — `BrainAgent`, `MoavAgent`, and `SimulatorAgent` all declare this.
-- `tools[]` — operation-backed tools this agent may call. Each entry: `operation` (the tool name
-  the LLM sees; for `kind: Operation` — the default — must match a method name on
-  `IOperationService` or `ISimulatorService` exactly, case-sensitive), `description`,
-  `parameters` (name → description shown to the model — must cover every parameter the operation
-  needs that isn't in `fixedParameters`), `fixedParameters` (name → literal value sent every call,
-  never shown to the model), `requiresConfirmation` (default `false`; see the confirmation gate
-  above — independent per tool, so e.g. `ReturnToLaunch`/`RunSimulatorLesson` can require approval
-  while others don't). `kind: OperatorPrompt` instead builds a bespoke ask-the-operator-and-wait
-  tool (`Agents/SimulatorAgent/AskOperatorChoiceTool.cs`) — not resolved against any catalog — see
-  `SimulatorInfrastructureAgent.yaml`'s `AskOperatorWhichLesson` tool for the only current example.
+  small model). `model`/`provider` are deliberately **not** read from this file — see
+  `AgentConfig.Model`'s own doc comment; they come from `AgentModels` in `appsettings.json`
+  instead, applied onto the loaded config in `Program.cs` before validation runs.
+- `tools[]` — every real operation BrainAgent may call, across all 4 domains in one flat list.
+  Each entry: `operation` (the tool name the LLM sees; for `kind: Operation` — the default — must
+  match a method name on `IOperationService`/`ISimulatorService`/`IWatchdogService`/
+  `IWatchdogConfigService` exactly, case-sensitive — `AgentConfigValidator` checks all four),
+  `description`, `exampleUtterance` (a plausible operator phrase that would trigger this tool —
+  required, shown on hover in the Agent Graph tab, and embedded alongside the description for
+  retrieval ranking), `parameters` (name → description shown to the model — must cover every
+  parameter the operation needs that isn't in `fixedParameters`), `fixedParameters` (name → literal
+  value sent every call, never shown to the model), `requiresConfirmation` (default `false`; see
+  the confirmation gate above — independent per tool). `kind: OperatorPrompt` instead builds a
+  bespoke ask-the-operator-and-wait tool (`Agents/SimulatorAgent/AskOperatorChoiceTool.cs`) — not
+  resolved against any catalog — see the `AskOperatorWhichLesson` tool for the only current
+  example.
 
-When editing agent instructions, note the existing prompts are deliberately explicit about not
-letting the model invent tail numbers, guess/convert units, or resolve pronouns across
-agent-to-agent handoffs (each delegate only sees the instruction text its parent gives it, not the
-full conversation) — preserve that style if you touch them.
+No `description`/`exampleUtterance`-at-the-agent-level or `children:` concept exists anymore —
+both existed only to describe an agent to a *parent* agent (as a delegate tool, or for
+agent-selection retrieval); with exactly one agent that delegates to nothing, neither purpose
+applies. `AgentGraphProjector` reflects this: the Agent Graph tab renders one `BrainAgent` node
+plus one node per real tool, a flat star graph — genuinely correct given the architecture, not a
+UI regression.
 
-### BrainAgent delegation reliability: CreatePlan, forced tool-choice, and an open fabrication bug (in progress — branch `plan-execute-and-fabrication-fixes`)
-
-Small/local models proved unreliable at two related things during real operator testing: (1)
-BrainAgent itself sometimes answered a new, actionable request with a confident-sounding success
-claim without delegating to any child at all, and (2) a leaf/actor agent (e.g.
-`FlightControlAgent`) sometimes claimed a command succeeded without calling any of its real
-operation tools. Both are "the model lies instead of acting" — never something to patch by
-detecting the lie after the fact; the fix has to make the lie structurally impossible or force a
-grounded re-query, per repeated operator direction throughout this investigation.
-
-**`CreatePlanTool`** (`Agents/CreatePlanTool.cs`) is BrainAgent's *only* tool, replacing giving it
-each of `MoavAgent`/`SimulatorAgent`/`MaintenanceAgent` as independently-callable tools of their
-own. It takes an ordered list of `{agent, instruction}` steps and its own code (not another model
-decision) walks every step in order, invoking the real delegate tool for each — so "should I
-actually delegate, or just say it happened" is no longer a free choice available on every turn. An
-empty step list is a valid response for a purely conversational turn (a greeting, a recall question
-answered from real history). Each step's `agent` property in the tool's JSON schema carries every
-available agent's real config `description` inline, not just its bare name — an earlier version
-listed bare names only and was observed live to misroute simple, unambiguous requests (e.g. "fly
-UAV-1 to target alpha" going to the simulator's lesson-picker instead of `MoavAgent`, "what UAVs do
-we have" going to `MaintenanceAgent`) because the model had no behavioral signal to route on.
-Giving each child its own top-level tool (the old design) let the model use its native
-function-selection training, which a shared parameter description can't fully replace — if routing
-quality regresses again, this schema-embedding approach is the first thing to revisit. A related,
-narrower miss found the same way: `MoavAgent.yaml`'s own `description` didn't mention "antenna
-tracking" by name, so "set antenna tracking to manual for UAV-1" misrouted to `MaintenanceAgent` —
-fixed by adding that language to the description; watch for more of these as new phrasing is
-tried, since the fix is always "make the routing description name the thing explicitly," never a
-code-level keyword match.
-
-**`RequireToolOnFirstTurnChatClient`** (`Agents/RequireToolOnFirstTurnChatClient.cs`) is an
-`IChatClient` decorator that forces `ChatOptions.ToolMode = ChatToolMode.RequireAny` (maps to the
-OpenAI-compatible `tool_choice: "required"`) on an agent's first completion of a new turn — scoped
-to messages *after* the most recent `ChatRole.User` message, not "has any tool message ever
-appeared in this conversation" (the first version of this check was wrong for exactly this reason:
-correct only for memory-less single-turn agents, but BrainAgent is now a persistent multi-turn
-agent whose history keeps old turns' tool messages around forever, so the naive check would only
-ever force once, on the very first message of the whole session). Applied to every leaf/actor agent
-(`children: []` + `tools.Count > 0`) and, additionally, to BrainAgent specifically (its only tool
-being `CreatePlanTool`, which validly returns an empty plan for non-actionable turns) — never to
-other router-tier agents (`MoavAgent`, `SimulatorAgent`, `MaintenanceAgent`).
-
-**`FleetWideActionConfirmationTool`** (`Agents/MoavAgent/FleetWideActionConfirmationTool.cs`) wraps
-the BrainAgent→MoavAgent delegate edge: if the delegated instruction names every currently-known
-real tail number but the operator's own raw message this turn did not also name them all, forces
-the existing "Apply this to all N known UAVs?" confirmation before the delegation proceeds — closes
-the gap where BrainAgent (which has real memory) could silently expand "all of them" into an
-explicit tail list itself and skip the confirmation MoavAgent would otherwise apply.
-
-**Known open issue — leaf-agent fabrication under concurrent delegation, NOT fixed by the above.**
-Reproduced live via the real chat UI (not a synthetic test), operator: "fly all of them to target
-alpha and set speed to 250 and altitude to 3000, also point all payloads there" against a real
-3-UAV fleet. MoavAgent fans out to `FlightControlAgent` and `PayloadControlAgent` once per UAV,
-allowed to run concurrently (`AllowConcurrentInvocation`/`AllowMultipleToolCalls`, see above).
-`PayloadControlAgent`'s 3-way fan-out was correct — every one of the 3 `PointPayload` calls has a
-real, matching trace entry. `FlightControlAgent`'s fan-out was not: only one of the three (UAV-2)
-has real `Navigate`/`SetSpeed`/`SetAltitude` trace entries; the other two (UAV-1, UAV-3) reported
-specific, confident success text ("UAV-1 is now flying to target alpha at 250 knots and 3000 feet")
-with **zero** underlying tool calls anywhere in the trace, in roughly half the wall-clock time of
-the UAV-2 call that actually did the work (~2s fabricated vs. ~4.6s real) — a strong tell that no
-tool round-trip happened at all for those two.
-
-This is the same class of bug `RequireToolOnFirstTurnChatClient` was built to close, and it did not
-close it here, despite: (a) the underlying vLLM/Qwen backend having been verified via direct
-concurrent curl calls to honor `tool_choice: "required"` reliably (3/3 correct, tested before
-implementing the wrapper), and (b) a scripted live-verification pass immediately after implementing
-all of the above running this *exact* "fly all" scenario once and getting real tool calls for all 3
-UAVs. That inconsistency between runs (curl test: reliable; scripted harness run: passed once; real
-operator session: failed) means this bug is flaky/load-dependent, not deterministic — any fix
-attempt must be validated against several repeated runs of the same scenario, not a single pass,
-before being reported as working.
-
-Root cause is **not yet confirmed**. Two hypotheses, neither yet checked:
-1. The backend doesn't actually honor `tool_choice: "required"` reliably once the *real* request
-   shape is sent (full agent instructions + real tool schemas attached, three simultaneous such
-   requests) — the curl verification used a simplified payload, not this framework's actual request
-   shape under this framework's actual concurrency pattern.
-2. The model DID attempt a tool call that failed or had malformed/mismatched arguments, producing a
-   `ChatRole.Tool` message (error content) without ever reaching `OperationTool`/
-   `ToolInvocationLogger` (which only logs a *real* invocation) — `RequireToolOnFirstTurnChatClient`'s
-   turn-scoping check only looks for *any* `ChatRole.Tool` message after the last user turn, not a
-   *successful* one, so a failed first attempt would wrongly stop it from forcing `RequireAny` again
-   on the next completion, leaving the model free to answer in plain text.
-
-**Not yet started**: add debug-level logging around `RequireToolOnFirstTurnChatClient`'s
-forced/unforced decision and `FlightControlAgent`'s raw completions (whether `tool_calls` is
-present at all, and any argument-parsing/invocation errors) to distinguish hypothesis 1 from 2, then
-reproduce the exact "fly all" scenario several times before attempting another fix. Do not attempt
-a fix without first confirming which hypothesis is real — this investigation has already twice
-rejected a guess-patch (detect-the-lie-after-the-fact, then a stateless-verification-fallback) in
-favor of a structural fix; repeating that mistake here would waste another round-trip. All of the
-above (`CreatePlanTool`, `RequireToolOnFirstTurnChatClient`, `FleetWideActionConfirmationTool`, the
-routing-description fixes) is unit-tested (`dotnet test tests/UavOps.Agent.Tests` — 293/293 passing
-as of this writing) and live-verified working *except* for this one open issue — start a fresh
-session by reading this section, then reproducing the exact scenario above a few times to confirm
-it still happens before touching any code.
+When editing `instructions`, note the existing prompt is deliberately explicit about never
+guessing a tail number/location, resolving pronouns and fleet-wide references
+(`them`/`they`/`their`) from real conversation history rather than asking every time, and never
+reporting an action as done without a matching tool call *this turn* — preserve that style if you
+touch it; these rules are the main remaining defense against fabrication now that there's no
+delegation hop to misroute at.
 
 ### The operation layer (`Agents/MoavAgent/Operations/`, `Agents/MoavAgent/Simulation/`, `Agents/MoavAgent/Operations/Remote/`)
 
@@ -449,8 +422,8 @@ instead of being rejected) and returns `{ status: "queued" }` immediately — th
 the model sees for that turn, so it never has to parse a docker dump (a real run's summary once
 claimed "no errors reported" while the raw output plainly showed two containers crash-looping,
 `Restarting (127)`, buried in ~30 lines of table text a small model didn't reliably scan — wording
-alone wasn't a reliable enough fix). `SimulatorInfrastructureAgent.yaml` tells the model to report
-only that the lesson started, never a final outcome, in that same turn.
+alone wasn't a reliable enough fix). `BrainAgent.yaml`'s instructions tell the model to report only
+that the lesson started, never a final outcome, in that same turn.
 
 A single `SimulatorLessonJobProcessor` (`BackgroundService`, registered once regardless of
 backend) consumes the queue one job at a time under its own lifetime token (app shutdown only —
@@ -461,13 +434,12 @@ deterministic "what happened" step (`LocalLessonExecutor` for the Real backend, 
 `Restarting (` / `Dead`, and `Exited (N)` for non-zero `N`, `Exited (0)` excluded since it's the
 normal state for a one-shot/init container; `FakeLessonExecutor` for Fake, a short `Task.Delay`
 then a canned outcome — full raw output is logged here for debugging and never passed further);
-then (2) builds a **tools-stripped** instance of `SimulatorInfrastructureAgent`
-(`AgentFactory.BuildPersonaOnlyAgent` — calls the private `BuildAgent` directly with no tools,
-bypassing `BuildAgentRecursive` entirely) and runs it once with a synthetic instruction built from
-the concise outcome, to produce the "simple terms" sentence in the same voice as the real agent —
-tool-free specifically so it cannot re-trigger anything even if it misreads the prompt; then (3)
-pushes the resulting text via the **existing** `ReceiveChatMessage` SignalR event under a fresh
-correlationId. `chat.js` needed no changes for this — it already renders any `ReceiveChatMessage`
+then (2) builds a **tools-stripped** instance of `BrainAgent` (`AgentFactory.BuildPersonaOnlyAgent`
+— calls the private `BuildAgent` directly with no tools) and runs it once with a synthetic
+instruction built from the concise outcome, to produce the "simple terms" sentence in the same
+voice as the real agent — tool-free specifically so it cannot re-trigger anything even if it
+misreads the prompt; then (3) pushes the resulting text via the **existing** `ReceiveChatMessage`
+SignalR event under a fresh correlationId. `chat.js` needed no changes for this — it already renders any `ReceiveChatMessage`
 as a new bubble the first time it sees a correlationId, so the summary appears as a new,
 unprompted message in the thread with no frontend work at all.
 
@@ -475,11 +447,11 @@ unprompted message in the thread with no frontend work at all.
 model *may* skip asking which lesson to run if the operator already named one — discretion a small
 model didn't reliably exercise (it asked anyway). Fixed the same way this codebase already fixes
 this class of problem — deterministically, not via model judgment: `AskOperatorChoiceTool` now
-receives the turn's raw operator text (threaded through `AgentFactory.BuildAgentRecursive`
-alongside the retrieval `query`) and auto-resolves without ever prompting when **exactly one**
-offered choice appears in it (matched against the full lesson filename or the name without
-`.ps1`); zero or multiple matches falls back to the real prompt, the safe default for anything
-ambiguous.
+receives the turn's raw operator text (threaded through `AgentFactory.BuildAllTools`/
+`BuildToolsForTurn` alongside the retrieval query) and auto-resolves without ever prompting when
+**exactly one** offered choice appears in it (matched against the full lesson filename or the name
+without `.ps1`); zero or multiple matches falls back to the real prompt, the safe default for
+anything ambiguous.
 
 **PowerShell invocation details** (`LocalLessonRunner`, called from `LocalLessonExecutor`): lesson
 scripts run via `powershell.exe -Command "[Console]::OutputEncoding =
@@ -499,7 +471,7 @@ empty stderr, and would have silently discarded whatever `vmrun` actually wrote 
 The fifth tool ("ask the operator which lesson to run") is deliberately **not** on
 `ISimulatorService` — its whole job is to prompt-and-wait in chat, not to be a data
 operation, so it's a hand-built `AIFunction` (`Agents/SimulatorAgent/AskOperatorChoiceTool.cs`, `kind:
-OperatorPrompt` in YAML — see "Configuring agents" above) backed by `OperatorPromptGate`
+OperatorPrompt` in YAML — see "Configuring BrainAgent" above) backed by `OperatorPromptGate`
 (`Tooling/OperatorPromptGate.cs`) — the open-ended counterpart to `ConfirmationGate`: same in-chat
 round-trip mechanics (its own `ReceiveChatMessage`/`ReceiveChoices` correlationId, its own
 turnstile — `ReceiveChoices` here carries the offered lesson names so `chat.js` can render them as
@@ -540,6 +512,53 @@ since those are equally domain-agnostic and used by both `IOperationService` and
 `ISimulatorService`) breaks the cycle: both `UavOps.Agent` and `UavOps.Agent.Simulator.Fake`
 reference `Contracts`, and only `UavOps.Agent` references `Simulator.Fake` — one direction, no
 cycle.
+
+### Watchdog infrastructure (`Agents/MaintenanceAgent/`)
+
+A fourth, separately reflected domain — health/process control of an externally-running watchdog
+process (`IWatchdogService`, 4 ops: `GetServicesHealth`, `StartService`, `StopService`,
+`RestartService`) plus editing the declarative service-definition files that decide what the
+watchdog launches as its children (`IWatchdogConfigService`, 5 ops:
+`ListConfigurations`/`ListConfiguredServices`/`AddConfiguredService`/`UpdateConfiguredService`/
+`RemoveConfiguredService`) — deliberately two separate interfaces, not one, since "is X healthy
+right now" and "change what X's config says to launch" are materially different, more/less
+sensitive capabilities. Both live in `UavOps.Agent.Contracts` and mirror `ISimulatorService`'s
+shape (uniform `OperationResult`, `CancellationToken` last), plugging into the same
+`OperationCatalog`/`OperationTool` reflection machinery via two more `OperationCatalog` instances.
+
+- **`WatchdogBackend`** (top-level config key, default `Fake`) chooses between the real
+  implementation (`Agents/MaintenanceAgent/WatchdogService.cs`/`WatchdogConfigService.cs`, this
+  project) and an in-memory fake (`src/UavOps.Agent.Watchdog.Fake`, its own project, registered via
+  `AddFakeWatchdog()` — the same three-project split-to-avoid-a-circular-reference reasoning as the
+  simulator domain above) — same default-to-Fake-for-zero-setup-dev reasoning as `SimulatorBackend`.
+- **Health is polled in the background, never live per tool call**: `WatchdogHealthPoller`
+  (`BackgroundService`, registered only under `WatchdogBackend.Real`) polls
+  `WatchdogOptions.HealthCheckUrl` (a standard ASP.NET Core HealthChecks JSON endpoint) every
+  `PollIntervalSeconds` and writes the result into `IWatchdogHealthStore`; `GetServicesHealth` is
+  then a plain in-memory read of that cached snapshot, reporting an explicit
+  `{ overallStatus: "Unknown", stale: true }` shape if nothing has been polled yet rather than
+  blocking or failing. A blank `HealthCheckUrl` (the out-of-the-box default even under `Real`,
+  since it's environment-specific) disables the poller with one log line instead of retrying
+  against nothing forever.
+- **Health-entry names and real Windows service names are different strings, not assumed to
+  match**: `WatchdogOptions.ServiceNameMap` maps the name the model sees (from
+  `GetServicesHealth`) to the real Service Control Manager name `StartService`/`StopService`/
+  `RestartService` need — a name missing from this map fails with a clear error rather than
+  guessing a SCM name that doesn't exist.
+- **Service-definition config files** (`IServiceConfigFileStore`, real implementation
+  `ServiceConfigFileStore`): one YAML file per named configuration (e.g. `"Flight"`,
+  `"Simulator"`) under `WatchdogOptions.ServiceConfigBasePath`, each a list of
+  `ServiceConfigEntry` describing a child process the watchdog should launch/supervise.
+  `AddConfiguredService`'s `executable` parameter is optional by design — when the operator didn't
+  state a full path, `null` is passed and `IServiceExecutableLocator` infers one from the naming
+  convention of sibling services already in that configuration, rather than the model inventing a
+  path. `IExecutablePathResolver` expands environment-specific placeholder tokens (e.g.
+  `%MoavHome%` → `C:\Moav`, via `WatchdogOptions.ExecutablePlaceholders`) only to verify the
+  resulting path exists on disk before writing — the file itself always keeps the original,
+  unexpanded placeholder, since the watchdog expands these tokens itself at its own runtime.
+  `disabled` (not a separate `enabled` field — having both proved confusing for the same entry) is
+  the one on/off toggle exposed to chat; every other optional field on `UpdateConfiguredService`
+  means "leave unchanged" when `null`, never "clear it".
 
 ### `UavOps.FleetClient` / `UavOps.MockFleetClient`
 
