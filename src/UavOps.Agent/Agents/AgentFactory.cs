@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
-using System.Collections.Immutable;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
 using UavOps.Agent.Agents.MaintenanceAgent;
 using UavOps.Agent.Agents.MoavAgent;
 using UavOps.Agent.Agents.MoavAgent.Operations;
@@ -14,34 +12,28 @@ using UavOps.Agent.Tooling;
 namespace UavOps.Agent.Agents;
 
 /// <summary>
-/// Builds the agent graph fresh for each chat turn. Rebuilding is necessary (not just
-/// cheap-and-easy) because every tool instance closes over the turn's correlationId, so logs
-/// and traces for that turn are attributable end-to-end. Chat clients (one per distinct
-/// provider+model pair in use — see <see cref="AgentConfig.Provider"/>) are cached across turns.
+/// Builds BrainAgent — the single flat agent covering every real operation across all 4 catalogs
+/// (fleet, simulator, watchdog, watchdog-config) directly, no agent-to-agent delegation anywhere.
+/// Replaces what used to be a recursive multi-agent tree (BrainAgent → MoavAgent/SimulatorAgent/
+/// MaintenanceAgent → per-domain leaf specialists) after this session's investigation established
+/// that hop structure — not the model, not the .NET Agent Framework — as the actual source of
+/// fabricated success claims; a standalone lab then validated a flat design scales correctly to far
+/// more tools than this app has today, given real semantic-embedding retrieval narrowing what's
+/// offered each turn (see <see cref="ToolRetrievalIndex"/>).
 ///
-/// The root <c>BrainAgent</c> is a single, cached, memory-carrying instance (see
-/// <see cref="GetOrCreatePersistentBrainAgentAsync"/>), together with a single reused
-/// <see cref="AgentSession"/> — required by the Agent Framework's own session-reuse contract (a
-/// session is tied to the agent instance/configuration that created it). Its *tools* are still
-/// rebuilt fresh every turn exactly as before, via <see cref="BuildRootToolsForTurn"/>, and
-/// supplied per call through <c>ChatClientAgentRunOptions</c> — so correlationId-scoped tracing is
-/// unaffected. Every turn goes through this same instance now — see
-/// <see cref="MainAgentOrchestrator"/>'s own doc comment for why the earlier design (a brand-new,
-/// memory-less agent tried first, falling back to this one only when it produced no tool call) was
-/// removed, and what's still validated live to justify that. Child agents reached via delegation
-/// are unaffected: still built fresh per turn, still carry no memory of their own, still receive
-/// only the synthesized delegation instruction — <c>BrainAgent</c> is expected to resolve any
-/// reference to something established earlier in the conversation *before* delegating, so a child
-/// never needs memory of its own to act on it (see <c>BrainAgent.yaml</c>'s own instructions).
-///
-/// Delegate selection for each agent is either explicit (<see cref="AgentConfig.Children"/>, when
-/// present) or embedding retrieval (<see cref="AgentRetrievalIndex"/>, the fallback for any agent
-/// that doesn't declare <c>children:</c>) — see <see cref="BuildAgentRecursive"/>.
+/// Tools are rebuilt fresh every turn (not cached) because every tool instance closes over that
+/// turn's correlationId, so logs/traces are attributable end-to-end — only the underlying
+/// <see cref="IChatClient"/> is cached across turns. BrainAgent itself is a single, cached,
+/// memory-carrying instance (see <see cref="GetOrCreatePersistentBrainAgentAsync"/>) together with
+/// a single reused <see cref="AgentSession"/> — required by the Agent Framework's own session-reuse
+/// contract (a session is tied to the agent instance/configuration that created it). Its *tools*
+/// are still rebuilt fresh every turn via <see cref="BuildToolsForTurn"/> and supplied per call
+/// through <c>ChatClientAgentRunOptions</c>, so correlationId-scoped tracing is unaffected.
 /// </summary>
 public sealed class AgentFactory(
     Func<string, string?, IChatClient> chatClientFactory,
     string defaultModel,
-    Dictionary<string, AgentConfig> agents,
+    AgentConfig config,
     OperationCatalog catalog,
     IOperationService operationService,
     OperationCatalog simulatorCatalog,
@@ -50,19 +42,23 @@ public sealed class AgentFactory(
     IWatchdogService watchdogService,
     OperationCatalog watchdogConfigCatalog,
     IWatchdogConfigService watchdogConfigService,
-    AgentRetrievalIndex retrievalIndex,
     RetrievalOptions retrievalOptions,
     MemoryOptions memoryOptions,
     ToolInvocationLogger toolLogger,
     ConfirmationGate confirmationGate,
-    OperatorPromptGate operatorPromptGate,
-    ILogger<AgentFactory> logger)
+    OperatorPromptGate operatorPromptGate)
 {
     public const string RootAgentName = "BrainAgent";
-    private const string MoavAgentName = "MoavAgent";
     private const string OperatorPromptKind = "OperatorPrompt";
+    private const string StartupTemplateCorrelationId = "startup-template";
 
     private readonly ConcurrentDictionary<string, IChatClient> _chatClients = new();
+
+    /// <summary>Set once at startup, right after construction — see <c>Program.cs</c>. Not a
+    /// constructor parameter: building the real index requires calling
+    /// <see cref="BuildTemplateTools"/> on this very instance first, which would otherwise be a
+    /// circular construction-order dependency.</summary>
+    public ToolRetrievalIndex RetrievalIndex { get; set; } = null!;
 
     // Guards first-time creation of the persistent BrainAgent + its session (see
     // GetOrCreatePersistentBrainAgentAsync) against concurrent turns racing to create it — SignalR
@@ -76,7 +72,7 @@ public sealed class AgentFactory(
     /// session, and the history provider backing that session (so a caller can snapshot/restore
     /// its message list — see <see cref="MainAgentOrchestrator"/>'s verified-retry logic), creating
     /// all three on first use. The instance carries no tools of its own — this turn's tools are
-    /// built separately via <see cref="BuildRootToolsForTurn"/> and supplied by the caller through
+    /// built separately via <see cref="BuildToolsForTurn"/> and supplied by the caller through
     /// per-call run options, so nothing here needs to change per turn.</summary>
     public async Task<(AIAgent Agent, AgentSession Session, InMemoryChatHistoryProvider HistoryProvider)> GetOrCreatePersistentBrainAgentAsync(CancellationToken cancellationToken)
     {
@@ -90,13 +86,17 @@ public sealed class AgentFactory(
         {
             if (_brainAgent is null || _brainAgentSession is null || _brainAgentHistoryProvider is null)
             {
-#pragma warning disable MEAI001 // MessageCountingChatReducer is an experimental Microsoft.Extensions.AI API — acceptable here, it's just a message-count bound with no external side effects.
+#pragma warning disable MEAI001 // IChatReducer/InMemoryChatHistoryProviderOptions.ChatReducer are experimental Microsoft.Extensions.AI APIs — acceptable here.
                 var historyProvider = new InMemoryChatHistoryProvider(new InMemoryChatHistoryProviderOptions
                 {
-                    ChatReducer = new MessageCountingChatReducer(memoryOptions.MaxHistoryMessages)
+                    // NOT Microsoft.Extensions.AI's own MessageCountingChatReducer — see
+                    // ToolCallAwareChatReducer's own doc comment for the live-reproduced,
+                    // source-verified fabrication bug that type causes once this session runs long
+                    // enough to trigger even one reduction pass.
+                    ChatReducer = new ToolCallAwareChatReducer(memoryOptions.MaxHistoryMessages)
                 });
 #pragma warning restore MEAI001
-                var agent = BuildAgent(RootAgentName, agents[RootAgentName], tools: [], historyProvider);
+                var agent = BuildAgent(tools: [], historyProvider);
                 _brainAgent = agent;
                 _brainAgentSession = await agent.CreateSessionAsync(cancellationToken);
                 _brainAgentHistoryProvider = historyProvider;
@@ -110,59 +110,54 @@ public sealed class AgentFactory(
         }
     }
 
-    /// <summary>Builds just this turn's tool list for the root agent (BrainAgent) — the same
-    /// correlationId-scoped tree construction <see cref="BuildAgentRecursive"/> already does for
-    /// every agent, without also wrapping the result in a new root <see cref="ChatClientAgent"/>
-    /// (the persistent one from <see cref="GetOrCreatePersistentBrainAgentAsync"/> is reused
-    /// instead).</summary>
-    public async Task<List<AITool>> BuildRootToolsForTurn(string correlationId, string operatorText, CancellationToken cancellationToken)
+    /// <summary>Builds a template tool list once at startup — real per-tool wrapping (so names/
+    /// descriptions match exactly what a real turn would build) under a placeholder correlationId
+    /// that's never actually invoked, purely to give <see cref="ToolRetrievalIndex.BuildAsync"/>
+    /// stable (Name, Description) pairs to embed.</summary>
+    public List<AITool> BuildTemplateTools() => BuildAllTools(StartupTemplateCorrelationId, operatorText: "");
+
+    /// <summary>Builds this turn's real, correlationId-scoped tool list, then narrows it to the
+    /// top-K most relevant via <see cref="ToolRetrievalIndex.RankCandidates"/> (ranked against the
+    /// operator's own turn text). No "safe no-op" tool appended - <c>tool_choice</c> is never
+    /// forced (see <see cref="BuildAgent"/>), so the model can always answer in plain text when no
+    /// real operation applies; nothing needs to be picked among just to satisfy a forced choice.</summary>
+    public async Task<List<AITool>> BuildToolsForTurn(string correlationId, string operatorText, CancellationToken cancellationToken)
     {
-        var query = await retrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
-        return BuildAgentTools(RootAgentName, agents[RootAgentName], correlationId, query, operatorText,
-            visited: ImmutableHashSet<string>.Empty, depth: retrievalOptions.MaxDelegationDepth, new TailNumberResolutionScope());
+        var allTools = BuildAllTools(correlationId, operatorText);
+        var nameToTool = allTools.ToDictionary(t => ((AIFunction)t).Name, StringComparer.Ordinal);
+
+        var query = await RetrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
+        var candidateNames = RetrievalIndex.RankCandidates(query, retrievalOptions.TopK);
+
+        return candidateNames.Select(n => nameToTool[n]).ToList();
     }
 
     /// <summary>Builds one agent standalone, with no tools at all — used for a background job's
     /// proactive summary (see <c>SimulatorLessonJobProcessor</c>), where the same persona/
     /// instructions/model/temperature as the real agent gives a consistent voice, but attaching no
     /// tools means it structurally cannot re-trigger anything even if it misreads the prompt.</summary>
-    public AIAgent BuildPersonaOnlyAgent(string agentName) => BuildAgent(agentName, agents[agentName], tools: []);
+    public AIAgent BuildPersonaOnlyAgent() => BuildAgent(tools: []);
 
-    private AIAgent BuildAgentRecursive(string name, AgentConfig config, string correlationId,
-        Embedding<float> query, string operatorText, ImmutableHashSet<string> visited, int depth, TailNumberResolutionScope tailNumberScope)
+    /// <summary>Builds every real operation across all 4 catalogs as a correlationId-scoped tool,
+    /// with the same per-tool safety wrapping this app has always applied (location/tail-number
+    /// grounding, confirmation-gating) — no agent-to-agent delegation, no recursion: this is the
+    /// entire tool-building surface now.</summary>
+    private List<AITool> BuildAllTools(string correlationId, string operatorText)
     {
-        var tools = BuildAgentTools(name, config, correlationId, query, operatorText, visited, depth, tailNumberScope);
-        return BuildAgent(name, config, tools);
-    }
-
-    private List<AITool> BuildAgentTools(string name, AgentConfig config, string correlationId,
-        Embedding<float> query, string operatorText, ImmutableHashSet<string> visited, int depth, TailNumberResolutionScope tailNumberScope)
-    {
-        visited = visited.Add(name);
         var tools = new List<AITool>();
-
-        // One scope per operator turn (correlationId), shared across every specialist agent built
-        // for that turn - not one per agent. A delegate call always targets exactly one UAV (or
-        // now, all of them), so once one tailNumber-taking tool call this turn asks/confirms and
-        // gets an answer, EVERY sibling call across the WHOLE turn - including a different
-        // specialist entirely, e.g. PayloadControlAgent's PointPayload right after
-        // FlightControlAgent's SetSpeed - reuses that same answer instead of asking again. Created
-        // once in BuildRootToolsForTurn/BuildStatelessRootAgentForTurn and threaded down through
-        // every recursive call, rather than fresh per agent here - see TailNumberResolutionScope's
-        // own doc comment. Observed directly: creating a fresh scope per agent asked the operator
-        // the same "apply to all 3 known UAVs?" confirmation twice in one turn, once per specialist.
+        var tailNumberScope = new TailNumberResolutionScope();
 
         foreach (var toolConfig in config.Tools)
         {
             if (toolConfig.Kind == OperatorPromptKind)
             {
-                tools.Add(new AskOperatorChoiceTool(toolConfig, operatorPromptGate, toolLogger, name, correlationId, operatorText));
+                tools.Add(new AskOperatorChoiceTool(toolConfig, operatorPromptGate, toolLogger, RootAgentName, correlationId, operatorText));
                 continue;
             }
 
             if (catalog.TryResolve(toolConfig.Operation, out var descriptor) && descriptor is not null)
             {
-                AITool operationTool = new OperationTool(descriptor, toolConfig, operationService, toolLogger, confirmationGate, name, correlationId);
+                AITool operationTool = new OperationTool(descriptor, toolConfig, operationService, toolLogger, confirmationGate, RootAgentName, correlationId);
 
                 // Canonicalize "location" (Navigate, PointPayload) before the tailNumber guard,
                 // if any, so every re-invocation it does (e.g. the multi-UAV fan-out) also gets the
@@ -176,121 +171,50 @@ public sealed class AgentFactory(
                 // guess instead of asking - see TailNumberDisambiguationTool's own doc comment.
                 if (descriptor.Parameters.Any(p => p.Name == "tailNumber") && !toolConfig.FixedParameters.ContainsKey("tailNumber"))
                 {
-                    operationTool = new TailNumberDisambiguationTool((AIFunction)operationTool, operationService, operatorPromptGate, tailNumberScope, name, correlationId, operatorText);
+                    operationTool = new TailNumberDisambiguationTool((AIFunction)operationTool, operationService, operatorPromptGate, tailNumberScope, RootAgentName, correlationId, operatorText);
                 }
 
                 tools.Add(operationTool);
             }
             else if (simulatorCatalog.TryResolve(toolConfig.Operation, out var simDescriptor) && simDescriptor is not null)
             {
-                tools.Add(new OperationTool(simDescriptor, toolConfig, simulatorService, toolLogger, confirmationGate, name, correlationId));
+                tools.Add(new OperationTool(simDescriptor, toolConfig, simulatorService, toolLogger, confirmationGate, RootAgentName, correlationId));
             }
             else if (watchdogCatalog.TryResolve(toolConfig.Operation, out var watchdogDescriptor) && watchdogDescriptor is not null)
             {
-                tools.Add(new OperationTool(watchdogDescriptor, toolConfig, watchdogService, toolLogger, confirmationGate, name, correlationId));
+                tools.Add(new OperationTool(watchdogDescriptor, toolConfig, watchdogService, toolLogger, confirmationGate, RootAgentName, correlationId));
             }
             else if (watchdogConfigCatalog.TryResolve(toolConfig.Operation, out var watchdogConfigDescriptor) && watchdogConfigDescriptor is not null)
             {
-                tools.Add(new OperationTool(watchdogConfigDescriptor, toolConfig, watchdogConfigService, toolLogger, confirmationGate, name, correlationId));
+                tools.Add(new OperationTool(watchdogConfigDescriptor, toolConfig, watchdogConfigService, toolLogger, confirmationGate, RootAgentName, correlationId));
             }
             else
             {
                 // Should never happen — AgentConfigValidator checks this at startup.
-                throw new InvalidOperationException($"Agent '{name}' references unknown operation '{toolConfig.Operation}'.");
+                throw new InvalidOperationException($"BrainAgent references unknown operation '{toolConfig.Operation}'.");
             }
-        }
-
-        // Explicit Children (when declared) is an author-guaranteed structural edge — e.g. the
-        // live-vs-simulator split — so it's always honored regardless of `depth`, unlike the
-        // bounded similarity search below. `visited` still guards against an accidental YAML cycle.
-        IReadOnlyList<string> candidateNames = config.Children is { } children
-            ? children.Where(c => !visited.Contains(c)).ToList()
-            : depth > 0
-                ? retrievalIndex.RankCandidates(query, visited, retrievalOptions.MaxDelegatesPerAgent)
-                : [];
-
-        if (candidateNames.Count > 0)
-        {
-            logger.LogInformation("correlationId={CorrelationId} agent={Agent} delegates={Delegates}",
-                correlationId, name, candidateNames);
-        }
-
-        // BrainAgent doesn't call its own children as independently-selectable tools - it must plan
-        // first, via the single CreatePlanTool below, which then executes each named step for real -
-        // see CreatePlanTool's own doc comment for why. Every other agent keeps calling its children
-        // directly, unchanged.
-        var brainAgentDelegates = name == RootAgentName ? new Dictionary<string, AIFunction>(StringComparer.Ordinal) : null;
-
-        foreach (var candidateName in candidateNames)
-        {
-            var childConfig = agents[candidateName]; // existence validated at startup
-            var subAgent = BuildAgentRecursive(candidateName, childConfig, correlationId, query, operatorText, visited, depth - 1, tailNumberScope);
-            var description = childConfig.Description!; // validated non-blank at startup
-            AITool delegateTool = new DelegateAgentTool(candidateName, description, subAgent, toolLogger, name, correlationId);
-
-            // Only MoavAgent's own delegates (its four fleet specialists) ever receive a free-text
-            // instruction that might contain a tail number MoavAgent invented itself - see
-            // TailNumberProvenanceGuardTool's own doc comment for why and how.
-            if (name == MoavAgentName)
-            {
-                delegateTool = new TailNumberProvenanceGuardTool((AIFunction)delegateTool, operationService, operatorPromptGate,
-                    tailNumberScope, toolLogger, candidateName, correlationId, operatorText);
-            }
-
-            // Specifically the BrainAgent -> MoavAgent edge - see FleetWideActionConfirmationTool's
-            // own doc comment for why this needs its own guard, separate from the one above.
-            if (candidateName == MoavAgentName)
-            {
-                delegateTool = new FleetWideActionConfirmationTool((AIFunction)delegateTool, operationService, operatorPromptGate,
-                    tailNumberScope, candidateName, correlationId, operatorText);
-            }
-
-            if (brainAgentDelegates is not null)
-            {
-                brainAgentDelegates[candidateName] = (AIFunction)delegateTool;
-            }
-            else
-            {
-                tools.Add(delegateTool);
-            }
-        }
-
-        if (brainAgentDelegates is not null)
-        {
-            tools.Add(new CreatePlanTool(brainAgentDelegates, toolLogger, name, correlationId));
         }
 
         return tools;
     }
 
-    private AIAgent BuildAgent(string name, AgentConfig config, List<AITool> tools, ChatHistoryProvider? chatHistoryProvider = null)
+    private AIAgent BuildAgent(List<AITool> tools, ChatHistoryProvider? chatHistoryProvider = null)
     {
-        var chatClient = GetChatClient(config.Model, config.Provider);
+        var chatClient = GetChatClient();
 
-        // A leaf/actor agent - no children of its own, but real tools - exists only to act via those
-        // tools; it has no legitimate reason to reply in bare text before calling anything at all.
-        // Force that structurally rather than trust it (see RequireToolOnFirstTurnChatClient's own
-        // doc comment for the incident this fixes). Every current leaf/actor agent already has this
-        // exact structural signature (children: [] plus at least one real tool) vs. every router-tier
-        // agent (has children, no tools of its own) - no new YAML flag needed. Wraps only this
-        // per-call client instance, never GetChatClient's shared cached one, since router agents use
-        // the same model and must not be forced this way. BrainAgent is the one exception with real
-        // children that still gets this: its only tool is CreatePlanTool, and an empty-steps plan is
-        // a completely valid, forceable response to a purely conversational message - see
-        // CreatePlanTool's own doc comment.
-        if (((config.Children?.Count ?? 0) == 0 && tools.Count > 0) || name == RootAgentName)
-        {
-            chatClient = new RequireToolOnFirstTurnChatClient(chatClient);
-        }
+        // tool_choice deliberately left at its default ("auto") - never forced. See
+        // MainAgentOrchestrator's own doc comment for the evidence behind this: forcing was carried
+        // over defensively from the old multi-agent architecture without re-testing whether it was
+        // still needed here, and it was not - it actively broke a real scenario (a bare greeting
+        // deterministically failing to produce any tool call when forced) that auto-mode never did.
 
         var options = new ChatClientAgentOptions
         {
-            Name = name,
-            Description = config.Description,
+            Name = RootAgentName,
             UseProvidedChatClientAsIs = true, // our client is already wrapped with concurrent function invocation below — don't let ChatClientAgent re-wrap it
             // Only the persistent root agent (see GetOrCreatePersistentBrainAgentAsync) gets one of
-            // these — every other agent built here is a single-turn, throwaway object, so leaving
-            // this null keeps their (already stateless) behavior unchanged.
+            // these — the template-only build (BuildTemplateTools' underlying construction never
+            // reaches here) and BuildPersonaOnlyAgent leave this null.
             ChatHistoryProvider = chatHistoryProvider,
             ChatOptions = new ChatOptions
             {
@@ -307,12 +231,12 @@ public sealed class AgentFactory(
         return new ChatClientAgent(chatClient, options);
     }
 
-    private IChatClient GetChatClient(string? modelOverride, string? provider)
+    private IChatClient GetChatClient()
     {
-        var model = modelOverride ?? defaultModel;
+        var model = config.Model ?? defaultModel;
         // Provider has to be part of the cache key, not just the model name — an Ollama model and
         // an OpenRouter model could otherwise collide on an identical name string.
-        var cacheKey = $"{provider ?? "Ollama"}::{model}";
-        return _chatClients.GetOrAdd(cacheKey, _ => chatClientFactory(model, provider));
+        var cacheKey = $"{config.Provider ?? "Ollama"}::{model}";
+        return _chatClients.GetOrAdd(cacheKey, _ => chatClientFactory(model, config.Provider));
     }
 }

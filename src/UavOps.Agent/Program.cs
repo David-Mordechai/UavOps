@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using OllamaSharp;
 using OpenAI;
 using OpenAI.Chat;
+using OpenAI.Embeddings;
 using Serilog;
 using System.ClientModel;
 using UavOps.Agent.Agents;
@@ -39,36 +40,34 @@ var remoteOperationOptions = builder.Configuration.GetSection(RemoteOperationOpt
 var openAiOptions = builder.Configuration.GetSection(OpenAiOptions.SectionName).Get<OpenAiOptions>()
     ?? new OpenAiOptions();
 
+var embeddingOptions = builder.Configuration.GetSection(EmbeddingOptions.SectionName).Get<EmbeddingOptions>()
+    ?? throw new InvalidOperationException($"Missing '{EmbeddingOptions.SectionName}' configuration section.");
+
 var operationBackend = Enum.TryParse<OperationBackend>(builder.Configuration["OperationBackend"], ignoreCase: true, out var backend)
     ? backend
     : OperationBackend.Simulated;
 
-var agentsConfig = AgentConfigLoader.LoadFromDirectory(Path.Combine(builder.Environment.ContentRootPath, "AgentsConfig"));
+var agentConfig = AgentConfigLoader.Load(Path.Combine(builder.Environment.ContentRootPath, "AgentsConfig", "BrainAgent.yaml"));
 
-// Single place to see/change which backend+model every agent uses, instead of that being
-// scattered across each agent's own YAML file (which stays focused on behavior/content). Applied
-// directly onto the already-loaded AgentConfig objects, before validation runs so it sees the
-// final provider/model each agent will actually use.
-var agentModels = builder.Configuration.GetSection("AgentModels").Get<Dictionary<string, AgentModelOptions>>()
-    ?? [];
-foreach (var (agentName, modelOptions) in agentModels)
+// Single place to see/change which backend+model BrainAgent uses, instead of that being buried
+// in AgentsConfig/BrainAgent.yaml (which stays focused on behavior/content). Applied directly onto
+// the already-loaded AgentConfig, before validation runs so it sees the final provider/model it
+// will actually use.
+var agentModelOptions = builder.Configuration.GetSection("AgentModels").Get<AgentModelOptions>();
+if (agentModelOptions is not null)
 {
-    if (!agentsConfig.TryGetValue(agentName, out var config))
-    {
-        throw new InvalidOperationException($"'AgentModels' configures agent '{agentName}', which does not exist in AgentsConfig.");
-    }
-    config.Provider = modelOptions.Provider;
-    config.Model = modelOptions.Model;
+    agentConfig.Provider = agentModelOptions.Provider;
+    agentConfig.Model = agentModelOptions.Model;
 }
 
 // Reflects over IOperationService's/ISimulatorService's methods — no network call, no
-// remotely-fetched spec — and validates every agent's Tools[] against them before the app is
+// remotely-fetched spec — and validates BrainAgent's Tools[] against them before the app is
 // allowed to start.
 var catalog = new OperationCatalog(typeof(IOperationService));
 var simulatorCatalog = new OperationCatalog(typeof(ISimulatorService));
 var watchdogCatalog = new OperationCatalog(typeof(IWatchdogService));
 var watchdogConfigCatalog = new OperationCatalog(typeof(IWatchdogConfigService));
-AgentConfigValidator.Validate(agentsConfig, catalog, simulatorCatalog, watchdogCatalog, watchdogConfigCatalog, openAiOptions);
+AgentConfigValidator.Validate(agentConfig, catalog, simulatorCatalog, watchdogCatalog, watchdogConfigCatalog, openAiOptions);
 
 var simulatorOptions = builder.Configuration.GetSection(SimulatorOptions.SectionName).Get<SimulatorOptions>()
     ?? new SimulatorOptions();
@@ -84,29 +83,6 @@ var watchdogBackend = Enum.TryParse<WatchdogBackend>(builder.Configuration["Watc
     ? wdBackend
     : WatchdogBackend.Fake;
 
-IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator;
-if (string.Equals(ollamaOptions.EmbeddingModel, "InMemory", StringComparison.OrdinalIgnoreCase))
-{
-    embeddingGenerator = new InMemoryEmbeddingGenerator();
-}
-else
-{
-    embeddingGenerator = new OllamaApiClient(new Uri(ollamaOptions.Endpoint), ollamaOptions.EmbeddingModel);
-}
-builder.Services.AddSingleton(embeddingGenerator);
-
-AgentRetrievalIndex retrievalIndex;
-try
-{
-    retrievalIndex = await AgentRetrievalIndex.BuildAsync(agentsConfig, embeddingGenerator, CancellationToken.None);
-}
-catch (Exception ex)
-{
-    throw new InvalidOperationException(
-        $"Failed to build the agent retrieval index using the configured embedding generator. " +
-        $"Please ensure your embedding provider is running and accessible. {ex.Message}", ex);
-}
-
 var retrievalOptions = builder.Configuration.GetSection(RetrievalOptions.SectionName).Get<RetrievalOptions>()
     ?? new RetrievalOptions();
 
@@ -115,11 +91,11 @@ var memoryOptions = builder.Configuration.GetSection(MemoryOptions.SectionName).
 
 builder.Services.AddSingleton(ollamaOptions);
 builder.Services.AddSingleton(openAiOptions);
+builder.Services.AddSingleton(embeddingOptions);
 builder.Services.AddSingleton(retrievalOptions);
 builder.Services.AddSingleton(memoryOptions);
-builder.Services.AddSingleton(retrievalIndex);
 builder.Services.AddSingleton(remoteOperationOptions);
-builder.Services.AddSingleton(agentsConfig);
+builder.Services.AddSingleton(agentConfig);
 builder.Services.AddSingleton(catalog);
 builder.Services.AddSingleton(simulatorCatalog);
 builder.Services.AddSingleton(simulatorOptions);
@@ -140,11 +116,10 @@ if (simulatorBackend == SimulatorBackend.Real)
 }
 else
 {
-    // No VMware/VM required — the default, so the SimulatorAgent branch (routing, all five
-    // tools, the operator lesson-choice prompt, the run-lesson confirmation) can be exercised
-    // end to end on any machine with nothing installed. Registered via the Fake DLL's own IoC
-    // extension (UavOps.Agent.Simulator.Fake) rather than this project registering the fake
-    // types itself.
+    // No VMware/VM required — the default, so BrainAgent's simulator tools (all five, the
+    // operator lesson-choice prompt, the run-lesson confirmation) can be exercised end to end on
+    // any machine with nothing installed. Registered via the Fake DLL's own IoC extension
+    // (UavOps.Agent.Simulator.Fake) rather than this project registering the fake types itself.
     builder.Services.AddFakeSimulator();
 }
 
@@ -167,10 +142,10 @@ if (watchdogBackend == WatchdogBackend.Real)
 }
 else
 {
-    // No watchdog HTTP endpoint or real Windows services required — the default, so the
-    // MaintenanceAgent branch can be exercised end to end on any machine with nothing installed.
-    // Registered via the Fake DLL's own IoC extension (UavOps.Agent.Watchdog.Fake), same pattern
-    // as AddFakeSimulator above.
+    // No watchdog HTTP endpoint or real Windows services required — the default, so BrainAgent's
+    // watchdog tools can be exercised end to end on any machine with nothing installed. Registered
+    // via the Fake DLL's own IoC extension (UavOps.Agent.Watchdog.Fake), same pattern as
+    // AddFakeSimulator above.
     builder.Services.AddFakeWatchdog();
 }
 
@@ -221,7 +196,7 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
     new AgentFactory(
         sp.GetRequiredService<Func<string, string?, IChatClient>>(),
         ollamaOptions.DefaultModel,
-        sp.GetRequiredService<Dictionary<string, AgentConfig>>(),
+        agentConfig,
         catalog,
         sp.GetRequiredService<IOperationService>(),
         simulatorCatalog,
@@ -230,13 +205,11 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
         sp.GetRequiredService<IWatchdogService>(),
         watchdogConfigCatalog,
         sp.GetRequiredService<IWatchdogConfigService>(),
-        sp.GetRequiredService<AgentRetrievalIndex>(),
         sp.GetRequiredService<RetrievalOptions>(),
         sp.GetRequiredService<MemoryOptions>(),
         sp.GetRequiredService<ToolInvocationLogger>(),
         sp.GetRequiredService<ConfirmationGate>(),
-        sp.GetRequiredService<OperatorPromptGate>(),
-        sp.GetRequiredService<ILogger<AgentFactory>>()
+        sp.GetRequiredService<OperatorPromptGate>()
     ));
 
 builder.Services.AddSingleton<MainAgentOrchestrator>();
@@ -248,6 +221,31 @@ builder.Services.AddSingleton<MainAgentOrchestrator>();
 builder.Services.AddHostedService<SimulatorLessonJobProcessor>();
 
 var app = builder.Build();
+
+// Resolves the AgentFactory singleton eagerly (forcing its DI construction now, not on first chat
+// request) so its tool-retrieval index can be built before the app starts serving - real semantic
+// embeddings (Qwen/Qwen3-Embedding-8B-class model via a second local vLLM instance, not Ollama, not
+// a hash-based fake - see ToolRetrievalIndex's own doc comment) are load-bearing for tool-call
+// correctness now, so an unreachable embedding endpoint must fail the app at boot, not silently at
+// the first real operator turn. Built here, after Build() but before Run(), because
+// AgentFactory.BuildTemplateTools() needs the real per-tool wrapping only a fully-constructed
+// AgentFactory can produce - see AgentFactory.RetrievalIndex's own doc comment for why this can't
+// be a constructor dependency.
+var agentFactory = app.Services.GetRequiredService<AgentFactory>();
+try
+{
+    var embeddingClient = new EmbeddingClient(embeddingOptions.Model, new ApiKeyCredential("not-needed"),
+        new OpenAIClientOptions { Endpoint = new Uri(embeddingOptions.Endpoint) });
+    var embeddingGenerator = embeddingClient.AsIEmbeddingGenerator();
+    var templateTools = agentFactory.BuildTemplateTools();
+    agentFactory.RetrievalIndex = await ToolRetrievalIndex.BuildAsync(templateTools, embeddingGenerator, CancellationToken.None);
+}
+catch (Exception ex)
+{
+    throw new InvalidOperationException(
+        $"Failed to build the tool retrieval index using the configured embedding endpoint. " +
+        $"Please ensure your embedding server is running and accessible. {ex.Message}", ex);
+}
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
@@ -266,10 +264,10 @@ app.MapGet("/healthz", () => Results.Ok(new
     simulatorOperations = simulatorCatalog.Operations.Count,
     watchdogOperations = watchdogCatalog.Operations.Count,
     watchdogConfigOperations = watchdogConfigCatalog.Operations.Count,
-    retrievalAgents = retrievalIndex.Count
+    retrievalTools = agentFactory.RetrievalIndex.Count
 }));
 
-app.MapGet("/api/agent-graph", () => Results.Ok(AgentGraphProjector.Build(agentsConfig)));
+app.MapGet("/api/agent-graph", () => Results.Ok(AgentGraphProjector.Build(agentConfig)));
 
 app.Run();
 

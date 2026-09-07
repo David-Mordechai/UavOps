@@ -1,0 +1,37 @@
+Using launch settings from src\UavOps.Agent\Properties\launchSettings.json...
+Building...
+[16:45:53 INF] Watchdog health polling disabled — set Watchdog:HealthCheckUrl to enable it.
+[16:45:53 INF] Now listening on: http://localhost:5262
+[16:45:53 INF] Application started. Press Ctrl+C to shut down.
+[16:45:53 INF] Hosting environment: Development
+[16:45:53 INF] Content root path: D:\PlayGround\UavOps\src\UavOps.Agent
+[16:45:53 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[16:45:53 INF] Executing endpoint '/chatHub/negotiate'
+[16:45:53 INF] Executed endpoint '/chatHub/negotiate'
+[16:45:53 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 15.224ms
+[16:45:53 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=4xN7QijXC6Rz_y8LoY4tpw - null null
+[16:45:53 INF] Executing endpoint '/chatHub'
+[16:46:03 INF] Request starting HTTP/1.1 GET http://localhost:5262/healthz - null null
+[16:46:03 INF] Executing endpoint 'HTTP: GET /healthz'
+[16:46:03 INF] Setting HTTP status code 200.
+[16:46:03 INF] Writing value of type '<>f__AnonymousType13`10' as Json.
+[16:46:03 INF] Executed endpoint 'HTTP: GET /healthz'
+[16:46:03 INF] Request finished HTTP/1.1 GET http://localhost:5262/healthz - 200 null application/json; charset=utf-8 15.4546ms
+[16:46:14 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[16:46:14 INF] Executing endpoint '/chatHub/negotiate'
+[16:46:14 INF] Executed endpoint '/chatHub/negotiate'
+[16:46:14 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.8141ms
+[16:46:15 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=RYUwc02io2l47M5SiUYLIQ - null null
+[16:46:15 INF] Executing endpoint '/chatHub'
+[16:46:54 INF] [Tool] correlationId=nfdcrz62 agent=BrainAgent tool=ListFleet args={} result=[{"tailNumber":"UAV-1","mode":"Orbiting","lat":31.801447,"lng":34.643497},{"tailNumber":"UAV-2","mode":"Orbiting","lat":31.798,"lng":34.639},{"tailNumber":"UAV-3","mode":"Orbiting","lat":31.805,"lng":34.648}] durationMs=5
+[16:47:08 INF] [Tool] correlationId=7l2p613f agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=3
+[16:47:08 INF] [Tool] correlationId=7l2p613f agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:47:08 INF] [Tool] correlationId=7l2p613f agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:47:08 INF] [Tool] correlationId=7l2p613f agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:47:08 INF] [Tool] correlationId=7l2p613f agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:47:08 INF] [Tool] correlationId=7l2p613f agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:47:29 INF] [Tool] correlationId=jf590ydj agent=BrainAgent tool=ReturnToLaunch args={"tailNumber":"UAV-1"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"ReturningToLaunch","payloadLockedOn":null} durationMs=0
+[16:47:29 INF] [Tool] correlationId=jf590ydj agent=BrainAgent tool=ReturnToLaunch args={"tailNumber":"UAV-2"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"ReturningToLaunch","payloadLockedOn":null} durationMs=0
+[16:47:29 INF] [Tool] correlationId=jf590ydj agent=BrainAgent tool=ReturnToLaunch args={"tailNumber":"UAV-3"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"ReturningToLaunch","payloadLockedOn":null} durationMs=0
+[16:47:40 INF] Executed endpoint '/chatHub'
+[16:47:40 INF] Request finished HTTP/1.1 GET http://localhost:5262/chatHub?id=RYUwc02io2l47M5SiUYLIQ - 101 null null 85563.9969ms

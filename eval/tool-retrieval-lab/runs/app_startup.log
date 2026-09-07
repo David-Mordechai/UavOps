@@ -1,0 +1,138 @@
+Using launch settings from src\UavOps.Agent\Properties\launchSettings.json...
+Building...
+[16:10:17 INF] Watchdog health polling disabled — set Watchdog:HealthCheckUrl to enable it.
+[16:10:17 INF] Now listening on: http://localhost:5262
+[16:10:17 INF] Application started. Press Ctrl+C to shut down.
+[16:10:17 INF] Hosting environment: Development
+[16:10:17 INF] Content root path: D:\PlayGround\UavOps\src\UavOps.Agent
+[16:10:28 INF] Request starting HTTP/1.1 GET http://localhost:5262/healthz - null null
+[16:10:28 INF] Executing endpoint 'HTTP: GET /healthz'
+[16:10:28 INF] Setting HTTP status code 200.
+[16:10:28 INF] Writing value of type '<>f__AnonymousType13`10' as Json.
+[16:10:28 INF] Executed endpoint 'HTTP: GET /healthz'
+[16:10:28 INF] Request finished HTTP/1.1 GET http://localhost:5262/healthz - 200 null application/json; charset=utf-8 32.2018ms
+[16:10:37 INF] Request starting HTTP/1.1 GET http://localhost:5262/api/agent-graph - null null
+[16:10:37 INF] Executing endpoint 'HTTP: GET /api/agent-graph'
+[16:10:37 INF] Setting HTTP status code 200.
+[16:10:37 INF] Writing value of type '<>f__AnonymousType12`2' as Json.
+[16:10:37 INF] Executed endpoint 'HTTP: GET /api/agent-graph'
+[16:10:37 INF] Request finished HTTP/1.1 GET http://localhost:5262/api/agent-graph - 200 null application/json; charset=utf-8 9.5586ms
+[16:10:43 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[16:10:43 INF] Executing endpoint '/chatHub/negotiate'
+[16:10:43 INF] Executed endpoint '/chatHub/negotiate'
+[16:10:43 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 4.5681ms
+[16:10:43 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=6h0_BiuzCdKOdCibGgszUg - null null
+[16:10:43 INF] Executing endpoint '/chatHub'
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/ - null null
+[16:14:35 INF] Sending file. Request path: '/index.html'. Physical path: 'D:\PlayGround\UavOps\src\UavOps.Agent\wwwroot\index.html'
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/index.html - 200 5002 text/html 14.686ms
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/theme.css - null null
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/chat.css - null null
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/lib/vis-network.min.css - null null
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/lib/vis-network.min.js - null null
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/graph.css - null null
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/chat.js - null null
+[16:14:35 INF] The file /chat.js was not modified
+[16:14:35 INF] The file /graph.css was not modified
+[16:14:35 INF] The file /theme.css was not modified
+[16:14:35 INF] The file /lib/vis-network.min.css was not modified
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/chat.js - 304 null text/javascript 0.4696ms
+[16:14:35 INF] The file /lib/vis-network.min.js was not modified
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/graph.css - 304 null text/css 0.6497ms
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/theme.css - 304 null text/css 2.7051ms
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/lib/vis-network.min.css - 304 null text/css 1.2068ms
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/lib/vis-network.min.js - 304 null text/javascript 0.9501ms
+[16:14:35 INF] The file /chat.css was not modified
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/chat.css - 304 null text/css 2.9544ms
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/graph.js - null null
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/theme.js - null null
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/app.js - null null
+[16:14:35 INF] The file /graph.js was not modified
+[16:14:35 INF] The file /theme.js was not modified
+[16:14:35 INF] The file /app.js was not modified
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/graph.js - 304 null text/javascript 0.3211ms
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/theme.js - 304 null text/javascript 0.2493ms
+[16:14:35 INF] Request finished HTTP/1.1 GET http://localhost:5262/app.js - 304 null text/javascript 0.2417ms
+[16:14:35 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[16:14:35 INF] Executing endpoint '/chatHub/negotiate'
+[16:14:35 INF] Executed endpoint '/chatHub/negotiate'
+[16:14:35 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.7793ms
+[16:14:35 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=nu_LB_8L6Hfp2e3kHvDkAQ - null null
+[16:14:35 INF] Executing endpoint '/chatHub'
+[16:14:54 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=ListFleet args={} result=[{"tailNumber":"UAV-1","mode":"Orbiting","lat":31.801447,"lng":34.643497},{"tailNumber":"UAV-2","mode":"Orbiting","lat":31.798,"lng":34.639},{"tailNumber":"UAV-3","mode":"Orbiting","lat":31.805,"lng":34.648}] durationMs=6
+[16:15:07 INF] [OperatorPrompt] correlationId=s7io5dls agent=BrainAgent -> Yes
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-1","altitudeFt":3000} result={"lat":31.801447,"lng":34.643497,"speedKts":105,"altitudeFt":3000,"mode":"Orbiting","payloadLockedOn":null} durationMs=12
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":250} result={"lat":31.801447,"lng":34.643497,"speedKts":250,"altitudeFt":3000,"mode":"Orbiting","payloadLockedOn":null} durationMs=11
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=12
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.801447,"lng":34.643497,"speedKts":250,"altitudeFt":3000,"mode":"Orbiting","payloadLockedOn":"alpha"} durationMs=12
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-2","altitudeFt":3000} result={"lat":31.798,"lng":34.639,"speedKts":105,"altitudeFt":3000,"mode":"Orbiting","payloadLockedOn":null} durationMs=0
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-3","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:15:07 INF] [Tool] correlationId=s7io5dls agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:15:42 INF] [Confirmation] correlationId=w1hb4rni agent=BrainAgent tool=ReturnToLaunch -> declined/timed out
+[16:15:42 WRN] correlationId=w1hb4rni BrainAgent attempt 1/3 produced zero tool invocations for an actionable message - rolling back and retrying. Fabricated text: The command to return UAV-1 to its launch point was declined or not confirmed. Please confirm if you'd like to proceed with returning UAV-1 home.
+[16:15:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/api/agent-graph - null null
+[16:15:44 INF] Executing endpoint 'HTTP: GET /api/agent-graph'
+[16:15:44 INF] Setting HTTP status code 200.
+[16:15:44 INF] Writing value of type '<>f__AnonymousType12`2' as Json.
+[16:15:44 INF] Executed endpoint 'HTTP: GET /api/agent-graph'
+[16:15:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/api/agent-graph - 200 null application/json; charset=utf-8 1.1831ms
+[16:15:55 INF] [Confirmation] correlationId=w1hb4rni agent=BrainAgent tool=ReturnToLaunch -> declined/timed out
+[16:15:55 INF] Executed endpoint '/chatHub'
+[16:15:55 INF] Request finished HTTP/1.1 GET http://localhost:5262/chatHub?id=nu_LB_8L6Hfp2e3kHvDkAQ - 101 null null 79414.7081ms
+[16:15:55 ERR] correlationId=w1hb4rni chat turn failed
+System.Threading.Tasks.TaskCanceledException: The operation was canceled.
+ ---> System.Threading.Tasks.TaskCanceledException: A task was canceled.
+ ---> System.Threading.Tasks.TaskCanceledException: A task was canceled.
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpClient.HandleFailure(Exception e, Boolean telemetryStarted, HttpResponseMessage response, CancellationTokenSource cts, CancellationToken cancellationToken, CancellationTokenSource pendingRequestsCts)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessCoreAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Internal.CancellationHelper.ThrowOperationCanceledException(Exception innerException, CancellationToken cancellationToken)
+   at System.ClientModel.Internal.CancellationHelper.ThrowIfCancellationRequested(CancellationToken cancellationToken, Exception innerException)
+   at System.ClientModel.Internal.CancellationHelper.ThrowIfCancellationRequestedOrTimeout(CancellationToken messageToken, CancellationToken timeoutToken, Exception innerException, TimeSpan timeout)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ApiKeyAuthenticationPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at OpenAI.GenericActionPipelinePolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientPipeline.SendAsync(PipelineMessage message)
+   at OpenAI.ClientPipelineExtensions.ProcessMessageAsync(ClientPipeline pipeline, PipelineMessage message, RequestOptions options)
+   at OpenAI.Chat.ChatClient.CompleteChatAsync(BinaryContent content, RequestOptions options)
+   at OpenAI.Chat.ChatClient.CompleteChatAsync(IEnumerable`1 messages, ChatCompletionOptions options, RequestOptions requestOptions)
+   at Microsoft.Extensions.AI.OpenAIChatClient.GetResponseAsync(IEnumerable`1 messages, ChatOptions options, CancellationToken cancellationToken)
+   at Microsoft.Extensions.AI.FunctionInvokingChatClient.GetResponseAsync(IEnumerable`1 messages, ChatOptions options, CancellationToken cancellationToken)
+   at Microsoft.Agents.AI.ChatClientAgent.RunCoreAsync(IEnumerable`1 messages, AgentSession session, AgentRunOptions options, CancellationToken cancellationToken)
+   at Microsoft.Agents.AI.ChatClientAgent.RunCoreAsync(IEnumerable`1 messages, AgentSession session, AgentRunOptions options, CancellationToken cancellationToken)
+   at UavOps.Agent.Agents.MainAgentOrchestrator.HandleAsync(String text, String correlationId, CancellationToken cancellationToken) in D:\PlayGround\UavOps\src\UavOps.Agent\Agents\MainAgentOrchestrator.cs:line 92
+   at UavOps.Agent.Hubs.ChatHub.SendMessage(String user, String text, String correlationId) in D:\PlayGround\UavOps\src\UavOps.Agent\Hubs\ChatHub.cs:line 38
+[16:16:07 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null null
+[16:16:07 INF] Executing endpoint '/chatHub/negotiate'
+[16:16:07 INF] Executed endpoint '/chatHub/negotiate'
+[16:16:07 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.4005ms
+[16:16:22 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[16:16:22 INF] Executing endpoint '/chatHub/negotiate'
+[16:16:22 INF] Executed endpoint '/chatHub/negotiate'
+[16:16:22 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.3965ms
+[16:16:22 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=181MzS-wHgtBF7ULIC_-dA - null null
+[16:16:22 INF] Executing endpoint '/chatHub'
+[16:16:47 INF] [Tool] correlationId=3xc65elo agent=BrainAgent tool=GetServicesHealth args={} result={"overallStatus":"Unknown","services":{},"polledAt":null,"stale":true} durationMs=7
+[16:17:02 INF] Executed endpoint '/chatHub'
+[16:17:02 INF] Request finished HTTP/1.1 GET http://localhost:5262/chatHub?id=181MzS-wHgtBF7ULIC_-dA - 101 null null 39830.1675ms

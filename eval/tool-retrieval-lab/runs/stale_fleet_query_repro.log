@@ -1,0 +1,100 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UavOps.Agent.Contracts -> D:\PlayGround\UavOps\src\UavOps.Agent.Contracts\bin\Debug\net8.0\UavOps.Agent.Contracts.dll
+  UavOps.Agent.Simulator.Fake -> D:\PlayGround\UavOps\src\UavOps.Agent.Simulator.Fake\bin\Debug\net8.0\UavOps.Agent.Simulator.Fake.dll
+  UavOps.Agent.Watchdog.Fake -> D:\PlayGround\UavOps\src\UavOps.Agent.Watchdog.Fake\bin\Debug\net8.0\UavOps.Agent.Watchdog.Fake.dll
+  UavOps.Agent -> D:\PlayGround\UavOps\src\UavOps.Agent\bin\Debug\net8.0\UavOps.Agent.dll
+  UavOps.Agent.Tests -> D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll
+Test run for D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.14.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 8.0.25)
+[xUnit.net 00:00:00.04]   Discovering: UavOps.Agent.Tests
+[xUnit.net 00:00:00.08]   Discovered:  UavOps.Agent.Tests
+[xUnit.net 00:00:00.08]   Starting:    UavOps.Agent.Tests
+[xUnit.net 00:01:10.87]   Finished:    UavOps.Agent.Tests
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.RepeatedFleetQuery_AfterStateChange_ReflectsCurrentStateNotStaleHistory [1 m 10 s]
+  Standard Output Messages:
+ === run 0: second fleet-query response (duration=2.1513627s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha.
+   => FRESH, CORRECT ANSWER
+ === run 1: second fleet-query response (duration=2.1593442s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha.
+   => FRESH, CORRECT ANSWER
+ === run 2: second fleet-query response (duration=2.1577139s) ===
+ We have three UAVs in the fleet:
+
+1. **UAV-1** - Currently orbiting at coordinates (31.801447, 34.643497)
+2. **UAV-2** - Currently orbiting at coordinates (31.798, 34.639)
+3. **UAV-3** - Currently orbiting at coordinates (31.805, 34.648)
+
+All three UAVs are currently in orbiting mode. Let me know if you'd like more details about any specific UAV or if you need to perform any operations with them.
+   => STALE/WRONG ANSWER (reports pre-flight state after the fleet already moved)
+ === run 3: second fleet-query response (duration=2.4555059s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha. They appear to be at the same location, which suggests they may have arrived at their destination or are following the same path.
+   => FRESH, CORRECT ANSWER
+ === run 4: second fleet-query response (duration=2.1150865s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha as previously commanded.
+   => FRESH, CORRECT ANSWER
+ === run 5: second fleet-query response (duration=2.3797038s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha at 250 knots and 3000 feet altitude as previously commanded.
+   => FRESH, CORRECT ANSWER
+ === run 6: second fleet-query response (duration=2.3752452s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha. Is there anything specific you'd like me to do with any of these UAVs?
+   => FRESH, CORRECT ANSWER
+ === run 7: second fleet-query response (duration=2.1025605s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha.
+   => FRESH, CORRECT ANSWER
+ Fresh answers: 7/8
+
+
+
+Test Run Successful.
+Total tests: 1
+     Passed: 1
+ Total time: 1.1867 Minutes

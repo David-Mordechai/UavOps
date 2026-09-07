@@ -18,18 +18,13 @@ public class AgentConfigValidatorTests
     [Fact]
     public void Validate_UnknownOperation_Throws()
     {
-        var agents = new Dictionary<string, AgentConfig>
+        var config = new AgentConfig
         {
-            ["FlightControlAgent"] = new AgentConfig
-            {
-                Instructions = "x",
-                Description = "x",
-                ExampleUtterance = "x",
-                Tools = [new AgentToolConfig { Operation = "DoesNotExist", Description = "x", ExampleUtterance = "x" }]
-            }
+            Instructions = "x",
+            Tools = [new AgentToolConfig { Operation = "DoesNotExist", Description = "x", ExampleUtterance = "x" }]
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
+        var act = () => AgentConfigValidator.Validate(config, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*DoesNotExist*");
     }
@@ -37,18 +32,13 @@ public class AgentConfigValidatorTests
     [Fact]
     public void Validate_MissingRequiredParameterDescription_Throws()
     {
-        var agents = new Dictionary<string, AgentConfig>
+        var config = new AgentConfig
         {
-            ["FlightControlAgent"] = new AgentConfig
-            {
-                Instructions = "x",
-                Description = "x",
-                ExampleUtterance = "x",
-                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "x", ExampleUtterance = "x" }] // no Parameters described at all
-            }
+            Instructions = "x",
+            Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "x", ExampleUtterance = "x" }] // no Parameters described at all
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
+        var act = () => AgentConfigValidator.Validate(config, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*speedKts*");
     }
@@ -56,28 +46,23 @@ public class AgentConfigValidatorTests
     [Fact]
     public void Validate_FixedParameterCoversRequiredParameter_DoesNotThrow()
     {
-        var agents = new Dictionary<string, AgentConfig>
+        var config = new AgentConfig
         {
-            ["FlightControlAgent"] = new AgentConfig
-            {
-                Instructions = "x",
-                Description = "x",
-                ExampleUtterance = "x",
-                Tools =
-                [
-                    new AgentToolConfig
-                    {
-                        Operation = "SetSpeed",
-                        Description = "x",
-                        ExampleUtterance = "x",
-                        Parameters = new Dictionary<string, string> { ["speedKts"] = "the speed" },
-                        FixedParameters = new Dictionary<string, string> { ["tailNumber"] = "UAV-1" }
-                    }
-                ]
-            }
+            Instructions = "x",
+            Tools =
+            [
+                new AgentToolConfig
+                {
+                    Operation = "SetSpeed",
+                    Description = "x",
+                    ExampleUtterance = "x",
+                    Parameters = new Dictionary<string, string> { ["speedKts"] = "the speed" },
+                    FixedParameters = new Dictionary<string, string> { ["tailNumber"] = "UAV-1" }
+                }
+            ]
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
+        var act = () => AgentConfigValidator.Validate(config, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
 
         act.Should().NotThrow();
     }
@@ -85,134 +70,63 @@ public class AgentConfigValidatorTests
     [Fact]
     public void Validate_MissingInstructions_Throws()
     {
-        var agents = new Dictionary<string, AgentConfig>
-        {
-            ["FlightControlAgent"] = new AgentConfig { Instructions = "", Description = "x", ExampleUtterance = "x" }
-        };
+        var config = new AgentConfig { Instructions = "" };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
+        var act = () => AgentConfigValidator.Validate(config, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*FlightControlAgent*Instructions*");
-    }
-
-    [Fact]
-    public void Validate_MissingDescriptionOnNonRootAgent_Throws()
-    {
-        var agents = new Dictionary<string, AgentConfig>
-        {
-            ["FlightControlAgent"] = new AgentConfig { Instructions = "x", Description = "", ExampleUtterance = "x" }
-        };
-
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
-
-        act.Should().Throw<InvalidOperationException>().WithMessage("*FlightControlAgent*Description*");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*Instructions*");
     }
 
     [Fact]
     public void Validate_ToolMissingDescription_Throws()
     {
-        var agents = new Dictionary<string, AgentConfig>
+        var config = new AgentConfig
         {
-            ["FlightControlAgent"] = new AgentConfig
-            {
-                Instructions = "x",
-                Description = "x",
-                ExampleUtterance = "x",
-                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "", ExampleUtterance = "x" }]
-            }
+            Instructions = "x",
+            Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "", ExampleUtterance = "x" }]
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
+        var act = () => AgentConfigValidator.Validate(config, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*SetSpeed*Description*");
     }
 
     [Fact]
-    public void Validate_MissingExampleUtteranceOnNonRootAgent_Throws()
-    {
-        var agents = new Dictionary<string, AgentConfig>
-        {
-            ["FlightControlAgent"] = new AgentConfig { Instructions = "x", Description = "x", ExampleUtterance = "" }
-        };
-
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
-
-        act.Should().Throw<InvalidOperationException>().WithMessage("*FlightControlAgent*ExampleUtterance*");
-    }
-
-    [Fact]
     public void Validate_ToolMissingExampleUtterance_Throws()
     {
-        var agents = new Dictionary<string, AgentConfig>
+        var config = new AgentConfig
         {
-            ["FlightControlAgent"] = new AgentConfig
-            {
-                Instructions = "x",
-                Description = "x",
-                ExampleUtterance = "x",
-                Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "x", ExampleUtterance = "" }]
-            }
+            Instructions = "x",
+            Tools = [new AgentToolConfig { Operation = "SetSpeed", Description = "x", ExampleUtterance = "" }]
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
+        var act = () => AgentConfigValidator.Validate(config, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*SetSpeed*ExampleUtterance*");
     }
 
     [Fact]
-    public void Validate_UnknownChild_Throws()
-    {
-        var agents = new Dictionary<string, AgentConfig>
-        {
-            ["BrainAgent"] = new AgentConfig { Instructions = "x", Children = ["DoesNotExistAgent"] }
-        };
-
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
-
-        act.Should().Throw<InvalidOperationException>().WithMessage("*BrainAgent*DoesNotExistAgent*");
-    }
-
-    [Fact]
-    public void Validate_KnownChild_DoesNotThrow()
-    {
-        var agents = new Dictionary<string, AgentConfig>
-        {
-            ["BrainAgent"] = new AgentConfig { Instructions = "x", Children = ["MoavAgent"] },
-            ["MoavAgent"] = new AgentConfig { Instructions = "x", Description = "Handles live ops.", ExampleUtterance = "x", Children = [] }
-        };
-
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
-
-        act.Should().NotThrow();
-    }
-
-    [Fact]
     public void Validate_OperatorPromptTool_SkipsCatalogResolution()
     {
-        var agents = new Dictionary<string, AgentConfig>
+        var config = new AgentConfig
         {
-            ["SimulatorInfrastructureAgent"] = new AgentConfig
-            {
-                Instructions = "x",
-                Description = "x",
-                ExampleUtterance = "x",
-                Tools =
-                [
-                    new AgentToolConfig
-                    {
-                        Kind = "OperatorPrompt",
-                        Operation = "AskOperatorWhichLesson",
-                        Description = "Ask which lesson to run.",
-                        ExampleUtterance = "x"
-                        // Deliberately no Parameters entry and not a real catalog operation —
-                        // an OperatorPrompt tool isn't resolved against any catalog, so neither
-                        // should trip validation.
-                    }
-                ]
-            }
+            Instructions = "x",
+            Tools =
+            [
+                new AgentToolConfig
+                {
+                    Kind = "OperatorPrompt",
+                    Operation = "AskOperatorWhichLesson",
+                    Description = "Ask which lesson to run.",
+                    ExampleUtterance = "x"
+                    // Deliberately no Parameters entry and not a real catalog operation —
+                    // an OperatorPrompt tool isn't resolved against any catalog, so neither
+                    // should trip validation.
+                }
+            ]
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
+        var act = () => AgentConfigValidator.Validate(config, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
 
         act.Should().NotThrow();
     }
@@ -220,18 +134,13 @@ public class AgentConfigValidatorTests
     [Fact]
     public void Validate_SimulatorInfraOperation_Resolves()
     {
-        var agents = new Dictionary<string, AgentConfig>
+        var config = new AgentConfig
         {
-            ["SimulatorInfrastructureAgent"] = new AgentConfig
-            {
-                Instructions = "x",
-                Description = "x",
-                ExampleUtterance = "x",
-                Tools = [new AgentToolConfig { Operation = "ListSimulatorLessons", Description = "x", ExampleUtterance = "x" }]
-            }
+            Instructions = "x",
+            Tools = [new AgentToolConfig { Operation = "ListSimulatorLessons", Description = "x", ExampleUtterance = "x" }]
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
+        var act = () => AgentConfigValidator.Validate(config, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
 
         act.Should().NotThrow();
     }
@@ -239,32 +148,26 @@ public class AgentConfigValidatorTests
     [Fact]
     public void Validate_ValidConfig_DoesNotThrow()
     {
-        var agents = new Dictionary<string, AgentConfig>
+        var config = new AgentConfig
         {
-            ["FlightControlAgent"] = new AgentConfig
-            {
-                Instructions = "x",
-                Description = "Handles flight controls.",
-                ExampleUtterance = "x",
-                Tools =
-                [
-                    new AgentToolConfig
+            Instructions = "x",
+            Tools =
+            [
+                new AgentToolConfig
+                {
+                    Operation = "SetSpeed",
+                    Description = "x",
+                    ExampleUtterance = "x",
+                    Parameters = new Dictionary<string, string>
                     {
-                        Operation = "SetSpeed",
-                        Description = "x",
-                        ExampleUtterance = "x",
-                        Parameters = new Dictionary<string, string>
-                        {
-                            ["tailNumber"] = "the tail number",
-                            ["speedKts"] = "the speed"
-                        }
+                        ["tailNumber"] = "the tail number",
+                        ["speedKts"] = "the speed"
                     }
-                ]
-            },
-            ["BrainAgent"] = new AgentConfig { Instructions = "x" }
+                }
+            ]
         };
 
-        var act = () => AgentConfigValidator.Validate(agents, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
+        var act = () => AgentConfigValidator.Validate(config, Catalog(), SimulatorInfraCatalog(), WatchdogCatalog(), WatchdogConfigCatalog(), OpenAi());
 
         act.Should().NotThrow();
     }

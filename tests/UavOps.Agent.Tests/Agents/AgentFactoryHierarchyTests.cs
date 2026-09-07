@@ -32,7 +32,7 @@ public class AgentFactoryHierarchyTests
         }
     }
 
-    private static AgentFactory CreateSut(Dictionary<string, AgentConfig> agents, AgentRetrievalIndex retrievalIndex)
+    private static AgentFactory CreateSut(AgentConfig config, int topK = 10)
     {
         var hub = Substitute.For<IHubContext<ChatHub>>();
         var toolLogger = new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, hub);
@@ -42,7 +42,7 @@ public class AgentFactoryHierarchyTests
         return new AgentFactory(
             (_, _) => new FakeChatClient(),
             "test-model",
-            agents,
+            config,
             new OperationCatalog(typeof(IOperationService)),
             Substitute.For<IOperationService>(),
             new OperationCatalog(typeof(ISimulatorService)),
@@ -51,73 +51,89 @@ public class AgentFactoryHierarchyTests
             Substitute.For<IWatchdogService>(),
             new OperationCatalog(typeof(IWatchdogConfigService)),
             Substitute.For<IWatchdogConfigService>(),
-            retrievalIndex,
-            new RetrievalOptions(),
+            new RetrievalOptions { TopK = topK },
             new MemoryOptions(),
             toolLogger,
             confirmationGate,
-            operatorPromptGate,
-            NullLogger<AgentFactory>.Instance);
+            operatorPromptGate);
     }
 
-    private static async Task<AgentRetrievalIndex> BuildFixedIndexAsync(Dictionary<string, AgentConfig> agents)
+    // Vector content is irrelevant to what these tests check (which NAMES survive retrieval, not
+    // ranking quality - that's covered live by eval/tool-retrieval-lab) - a fake generator
+    // returning an identical vector for every text just needs to satisfy
+    // ToolRetrievalIndex.BuildAsync's batched embedding call.
+    private static async Task<ToolRetrievalIndex> BuildFixedIndexAsync(IReadOnlyList<AITool> templateTools)
     {
-        // Vector content is irrelevant here — every non-root agent below declares explicit
-        // Children, so retrieval ranking never actually fires; this only needs to satisfy
-        // AgentRetrievalIndex.BuildAsync's embedding call for each agent with a Description.
         var generator = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
         generator.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 1f, 0f })])));
+            .Returns(callInfo =>
+            {
+                var count = callInfo.Arg<IEnumerable<string>>()!.Count();
+                var embeddings = Enumerable.Range(0, count).Select(_ => new Embedding<float>(new float[] { 1f, 0f })).ToList();
+                return Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(embeddings));
+            });
 
-        return await AgentRetrievalIndex.BuildAsync(agents, generator, CancellationToken.None);
+        return await ToolRetrievalIndex.BuildAsync(templateTools, generator, CancellationToken.None);
     }
 
-    private static List<string> DelegateToolNames(List<AITool> tools) =>
+    private static List<string> ToolNames(List<AITool> tools) =>
         tools.OfType<AIFunction>().Select(f => f.Name).ToList();
 
-    [Theory]
-    [InlineData("set UAV-1 speed to 200 knots")]
-    [InlineData("start the simulator and run lesson 3")]
-    [InlineData("what is the weather like today")]
-    public async Task BuildRootToolsForTurn_CreatePlanCoversExactlyItsDeclaredChildren_RegardlessOfOperatorText(string operatorText)
+    [Fact]
+    public void BuildTemplateTools_OneToolPerConfiguredOperation()
     {
-        // BrainAgent's own children are never independently-callable tools of their own - they're
-        // internal steps CreatePlanTool executes (see CreatePlanTool's own doc comment) - so what
-        // this test actually verifies is that CreatePlan's own schema lists exactly the explicit
-        // Children, regardless of operator text (proving explicit Children beats retrieval ranking).
-        var agents = new Dictionary<string, AgentConfig>
+        var config = new AgentConfig
         {
-            ["BrainAgent"] = new AgentConfig { Instructions = "Route.", Children = ["MoavAgent", "SimulatorAgent"] },
-            ["MoavAgent"] = new AgentConfig { Instructions = "Live ops.", Description = "Handles live UAV fleet operations.", Children = [] },
-            ["SimulatorAgent"] = new AgentConfig { Instructions = "Sim ops.", Description = "Handles the training simulator." }
+            Instructions = "x",
+            Tools =
+            [
+                new AgentToolConfig { Operation = "ListFleet", Description = "x", ExampleUtterance = "x" },
+                new AgentToolConfig { Operation = "GetServicesHealth", Description = "x", ExampleUtterance = "x" }
+            ]
         };
-        var retrievalIndex = await BuildFixedIndexAsync(agents);
-        var sut = CreateSut(agents, retrievalIndex);
+        var sut = CreateSut(config);
 
-        var tools = await sut.BuildRootToolsForTurn("corr1", operatorText, CancellationToken.None);
+        var tools = sut.BuildTemplateTools();
 
-        DelegateToolNames(tools).Should().BeEquivalentTo(["CreatePlan"]);
-        var schemaText = tools.OfType<AIFunction>().Single().JsonSchema.GetRawText();
-        schemaText.Should().Contain("MoavAgent").And.Contain("SimulatorAgent");
+        ToolNames(tools).Should().BeEquivalentTo(["ListFleet", "GetServicesHealth"]);
     }
 
     [Fact]
-    public async Task BuildRootToolsForTurn_ExplicitEmptyChildren_CreatePlanHasNoAgents_EvenThoughRetrievalWouldOfferCandidates()
+    public async Task BuildToolsForTurn_EmptyTopK_ReturnsNoTools()
     {
-        // BrainAgent declares Children: [] explicitly, so CreatePlan must end up with zero agents to
-        // delegate to, even though "OtherAgent" exists and would otherwise be a retrieval candidate.
-        var agents = new Dictionary<string, AgentConfig>
+        // No "safe no-op" tool appended anymore - tool_choice is never forced (see
+        // MainAgentOrchestrator's own doc comment), so there's nothing that must always be present.
+        var config = new AgentConfig
         {
-            ["BrainAgent"] = new AgentConfig { Instructions = "Route.", Description = "Routes.", Children = [] },
-            ["OtherAgent"] = new AgentConfig { Instructions = "Other.", Description = "Some other unrelated specialist." }
+            Instructions = "x",
+            Tools = [new AgentToolConfig { Operation = "ListFleet", Description = "x", ExampleUtterance = "x" }]
         };
-        var retrievalIndex = await BuildFixedIndexAsync(agents);
-        var sut = CreateSut(agents, retrievalIndex);
+        var sut = CreateSut(config, topK: 0);
+        sut.RetrievalIndex = await BuildFixedIndexAsync(sut.BuildTemplateTools());
 
-        var tools = await sut.BuildRootToolsForTurn("corr1", "anything", CancellationToken.None);
+        var tools = await sut.BuildToolsForTurn("corr1", "hi there", CancellationToken.None);
 
-        DelegateToolNames(tools).Should().BeEquivalentTo(["CreatePlan"]);
-        var schemaText = tools.OfType<AIFunction>().Single().JsonSchema.GetRawText();
-        schemaText.Should().NotContain("OtherAgent");
+        tools.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task BuildToolsForTurn_NarrowsToTopK()
+    {
+        var config = new AgentConfig
+        {
+            Instructions = "x",
+            Tools =
+            [
+                new AgentToolConfig { Operation = "ListFleet", Description = "x", ExampleUtterance = "x" },
+                new AgentToolConfig { Operation = "GetServicesHealth", Description = "x", ExampleUtterance = "x" },
+                new AgentToolConfig { Operation = "ListSimulatorLessons", Description = "x", ExampleUtterance = "x" }
+            ]
+        };
+        var sut = CreateSut(config, topK: 1);
+        sut.RetrievalIndex = await BuildFixedIndexAsync(sut.BuildTemplateTools());
+
+        var tools = await sut.BuildToolsForTurn("corr1", "anything", CancellationToken.None);
+
+        tools.Should().HaveCount(1);
     }
 }

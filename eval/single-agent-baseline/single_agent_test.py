@@ -281,8 +281,8 @@ def run_once(args):
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("n", nargs="?", type=int, default=1, help="Number of independent repeats (default 1).")
-    p.add_argument("--model", default="Qwen/Qwen3.8-27B-FP8", help="Model name as sent in the 'model' field.")
-    p.add_argument("--host", default="http://192.168.1.155:8000", help="Backend base URL (no trailing /v1).")
+    p.add_argument("--model", default="nvidia/Qwen3.6-35B-A3B-NVFP4", help="Model name as sent in the 'model' field.")
+    p.add_argument("--host", default="http://10.10.77.57:8000", help="Backend base URL (no trailing /v1).")
     p.add_argument("--temperature", type=float, default=0, help="Sampling temperature to request.")
     p.add_argument("--no-thinking-kwarg", action="store_true", help="Omit chat_template_kwargs={'enable_thinking': false}.")
     p.add_argument("--no-parallel-tool-calls", action="store_true", help="Omit parallel_tool_calls from the request.")

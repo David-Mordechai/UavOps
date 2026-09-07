@@ -34,23 +34,18 @@ public class SimulatorLessonJobProcessorTests
 
     private static AgentFactory CreateAgentFactory(IHubContext<ChatHub> hub)
     {
-        var agents = new Dictionary<string, AgentConfig>
-        {
-            ["SimulatorInfrastructureAgent"] = new AgentConfig { Instructions = "Summarize outcomes plainly.", Description = "Runs lessons." }
-        };
+        // BuildPersonaOnlyAgent (the only thing this test exercises) never touches
+        // AgentFactory.RetrievalIndex - only BuildToolsForTurn does - so no ToolRetrievalIndex
+        // needs to be built here at all.
+        var config = new AgentConfig { Instructions = "Summarize outcomes plainly." };
         var toolLogger = new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, hub);
         var confirmationGate = new ConfirmationGate(hub, new ConfigurationBuilder().Build(), NullLogger<ConfirmationGate>.Instance);
         var operatorPromptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance);
-        var generator = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
-        generator.GenerateAsync(Arg.Any<IEnumerable<string>>(), Arg.Any<EmbeddingGenerationOptions>(), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(new GeneratedEmbeddings<Embedding<float>>([new Embedding<float>(new float[] { 1f, 0f })])));
-        var retrievalIndex = AgentRetrievalIndex.BuildAsync(agents, generator, CancellationToken.None)
-            .GetAwaiter().GetResult();
 
         return new AgentFactory(
             (_, _) => new FakeChatClient(),
             "test-model",
-            agents,
+            config,
             new OperationCatalog(typeof(IOperationService)),
             Substitute.For<IOperationService>(),
             new OperationCatalog(typeof(ISimulatorService)),
@@ -59,13 +54,11 @@ public class SimulatorLessonJobProcessorTests
             Substitute.For<IWatchdogService>(),
             new OperationCatalog(typeof(IWatchdogConfigService)),
             Substitute.For<IWatchdogConfigService>(),
-            retrievalIndex,
             new RetrievalOptions(),
             new MemoryOptions(),
             toolLogger,
             confirmationGate,
-            operatorPromptGate,
-            NullLogger<AgentFactory>.Instance);
+            operatorPromptGate);
     }
 
     private static (IHubContext<ChatHub> Hub, Func<Task<(string Agent, string Text, string CorrelationId)>> AwaitNextMessage) CreateHub()
@@ -106,7 +99,7 @@ public class SimulatorLessonJobProcessorTests
 
             var (agent, text, correlationId) = await awaitMessage();
 
-            agent.Should().Be("SimulatorInfrastructureAgent");
+            agent.Should().Be("BrainAgent");
             text.Should().Be("The lesson finished successfully.");
             correlationId.Should().NotBe("original-corr");
         }

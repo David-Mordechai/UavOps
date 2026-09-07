@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Same versions and construction path as src/UavOps.Agent/Program.cs and AgentFactory.cs
+         (OpenAI ChatClient -> AsIChatClient -> FunctionInvokingChatClient{AllowConcurrentInvocation}
+         -> ChatClientAgent), deliberately, so this isolates the .NET Agent Framework/Microsoft.Extensions.AI
+         stack itself from the real app's multi-agent (BrainAgent/MoavAgent/leaf) hop structure - see
+         this project's own Program.cs top-of-file comment and opentask.txt. -->
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.13.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.0" />
+  </ItemGroup>
+
+</Project>

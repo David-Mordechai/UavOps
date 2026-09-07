@@ -1,0 +1,85 @@
+Using launch settings from src\UavOps.Agent\Properties\launchSettings.json...
+Building...
+[16:23:29 INF] Watchdog health polling disabled — set Watchdog:HealthCheckUrl to enable it.
+[16:23:29 INF] Now listening on: http://localhost:5262
+[16:23:29 INF] Application started. Press Ctrl+C to shut down.
+[16:23:29 INF] Hosting environment: Development
+[16:23:29 INF] Content root path: D:\PlayGround\UavOps\src\UavOps.Agent
+[16:23:32 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[16:23:32 INF] Executing endpoint '/chatHub/negotiate'
+[16:23:32 INF] Executed endpoint '/chatHub/negotiate'
+[16:23:32 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 14.5515ms
+[16:23:32 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=FFNjwbJC9IjGFzETcqVJ-Q - null null
+[16:23:32 INF] Executing endpoint '/chatHub'
+[16:23:39 INF] Request starting HTTP/1.1 GET http://localhost:5262/healthz - null null
+[16:23:39 INF] Executing endpoint 'HTTP: GET /healthz'
+[16:23:39 INF] Setting HTTP status code 200.
+[16:23:39 INF] Writing value of type '<>f__AnonymousType13`10' as Json.
+[16:23:39 INF] Executed endpoint 'HTTP: GET /healthz'
+[16:23:39 INF] Request finished HTTP/1.1 GET http://localhost:5262/healthz - 200 null application/json; charset=utf-8 15.7304ms
+[16:23:57 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[16:23:57 INF] Executing endpoint '/chatHub/negotiate'
+[16:23:57 INF] Executed endpoint '/chatHub/negotiate'
+[16:23:57 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.5861ms
+[16:23:57 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=C5VUkZ7KmhK9-_0uj3bB1w - null null
+[16:23:57 INF] Executing endpoint '/chatHub'
+[16:24:26 INF] [Tool] correlationId=7ki7487s agent=BrainAgent tool=ListFleet args={} result=[{"tailNumber":"UAV-1","mode":"Orbiting","lat":31.801447,"lng":34.643497},{"tailNumber":"UAV-2","mode":"Orbiting","lat":31.798,"lng":34.639},{"tailNumber":"UAV-3","mode":"Orbiting","lat":31.805,"lng":34.648}] durationMs=5
+[16:24:27 INF] [Tool] correlationId=7ki7487s agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=5
+[16:24:27 INF] [Tool] correlationId=7ki7487s agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:24:27 INF] [Tool] correlationId=7ki7487s agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:24:27 INF] [Tool] correlationId=7ki7487s agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:24:27 INF] [Tool] correlationId=7ki7487s agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:24:27 INF] [Tool] correlationId=7ki7487s agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:25:07 INF] [Tool] correlationId=px519zvf agent=BrainAgent tool=ReturnToLaunch args={"tailNumber":"UAV-2"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"ReturningToLaunch","payloadLockedOn":null} durationMs=0
+[16:25:20 INF] Executed endpoint '/chatHub'
+[16:25:20 INF] Request finished HTTP/1.1 GET http://localhost:5262/chatHub?id=C5VUkZ7KmhK9-_0uj3bB1w - 101 null null 82714.7879ms
+[16:27:02 INF] Request starting HTTP/1.1 GET http://localhost:5262/index.html - null null
+[16:27:02 INF] The file /index.html was not modified
+[16:27:02 INF] Request finished HTTP/1.1 GET http://localhost:5262/index.html - 304 null text/html 10.9579ms
+[16:27:02 INF] Executed endpoint '/chatHub'
+[16:27:02 INF] Request finished HTTP/1.1 GET http://localhost:5262/chatHub?id=FFNjwbJC9IjGFzETcqVJ-Q - 101 null null 210243.5687ms
+[16:27:02 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[16:27:02 INF] Executing endpoint '/chatHub/negotiate'
+[16:27:02 INF] Executed endpoint '/chatHub/negotiate'
+[16:27:02 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.8715ms
+[16:27:02 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=MP7VU2b8mXDHthed2JUg3Q - null null
+[16:27:02 INF] Executing endpoint '/chatHub'
+[16:27:28 INF] [Tool] correlationId=4exi6vx3 agent=BrainAgent tool=AcknowledgeNoAction args={} result=Acknowledged - no operation performed. durationMs=0
+[16:27:49 INF] [Tool] correlationId=ppslxmja agent=BrainAgent tool=ListFleet args={} result=[{"tailNumber":"UAV-1","mode":"Transiting","lat":31.812,"lng":34.66},{"tailNumber":"UAV-2","mode":"ReturningToLaunch","lat":31.812,"lng":34.66},{"tailNumber":"UAV-3","mode":"Transiting","lat":31.812,"lng":34.66}] durationMs=0
+[16:29:02 INF] [OperatorPrompt] correlationId=qe4f4qm9 agent=BrainAgent -> ALL
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-1","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-1","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-1","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-2","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-2","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-2","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-3","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-3","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-3","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[16:29:02 INF] [Tool] correlationId=qe4f4qm9 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Standalone lab, not referencing UavOps.Agent - same package versions/construction path
+         (OpenAI ChatClient -> AsIChatClient -> FunctionInvokingChatClient -> ChatClientAgent) as
+         eval/single-agent-baseline-dotnet. Real semantic tool-description embeddings come from a
+         second vLLM instance (Qwen/Qwen3-Embedding-8B, pooling runner) via the plain OpenAI SDK's
+         EmbeddingClient.AsIEmbeddingGenerator() - no separate embedding client library needed,
+         same construction pattern as the chat client - see ToolRetrievalIndex.cs/Program.cs. -->
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.13.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.8.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" Version="10.8.0" />
+  </ItemGroup>
+
+</Project>

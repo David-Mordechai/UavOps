@@ -20,8 +20,7 @@ public sealed class AgentToolConfig
 
     /// <summary>An example chat utterance an operator could type that would plausibly trigger this
     /// tool — shown on hover in the agent-graph UI (see <see cref="AgentGraphProjector"/>). Always
-    /// required (checked by <see cref="Options.AgentConfigValidator"/>), unlike
-    /// <see cref="AgentConfig.ExampleUtterance"/> which is root-exempt.</summary>
+    /// required (checked by <see cref="Options.AgentConfigValidator"/>).</summary>
     public string ExampleUtterance { get; set; } = "";
 
     /// <summary>"Operation" (default) resolves <see cref="Operation"/> against a catalog via
@@ -45,48 +44,30 @@ public sealed class AgentToolConfig
 }
 
 /// <summary>
-/// One agent: either a domain agent or the root BrainAgent.
+/// The single flat agent (BrainAgent) — one consolidated YAML file
+/// (<c>AgentsConfig/BrainAgent.yaml</c>) replaces what used to be 11 files across a multi-agent
+/// delegation tree; every real operation lives directly in <see cref="Tools"/> now. No
+/// <c>Children</c>/<c>Description</c>/<c>ExampleUtterance</c> concept anymore — both existed only
+/// to be shown to a parent agent as this agent's own tool description, or fed to agent-selection
+/// embedding retrieval; with exactly one agent that is nobody's delegate, neither purpose exists.
 /// </summary>
 public sealed class AgentConfig
 {
-    /// <summary>Not read from this agent's own YAML file — deliberately populated from the
-    /// <c>AgentModels</c> section of appsettings.json instead (see <c>Program.cs</c>), so which
-    /// model/provider serves every agent is visible and editable in one place rather than
-    /// scattered across each agent's file. Null means the app-wide Ollama default.</summary>
+    /// <summary>Not read from YAML — populated from the <c>AgentModels</c> section of
+    /// appsettings.json instead (see <c>Program.cs</c>). Null means the app-wide Ollama default.</summary>
     public string? Model { get; set; }
 
     /// <summary>Which backend <see cref="Model"/> is resolved against — "OpenAI" (any OpenAI-
     /// compatible endpoint, see <see cref="OpenAiOptions"/>), or omitted/null (the default) for
     /// the local Ollama endpoint. Same <c>AgentModels</c>-appsettings.json origin as
-    /// <see cref="Model"/>, not YAML. Selected per agent, never globally, since a hosted
-    /// provider's request limits (e.g. a free-tier daily cap) make it unsuitable as the app-wide
-    /// default.</summary>
+    /// <see cref="Model"/>, not YAML.</summary>
     public string? Provider { get; set; }
 
     public string Instructions { get; set; } = "";
 
-    /// <summary>Shown to a parent agent as this agent's tool description when it is one of that
-    /// parent's delegates, and embedded for retrieval ranking (see <see cref="Children"/>).</summary>
-    public string? Description { get; set; }
-
-    /// <summary>An example chat utterance an operator could type that would plausibly cause a
-    /// parent to delegate to this agent — shown on hover in the agent-graph UI (see
-    /// <see cref="AgentGraphProjector"/>). Required (validated non-blank) for every agent except
-    /// the root <c>BrainAgent</c>, same exemption as <see cref="Description"/>.</summary>
-    public string? ExampleUtterance { get; set; }
-
-    /// <summary>Optional explicit, ordered list of this agent's delegates. When present (even as
-    /// an empty list), this is used verbatim instead of embedding retrieval — for structural/
-    /// safety-relevant branches (e.g. live vs. simulated) where the split must be guaranteed, not
-    /// similarity-ranked. Omit the YAML key entirely to keep using retrieval
-    /// (<c>Agents.AgentRetrievalIndex</c>) as before.</summary>
-    public List<string>? Children { get; set; }
-
     /// <summary>Sampling temperature for this agent's model calls. Lower values (e.g. 0.1-0.3)
-    /// make tool-calling decisions more consistent across repeated identical requests — a small
-    /// model at default temperature will non-deterministically vary which tools it calls, in
-    /// what order, and whether it batches them into one turn or spreads them across several.
-    /// Null uses the provider's default.</summary>
+    /// make tool-calling decisions more consistent across repeated identical requests. Null uses
+    /// the provider's default.</summary>
     public float? Temperature { get; set; }
 
     /// <summary>Operation-backed tools this agent may call.</summary>

@@ -9,11 +9,11 @@ namespace UavOps.Agent.Agents.SimulatorAgent;
 /// Consumes <see cref="ISimulatorLessonJobQueue"/> one job at a time — the queue itself provides
 /// the serialization, no separate "busy" check needed. For each job: runs it via
 /// <see cref="ILessonExecutor"/> (the "what happened" step — deterministic, never sees a small
-/// model try to parse raw script output), then builds a tools-stripped instance of
-/// <c>SimulatorInfrastructureAgent</c> (<see cref="AgentFactory.BuildPersonaOnlyAgent"/> — same
-/// persona/voice as the real agent, but structurally unable to call any tool again) and runs it
-/// once with a synthetic instruction summarizing the concise outcome, to produce the "simple
-/// terms" sentence the operator actually wants (the "how to say it" step). The result is pushed as
+/// model try to parse raw script output), then builds a tools-stripped instance of BrainAgent
+/// (<see cref="AgentFactory.BuildPersonaOnlyAgent"/> — same persona/voice as the real agent, but
+/// structurally unable to call any tool again) and runs it once with a synthetic instruction
+/// summarizing the concise outcome, to produce the "simple terms" sentence the operator actually
+/// wants (the "how to say it" step). The result is pushed as
 /// an ordinary <c>ReceiveChatMessage</c> under a fresh correlationId — the chat UI already renders
 /// any such message as a new bubble the first time it sees that correlationId, so this appears as
 /// a new, unprompted message in the thread with no frontend changes needed.
@@ -29,7 +29,7 @@ public sealed class SimulatorLessonJobProcessor(
     IHubContext<ChatHub> hub,
     ILogger<SimulatorLessonJobProcessor> logger) : BackgroundService
 {
-    private const string LessonAgentName = "SimulatorInfrastructureAgent";
+    private const string LessonAgentName = AgentFactory.RootAgentName;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -57,7 +57,7 @@ public sealed class SimulatorLessonJobProcessor(
             job.CorrelationId, job.LessonName, outcome, sw.ElapsedMilliseconds);
 
         var instruction = BuildSummaryInstruction(job.LessonName, outcome, detail, sw.Elapsed);
-        var summaryAgent = agentFactory.BuildPersonaOnlyAgent(LessonAgentName);
+        var summaryAgent = agentFactory.BuildPersonaOnlyAgent();
         var response = await summaryAgent.RunAsync(instruction, cancellationToken: stoppingToken);
 
         var proactiveCorrelationId = Guid.NewGuid().ToString("N")[..8];

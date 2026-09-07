@@ -1,0 +1,69 @@
+Model: nvidia/Qwen3.6-35B-A3B-NVFP4   Host: http://10.10.77.57:8000
+Total tools: 1000 (6 real + 994 distractors)   TopK: 10   Retrieval: True   Repeats: 1
+Building retrieval index via embeddings (Qwen/Qwen3-Embedding-8B @ http://10.10.77.57:8001) ...
+Index built: 1000 tools embedded.
+
+
+########## SCENARIO: compound-3uav ##########
+
+---- repeat 0 ----
+
+======================================================================
+Operator: hi my name is David and I am today Operator
+======================================================================
+
+Assistant (final): Hello David! I'm your UAV fleet operations assistant. How can I help you with your fleet today?
+
+[retrieval] required=ListFleet candidates=10 missing=none
+
+======================================================================
+Operator: What uavs do we have?
+======================================================================
+  ListFleet({}) -> [{'tailNumber': 'UAV-1', 'mode': 'Orbiting', 'lat': 31.801447, 'lng': 34.643497}, {'tailNumber': 'UAV-2', 'mode': 'Orbiting', 'lat': 31.798, 'lng': 34.639}, {'tailNumber': 'UAV-3', 'mode': 'Orbiting', 'lat': 31.805, 'lng': 34.648}]
+
+Assistant (final): We have three UAVs in our fleet:
+
+1. **UAV-1** - Currently orbiting at coordinates 31.801447, 34.643497
+2. **UAV-2** - Currently orbiting at coordinates 31.798, 34.639
+3. **UAV-3** - Currently orbiting at coordinates 31.805, 34.648
+
+All three UAVs are currently in orbiting mode. Is there anything specific you'd like to do with any of them?
+
+[retrieval] required=Navigate,SetSpeed,SetAltitude,PointPayload candidates=10 missing=none
+
+======================================================================
+Operator: fly all of them to target alpha and set speed to 250 and altitude to 3000 to all of them also point there payloads there
+======================================================================
+  Navigate({'tailNumber': 'UAV-1', 'location': 'alpha'}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 105, 'altitudeFt': 4000, 'mode': 'Transiting', 'payloadLockedOn': None}
+  Navigate({'tailNumber': 'UAV-2', 'location': 'alpha'}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 105, 'altitudeFt': 4000, 'mode': 'Transiting', 'payloadLockedOn': None}
+  Navigate({'tailNumber': 'UAV-3', 'location': 'alpha'}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 105, 'altitudeFt': 4000, 'mode': 'Transiting', 'payloadLockedOn': None}
+  SetSpeed({'tailNumber': 'UAV-1', 'speedKts': 250}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 4000, 'mode': 'Transiting', 'payloadLockedOn': None}
+  SetSpeed({'tailNumber': 'UAV-2', 'speedKts': 250}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 4000, 'mode': 'Transiting', 'payloadLockedOn': None}
+  SetSpeed({'tailNumber': 'UAV-3', 'speedKts': 250}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 4000, 'mode': 'Transiting', 'payloadLockedOn': None}
+  SetAltitude({'tailNumber': 'UAV-1', 'altitudeFt': 3000}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 3000, 'mode': 'Transiting', 'payloadLockedOn': None}
+  SetAltitude({'tailNumber': 'UAV-2', 'altitudeFt': 3000}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 3000, 'mode': 'Transiting', 'payloadLockedOn': None}
+  SetAltitude({'tailNumber': 'UAV-3', 'altitudeFt': 3000}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 3000, 'mode': 'Transiting', 'payloadLockedOn': None}
+  PointPayload({'tailNumber': 'UAV-1', 'location': 'alpha'}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 3000, 'mode': 'Transiting', 'payloadLockedOn': 'alpha'}
+  PointPayload({'tailNumber': 'UAV-2', 'location': 'alpha'}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 3000, 'mode': 'Transiting', 'payloadLockedOn': 'alpha'}
+  PointPayload({'tailNumber': 'UAV-3', 'location': 'alpha'}) -> {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 3000, 'mode': 'Transiting', 'payloadLockedOn': 'alpha'}
+
+Assistant (final): I've successfully commanded all three UAVs with your requests:
+
+1. All UAVs (UAV-1, UAV-2, and UAV-3) are now transiting to target alpha
+2. All UAVs have been set to a speed of 250 knots
+3. All UAVs have been set to an altitude of 3000 feet
+4. All UAVs have their payloads pointed at target alpha
+
+All three UAVs are currently in transiting mode at coordinates 31.81, 34.66, with their payloads locked on to target alpha.
+
+FINAL STATE: UAV-1: {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 3000, 'mode': 'Transiting', 'payloadLockedOn': 'alpha'}  UAV-2: {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 3000, 'mode': 'Transiting', 'payloadLockedOn': 'alpha'}  UAV-3: {'lat': 31.81, 'lng': 34.66, 'speedKts': 250, 'altitudeFt': 3000, 'mode': 'Transiting', 'payloadLockedOn': 'alpha'}
+REPEAT 0: PASS = True
+
+SCENARIO 'compound-3uav': 1/1 passed
+
+
+======================================================================
+SUMMARY (nvidia/Qwen3.6-35B-A3B-NVFP4, 1000 tools, retrieval=True, topK=10)
+======================================================================
+  compound-3uav: 1/1
+  RECALL (required tools present in candidate set): 2/2

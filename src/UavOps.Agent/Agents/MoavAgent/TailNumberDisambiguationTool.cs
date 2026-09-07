@@ -13,19 +13,15 @@ namespace UavOps.Agent.Agents.MoavAgent;
 /// keeping <see cref="Tooling.OperationTool"/> itself domain-agnostic, per this codebase's own
 /// layering (see <c>AgentFactory</c>'s class doc comment).
 ///
-/// Every fleet-facing agent's instructions already say not to guess a tail number and to ask the
-/// operator instead when more than one UAV exists - but a small local model doesn't reliably
-/// follow that (observed directly: it calls ListFleet, sees 3 known tail numbers, and picks one
-/// anyway in the large majority of trials). This makes the check deterministic instead of trusting
-/// the model's judgment, the same reasoning <c>ChatConfirmationParser</c>/
-/// <see cref="AskOperatorChoiceTool"/>/<see cref="OperatorPromptGate"/> already establish for this
-/// class of problem: if the tail number the model chose doesn't literally appear anywhere in the
-/// text this agent was actually given, and the fleet actually has more than one known UAV, block
-/// the guess and ask for real via <see cref="OperatorPromptGate"/> instead of executing it.
-///
-/// "The text this agent was actually given" is <see cref="DelegatedInstructionContext.Current"/>
-/// when this call happened inside a delegation (the normal case), falling back to the root
-/// operator text only when nothing was delegated in between.
+/// BrainAgent's own instructions already say not to guess a tail number and to ask the operator
+/// instead when more than one UAV exists - but a small local model doesn't reliably follow that
+/// (observed directly: it calls ListFleet, sees 3 known tail numbers, and picks one anyway in the
+/// large majority of trials). This makes the check deterministic instead of trusting the model's
+/// judgment, the same reasoning <c>ChatConfirmationParser</c>/<see cref="AskOperatorChoiceTool"/>/
+/// <see cref="OperatorPromptGate"/> already establish for this class of problem: if the tail number
+/// the model chose doesn't literally appear anywhere in the operator's own turn text, and the
+/// fleet actually has more than one known UAV, block the guess and ask for real via
+/// <see cref="OperatorPromptGate"/> instead of executing it.
 ///
 /// A model-supplied tailNumber of the literal value <see cref="AllSentinel"/> (case-insensitive) is
 /// a distinct signal from a normal guess: it means the model itself recognized, from the
@@ -46,6 +42,11 @@ namespace UavOps.Agent.Agents.MoavAgent;
 /// aggregating each result (trivially collapsing to that one UAV, no fan-out, when only one is
 /// known). If the model doesn't recognize "all" at all and instead emits an ungrounded guess, the
 /// separate ask-path below fires the same way, also offering <see cref="AllSentinel"/> as a choice.
+///
+/// Both ALL-fan-out call sites route through <see cref="TailNumberResolutionScope.GetOrFanOutAsync"/>,
+/// not directly to <see cref="InvokeForAllUavsAsync"/> - see that method's own doc comment for the
+/// live-reproduced duplicate-call bug this closes (the model issuing the same tool multiple times
+/// in one completion, each independently re-fanning-out across the whole fleet).
 /// </summary>
 public sealed class TailNumberDisambiguationTool : AIFunction
 {
@@ -102,7 +103,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
 
             if (string.Equals(resolved, AllSentinel, StringComparison.OrdinalIgnoreCase))
             {
-                return await InvokeForAllUavsAsync(arguments, cancellationToken, knownTails: null);
+                return await _scope.GetOrFanOutAsync(Name, () => InvokeForAllUavsAsync(arguments, cancellationToken, knownTails: null));
             }
 
             var confirmedSingle = new AIFunctionArguments(arguments) { ["tailNumber"] = resolved };
@@ -110,12 +111,10 @@ public sealed class TailNumberDisambiguationTool : AIFunction
             return BuildConfirmedTargetNote(resolved) + confirmedSingleResult;
         }
 
-        var contextText = DelegatedInstructionContext.Current ?? _operatorText;
-
-        // Trust it without asking whenever the text this agent was actually given already named
-        // this tail number - same substring-match reasoning AskOperatorChoiceTool.TryAutoResolve
-        // already uses to skip a redundant prompt when the answer was already given.
-        if (string.IsNullOrEmpty(guessed) || contextText.Contains(guessed, StringComparison.OrdinalIgnoreCase))
+        // Trust it without asking whenever the operator's own turn text already named this tail
+        // number - same substring-match reasoning AskOperatorChoiceTool.TryAutoResolve already
+        // uses to skip a redundant prompt when the answer was already given.
+        if (string.IsNullOrEmpty(guessed) || _operatorText.Contains(guessed, StringComparison.OrdinalIgnoreCase))
         {
             return await _inner.InvokeAsync(arguments, cancellationToken);
         }
@@ -142,7 +141,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
 
             if (string.Equals(chosen, AllSentinel, StringComparison.OrdinalIgnoreCase))
             {
-                return await InvokeForAllUavsAsync(arguments, cancellationToken, knownTails: tails);
+                return await _scope.GetOrFanOutAsync(Name, () => InvokeForAllUavsAsync(arguments, cancellationToken, knownTails: tails));
             }
 
             var resolved = new AIFunctionArguments(arguments) { ["tailNumber"] = chosen };
@@ -164,16 +163,17 @@ public sealed class TailNumberDisambiguationTool : AIFunction
         return await _inner.InvokeAsync(arguments, cancellationToken);
     }
 
-    /// <summary>Deterministic safety net for a model-emitted <see cref="AllSentinel"/>: never
-    /// fans out on the model's say-so alone. Fleet count 0/lookup failure: nothing to resolve.
-    /// Fleet count 1: that one UAV *is* "every UAV" - no ambiguity, no confirmation needed, resolve
-    /// directly to its real tail number. Otherwise, asks a real yes/no confirmation (the same
-    /// fixed-vocabulary pattern <see cref="OperatorPromptGate"/>/<c>ConfirmationGate</c> already use
-    /// for consequential actions, applied here to the *scope* of the action rather than to one
-    /// specific operation) before ever committing to every UAV; declining (or an unrecognized
-    /// reply) falls back to a real per-UAV choice instead of executing broadly on an unconfirmed
-    /// guess. Returns <see cref="AllSentinel"/> if confirmed, a specific tail number if the operator
-    /// picked one instead, or null if nothing could be resolved.</summary>
+    /// <summary>Resolves a model-emitted <see cref="AllSentinel"/> to the real fleet. Fleet count
+    /// 0/lookup failure: nothing to resolve. Otherwise, every known UAV is the target - no
+    /// operator confirmation prompt before fanning out.
+    ///
+    /// TEMPORARY, FOR TESTING: this used to ask a real yes/no "Apply this to all N known UAVs?"
+    /// confirmation before committing to every UAV (the same fixed-vocabulary pattern
+    /// <see cref="OperatorPromptGate"/>/<c>ConfirmationGate</c> use for consequential actions,
+    /// applied to the *scope* of the action rather than one specific operation) - removed at the
+    /// operator's explicit request to match the flat single-agent lab's own behavior
+    /// (<c>eval/tool-retrieval-lab/</c>, which never gated a fleet-wide fan-out) while testing this
+    /// architecture. Revisit before any real production use against a live fleet.</summary>
     private async Task<string?> ResolveAllUavsRequestAsync(CancellationToken cancellationToken)
     {
         var fleet = await _operationService.ListFleet(cancellationToken);
@@ -182,30 +182,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
             return null;
         }
 
-        if (tails.Count == 1)
-        {
-            return tails[0].TailNumber;
-        }
-
-        var tailList = string.Join(", ", tails.Select(t => t.TailNumber));
-        var confirmation = await _promptGate.RequestChoiceAsync(
-            _correlationId,
-            _agentName,
-            $"Apply this to all {tails.Count} known UAVs ({tailList})?",
-            ["Yes", "No"],
-            cancellationToken);
-
-        if (string.Equals(confirmation, "Yes", StringComparison.OrdinalIgnoreCase))
-        {
-            return AllSentinel;
-        }
-
-        return await _promptGate.RequestChoiceAsync(
-            _correlationId,
-            _agentName,
-            "Which UAV do you mean?",
-            tails.Select(t => t.TailNumber).ToList(),
-            cancellationToken);
+        return AllSentinel;
     }
 
     /// <summary>Resolves the "every UAV" case - reached either because the model itself emitted

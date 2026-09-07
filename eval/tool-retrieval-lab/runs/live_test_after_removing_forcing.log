@@ -1,0 +1,169 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UavOps.Agent.Contracts -> D:\PlayGround\UavOps\src\UavOps.Agent.Contracts\bin\Debug\net8.0\UavOps.Agent.Contracts.dll
+  UavOps.Agent.Watchdog.Fake -> D:\PlayGround\UavOps\src\UavOps.Agent.Watchdog.Fake\bin\Debug\net8.0\UavOps.Agent.Watchdog.Fake.dll
+  UavOps.Agent.Simulator.Fake -> D:\PlayGround\UavOps\src\UavOps.Agent.Simulator.Fake\bin\Debug\net8.0\UavOps.Agent.Simulator.Fake.dll
+  UavOps.Agent -> D:\PlayGround\UavOps\src\UavOps.Agent\bin\Debug\net8.0\UavOps.Agent.dll
+  UavOps.Agent.Tests -> D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll
+Test run for D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.14.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 8.0.25)
+[xUnit.net 00:00:00.04]   Discovering: UavOps.Agent.Tests
+[xUnit.net 00:00:00.08]   Discovered:  UavOps.Agent.Tests
+[xUnit.net 00:00:00.08]   Starting:    UavOps.Agent.Tests
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.FlyAllFleetWideCommand_NeverClaimsSuccessWithoutRealMutation [58 s]
+  Standard Output Messages:
+ === run 0: response (duration=4.8730444s) ===
+ All three UAVs (UAV-1, UAV-2, and UAV-3) have been successfully commanded to:
+
+1. Navigate to alpha
+2. Set speed to 250 knots
+3. Set altitude to 3000 feet
+4. Point their payloads toward alpha
+
+All UAVs are now in transiting mode with their payloads locked on alpha. They will continue en route to their destination at the specified speed and altitude.
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 1: response (duration=4.1617243s) ===
+ All three UAVs (UAV-1, UAV-2, and UAV-3) have been successfully commanded to:
+
+1. Navigate to alpha
+2. Set speed to 250 knots
+3. Set altitude to 3000 feet
+4. Point their payloads toward alpha
+
+All UAVs are now transiting to alpha at 250 knots and 3000 feet altitude, with their payloads locked on to alpha.
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 2: response (duration=4.0519323s) ===
+ All three UAVs (UAV-1, UAV-2, and UAV-3) have been successfully commanded to:
+
+1. Navigate to alpha
+2. Set speed to 250 knots
+3. Set altitude to 3000 feet
+4. Point their payloads toward alpha
+
+All UAVs are now transiting to alpha at the specified speed and altitude, with their payloads locked on to alpha.
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 3: response (duration=3.956007s) ===
+ All three UAVs (UAV-1, UAV-2, and UAV-3) have been commanded to:
+
+1. Navigate to alpha
+2. Set speed to 250 knots
+3. Set altitude to 3000 feet
+4. Point their payloads at alpha
+
+All UAVs are now transiting to alpha with their payloads locked on that location.
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 4: response (duration=4.067492s) ===
+ All three UAVs (UAV-1, UAV-2, and UAV-3) have been successfully commanded to:
+
+1. Navigate to alpha
+2. Set speed to 250 knots
+3. Set altitude to 3000 feet
+4. Point their payloads at alpha
+
+All UAVs are now in transiting mode with their payloads locked on to alpha. Is there anything else you'd like to do with the fleet?
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 5: response (duration=4.0608153s) ===
+ All three UAVs (UAV-1, UAV-2, and UAV-3) have been commanded to:
+
+1. Navigate to alpha
+2. Set speed to 250 knots
+3. Set altitude to 3000 feet
+4. Point their payloads toward alpha
+
+All UAVs are now transiting to alpha with the specified speed and altitude, and their payloads are locked on to alpha.
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 6: response (duration=4.0439889s) ===
+ All three UAVs (UAV-1, UAV-2, and UAV-3) have been commanded to:
+
+1. Navigate to alpha
+2. Set speed to 250 knots
+3. Set altitude to 3000 feet
+4. Point their payloads toward alpha
+
+All UAVs are now transiting to alpha at the specified speed and altitude, with their payloads locked on to alpha.
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 7: response (duration=4.0363311s) ===
+ All three UAVs (UAV-1, UAV-2, and UAV-3) have been successfully commanded to:
+
+1. Navigate to alpha
+2. Set speed to 250 knots
+3. Set altitude to 3000 feet
+4. Point their payloads at alpha
+
+All UAVs are now transiting to alpha at the specified speed and altitude, with their payloads locked on to alpha.
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ Verified successes: 8/8   Honest failures: 0/8
+
+
+     Warning:
+     The component "Fluent Assertions" is governed by the rules defined in the Xceed License Agreement and
+     the Xceed Fluent Assertions Community License. You may use Fluent Assertions free of charge for
+     non-commercial use only. An active subscription is required to use Fluent Assertions for commercial use.
+     Please contact Xceed Sales mailto:sales@xceed.com to acquire a subscription at a very low cost.
+     A paid commercial license supports the development and continued increasing support of
+     Fluent Assertions users under both commercial and community licenses. Help us
+     keep Fluent Assertions at the forefront of unit testing.
+     For more information, visit https://xceed.com/products/unit-testing/fluent-assertions/
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.Greeting_NeverTriggersASpuriousRealOperation [5 s]
+  Standard Output Messages:
+ === run 0: greeting response (duration=0.4978172s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 1: greeting response (duration=0.4802439s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 2: greeting response (duration=0.4860068s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 3: greeting response (duration=0.4878677s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 4: greeting response (duration=0.4829136s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 5: greeting response (duration=0.5087466s) ===
+ Hello David! I'm here to assist you as your UAV fleet operations assistant. How can I help you today?
+ === run 6: greeting response (duration=0.5219751s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 7: greeting response (duration=0.4842039s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+
+
+[xUnit.net 00:03:06.29]   Finished:    UavOps.Agent.Tests
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.GetLiveResponse [2 m 2 s]
+  Standard Output Messages:
+ === RESULT RESPONSE ===
+ It looks like the system didn't recognize "UAV 1" as a valid tail number. Could you confirm the exact tail number of the UAV you'd like to set to 250 knots? For example, is it "UAV-1", "UAV01", or something else?
+ duration=122.6880462s
+ =======================
+
+
+
+Test Run Successful.
+Total tests: 3
+     Passed: 3
+ Total time: 3.1103 Minutes

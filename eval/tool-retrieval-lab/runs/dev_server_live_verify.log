@@ -1,0 +1,403 @@
+Using launch settings from src\UavOps.Agent\Properties\launchSettings.json...
+Building...
+[18:46:20 INF] Watchdog health polling disabled — set Watchdog:HealthCheckUrl to enable it.
+[18:46:20 INF] Now listening on: http://localhost:5262
+[18:46:20 INF] Application started. Press Ctrl+C to shut down.
+[18:46:20 INF] Hosting environment: Development
+[18:46:20 INF] Content root path: D:\PlayGround\UavOps\src\UavOps.Agent
+[18:46:30 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[18:46:30 INF] Executing endpoint '/chatHub/negotiate'
+[18:46:30 INF] Executed endpoint '/chatHub/negotiate'
+[18:46:30 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 14.3825ms
+[18:46:30 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=UWCq3M9iC_3IEYz8jsK9fA - null null
+[18:46:30 INF] Executing endpoint '/chatHub'
+[18:46:38 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[18:46:38 INF] Executing endpoint '/chatHub/negotiate'
+[18:46:38 INF] Executed endpoint '/chatHub/negotiate'
+[18:46:38 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.7115ms
+[18:46:38 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=Mrg94NfEcGcEUOA7zabbQQ - null null
+[18:46:38 INF] Executing endpoint '/chatHub'
+[18:47:33 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=ListFleet args={} result=[{"tailNumber":"UAV-1","mode":"Orbiting","lat":31.801447,"lng":34.643497},{"tailNumber":"UAV-2","mode":"Orbiting","lat":31.798,"lng":34.639},{"tailNumber":"UAV-3","mode":"Orbiting","lat":31.805,"lng":34.648}] durationMs=5
+[18:47:35 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=5
+[18:47:35 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[18:47:35 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":105,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[18:47:35 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":200} result={"lat":31.812,"lng":34.66,"speedKts":200,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[18:47:35 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":200} result={"lat":31.812,"lng":34.66,"speedKts":200,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[18:47:35 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":200} result={"lat":31.812,"lng":34.66,"speedKts":200,"altitudeFt":4000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[18:47:35 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-1","altitudeFt":2000} result={"lat":31.812,"lng":34.66,"speedKts":200,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[18:47:35 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-2","altitudeFt":2000} result={"lat":31.812,"lng":34.66,"speedKts":200,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[18:47:35 INF] [Tool] correlationId=ogqxmpx6 agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-3","altitudeFt":2000} result={"lat":31.812,"lng":34.66,"speedKts":200,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":null} durationMs=0
+[18:47:45 INF] [Tool] correlationId=ztu00ez5 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":200,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:47:45 INF] [Tool] correlationId=ztu00ez5 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":200,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:47:45 INF] [Tool] correlationId=ztu00ez5 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":200,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:04 INF] [Tool] correlationId=8oa9xqyu agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"bravo"} result={"lat":31.79,"lng":34.63,"speedKts":200,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:04 INF] [Tool] correlationId=8oa9xqyu agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"bravo"} result={"lat":31.79,"lng":34.63,"speedKts":200,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:04 INF] [Tool] correlationId=8oa9xqyu agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"bravo"} result={"lat":31.79,"lng":34.63,"speedKts":200,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:04 INF] [Tool] correlationId=8oa9xqyu agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":210} result={"lat":31.79,"lng":34.63,"speedKts":210,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:04 INF] [Tool] correlationId=8oa9xqyu agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":210} result={"lat":31.79,"lng":34.63,"speedKts":210,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:04 INF] [Tool] correlationId=8oa9xqyu agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":210} result={"lat":31.79,"lng":34.63,"speedKts":210,"altitudeFt":2000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:04 INF] [Tool] correlationId=8oa9xqyu agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-1","altitudeFt":2100} result={"lat":31.79,"lng":34.63,"speedKts":210,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:04 INF] [Tool] correlationId=8oa9xqyu agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-2","altitudeFt":2100} result={"lat":31.79,"lng":34.63,"speedKts":210,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:04 INF] [Tool] correlationId=8oa9xqyu agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-3","altitudeFt":2100} result={"lat":31.79,"lng":34.63,"speedKts":210,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[18:48:14 INF] [Tool] correlationId=dav9aver agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-1","location":"bravo"} result={"lat":31.79,"lng":34.63,"speedKts":210,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:14 INF] [Tool] correlationId=dav9aver agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-2","location":"bravo"} result={"lat":31.79,"lng":34.63,"speedKts":210,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:14 INF] [Tool] correlationId=dav9aver agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-3","location":"bravo"} result={"lat":31.79,"lng":34.63,"speedKts":210,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:49 INF] [Tool] correlationId=flp6m2xi agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"home"} result={"lat":31.801447,"lng":34.643497,"speedKts":210,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:49 INF] [Tool] correlationId=flp6m2xi agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"home"} result={"lat":31.801447,"lng":34.643497,"speedKts":210,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:49 INF] [Tool] correlationId=flp6m2xi agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"home"} result={"lat":31.801447,"lng":34.643497,"speedKts":210,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:49 INF] [Tool] correlationId=flp6m2xi agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":220} result={"lat":31.801447,"lng":34.643497,"speedKts":220,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:49 INF] [Tool] correlationId=flp6m2xi agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":220} result={"lat":31.801447,"lng":34.643497,"speedKts":220,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:49 INF] [Tool] correlationId=flp6m2xi agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":220} result={"lat":31.801447,"lng":34.643497,"speedKts":220,"altitudeFt":2100,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:49 INF] [Tool] correlationId=flp6m2xi agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-1","altitudeFt":2200} result={"lat":31.801447,"lng":34.643497,"speedKts":220,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:49 INF] [Tool] correlationId=flp6m2xi agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-2","altitudeFt":2200} result={"lat":31.801447,"lng":34.643497,"speedKts":220,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:49 INF] [Tool] correlationId=flp6m2xi agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-3","altitudeFt":2200} result={"lat":31.801447,"lng":34.643497,"speedKts":220,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"bravo"} durationMs=0
+[18:48:59 INF] [Tool] correlationId=p3kon9a6 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-1","location":"home"} result={"lat":31.801447,"lng":34.643497,"speedKts":220,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[18:48:59 INF] [Tool] correlationId=p3kon9a6 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-2","location":"home"} result={"lat":31.801447,"lng":34.643497,"speedKts":220,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[18:48:59 INF] [Tool] correlationId=p3kon9a6 agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-3","location":"home"} result={"lat":31.801447,"lng":34.643497,"speedKts":220,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[18:49:05 INF] [Tool] correlationId=3ohu6u5x agent=BrainAgent tool=ListFleet args={} result=[{"tailNumber":"UAV-1","mode":"Transiting","lat":31.801447,"lng":34.643497},{"tailNumber":"UAV-2","mode":"Transiting","lat":31.801447,"lng":34.643497},{"tailNumber":"UAV-3","mode":"Transiting","lat":31.801447,"lng":34.643497}] durationMs=0
+[11:06:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/index.html - null null
+[11:06:44 INF] The file /index.html was not modified
+[11:06:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/index.html - 304 null text/html 6.4019ms
+[11:06:44 INF] Executed endpoint '/chatHub'
+[11:06:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/chatHub?id=UWCq3M9iC_3IEYz8jsK9fA - 101 null null 58812927.9151ms
+[11:06:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/chat.css - null null
+[11:06:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/theme.css - null null
+[11:06:44 INF] The file /chat.css was not modified
+[11:06:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/graph.css - null null
+[11:06:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/chat.js - null null
+[11:06:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/graph.js - null null
+[11:06:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/theme.js - null null
+[11:06:44 INF] The file /graph.css was not modified
+[11:06:44 INF] The file /theme.css was not modified
+[11:06:44 INF] The file /graph.js was not modified
+[11:06:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/chat.css - 304 null text/css 39.8774ms
+[11:06:44 INF] The file /theme.js was not modified
+[11:06:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/theme.css - 304 null text/css 40.155ms
+[11:06:44 INF] The file /chat.js was not modified
+[11:06:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/graph.css - 304 null text/css 39.1853ms
+[11:06:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/graph.js - 304 null text/javascript 38.8159ms
+[11:06:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/chat.js - 304 null text/javascript 39.3544ms
+[11:06:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/theme.js - 304 null text/javascript 38.6018ms
+[11:06:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/app.js - null null
+[11:06:44 INF] The file /app.js was not modified
+[11:06:44 INF] Request finished HTTP/1.1 GET http://localhost:5262/app.js - 304 null text/javascript 0.3001ms
+[11:06:44 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[11:06:44 INF] Executing endpoint '/chatHub/negotiate'
+[11:06:44 INF] Executed endpoint '/chatHub/negotiate'
+[11:06:44 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.6714ms
+[11:06:44 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=XafKxwy8qyzKxwce2aik-A - null null
+[11:06:44 INF] Executing endpoint '/chatHub'
+[11:07:15 ERR] correlationId=2rl8k5p6 chat turn failed
+System.AggregateException: Retry failed after 4 tries. (No connection could be made because the target machine actively refused it. (10.10.77.57:8001)) (No connection could be made because the target machine actively refused it. (10.10.77.57:8001)) (No connection could be made because the target machine actively refused it. (10.10.77.57:8001)) (No connection could be made because the target machine actively refused it. (10.10.77.57:8001))
+ ---> System.ClientModel.ClientResultException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.DiagnosticsHandler.SendAsyncCore(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessCoreAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ApiKeyAuthenticationPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at OpenAI.GenericActionPipelinePolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientPipeline.SendAsync(PipelineMessage message)
+   at OpenAI.ClientPipelineExtensions.ProcessMessageAsync(ClientPipeline pipeline, PipelineMessage message, RequestOptions options)
+   at OpenAI.Embeddings.EmbeddingClient.GenerateEmbeddingsAsync(BinaryContent content, RequestOptions options)
+   at OpenAI.Embeddings.EmbeddingClient.GenerateEmbeddingsAsync(IEnumerable`1 inputs, EmbeddingGenerationOptions options, RequestOptions requestOptions)
+   at Microsoft.Extensions.AI.OpenAIEmbeddingGenerator.GenerateAsync(IEnumerable`1 values, EmbeddingGenerationOptions options, CancellationToken cancellationToken)
+   at UavOps.Agent.Agents.ToolRetrievalIndex.EmbedQueryAsync(String text, CancellationToken cancellationToken) in D:\PlayGround\UavOps\src\UavOps.Agent\Agents\ToolRetrievalIndex.cs:line 74
+   at UavOps.Agent.Agents.AgentFactory.BuildToolsForTurn(String correlationId, String operatorText, CancellationToken cancellationToken) in D:\PlayGround\UavOps\src\UavOps.Agent\Agents\AgentFactory.cs:line 129
+   at UavOps.Agent.Agents.MainAgentOrchestrator.HandleAsync(String text, String correlationId, CancellationToken cancellationToken) in D:\PlayGround\UavOps\src\UavOps.Agent\Agents\MainAgentOrchestrator.cs:line 53
+   at UavOps.Agent.Hubs.ChatHub.SendMessage(String user, String text, String correlationId) in D:\PlayGround\UavOps\src\UavOps.Agent\Hubs\ChatHub.cs:line 38
+ ---> (Inner Exception #1) System.ClientModel.ClientResultException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.DiagnosticsHandler.SendAsyncCore(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessCoreAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ApiKeyAuthenticationPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)<---
+
+ ---> (Inner Exception #2) System.ClientModel.ClientResultException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.DiagnosticsHandler.SendAsyncCore(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessCoreAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ApiKeyAuthenticationPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)<---
+
+ ---> (Inner Exception #3) System.ClientModel.ClientResultException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.DiagnosticsHandler.SendAsyncCore(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessCoreAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ApiKeyAuthenticationPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)<---
+[11:07:26 INF] Request starting HTTP/1.1 GET http://localhost:5262/index.html - null null
+[11:07:26 INF] The file /index.html was not modified
+[11:07:26 INF] Request finished HTTP/1.1 GET http://localhost:5262/index.html - 304 null text/html 0.3996ms
+[11:07:26 INF] Executed endpoint '/chatHub'
+[11:07:26 INF] Request finished HTTP/1.1 GET http://localhost:5262/chatHub?id=XafKxwy8qyzKxwce2aik-A - 101 null null 41520.1335ms
+[11:07:26 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[11:07:26 INF] Executing endpoint '/chatHub/negotiate'
+[11:07:26 INF] Executed endpoint '/chatHub/negotiate'
+[11:07:26 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.4887ms
+[11:07:26 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=ZkpJkrliywn1Tnw5fw9dtg - null null
+[11:07:26 INF] Executing endpoint '/chatHub'
+[11:09:20 ERR] correlationId=08ot10y5 chat turn failed
+System.AggregateException: Retry failed after 4 tries. (No connection could be made because the target machine actively refused it. (10.10.77.57:8001)) (No connection could be made because the target machine actively refused it. (10.10.77.57:8001)) (No connection could be made because the target machine actively refused it. (10.10.77.57:8001)) (No connection could be made because the target machine actively refused it. (10.10.77.57:8001))
+ ---> System.ClientModel.ClientResultException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.DiagnosticsHandler.SendAsyncCore(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessCoreAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ApiKeyAuthenticationPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at OpenAI.GenericActionPipelinePolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientPipeline.SendAsync(PipelineMessage message)
+   at OpenAI.ClientPipelineExtensions.ProcessMessageAsync(ClientPipeline pipeline, PipelineMessage message, RequestOptions options)
+   at OpenAI.Embeddings.EmbeddingClient.GenerateEmbeddingsAsync(BinaryContent content, RequestOptions options)
+   at OpenAI.Embeddings.EmbeddingClient.GenerateEmbeddingsAsync(IEnumerable`1 inputs, EmbeddingGenerationOptions options, RequestOptions requestOptions)
+   at Microsoft.Extensions.AI.OpenAIEmbeddingGenerator.GenerateAsync(IEnumerable`1 values, EmbeddingGenerationOptions options, CancellationToken cancellationToken)
+   at UavOps.Agent.Agents.ToolRetrievalIndex.EmbedQueryAsync(String text, CancellationToken cancellationToken) in D:\PlayGround\UavOps\src\UavOps.Agent\Agents\ToolRetrievalIndex.cs:line 74
+   at UavOps.Agent.Agents.AgentFactory.BuildToolsForTurn(String correlationId, String operatorText, CancellationToken cancellationToken) in D:\PlayGround\UavOps\src\UavOps.Agent\Agents\AgentFactory.cs:line 129
+   at UavOps.Agent.Agents.MainAgentOrchestrator.HandleAsync(String text, String correlationId, CancellationToken cancellationToken) in D:\PlayGround\UavOps\src\UavOps.Agent\Agents\MainAgentOrchestrator.cs:line 53
+   at UavOps.Agent.Hubs.ChatHub.SendMessage(String user, String text, String correlationId) in D:\PlayGround\UavOps\src\UavOps.Agent\Hubs\ChatHub.cs:line 38
+ ---> (Inner Exception #1) System.ClientModel.ClientResultException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.DiagnosticsHandler.SendAsyncCore(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessCoreAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ApiKeyAuthenticationPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)<---
+
+ ---> (Inner Exception #2) System.ClientModel.ClientResultException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.DiagnosticsHandler.SendAsyncCore(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessCoreAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ApiKeyAuthenticationPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)<---
+
+ ---> (Inner Exception #3) System.ClientModel.ClientResultException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Http.HttpRequestException: No connection could be made because the target machine actively refused it. (10.10.77.57:8001)
+ ---> System.Net.Sockets.SocketException (10061): No connection could be made because the target machine actively refused it.
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.ThrowException(SocketError error, CancellationToken cancellationToken)
+   at System.Net.Sockets.Socket.AwaitableSocketAsyncEventArgs.System.Threading.Tasks.Sources.IValueTaskSource.GetResult(Int16 token)
+   at System.Net.Sockets.Socket.<ConnectAsync>g__WaitForConnectWithCancellation|285_0(AwaitableSocketAsyncEventArgs saea, ValueTask connectTask, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   --- End of inner exception stack trace ---
+   at System.Net.Http.HttpConnectionPool.ConnectToTcpHostAsync(String host, Int32 port, HttpRequestMessage initialRequest, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.ConnectAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.CreateHttp11ConnectionAsync(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.AddHttp11ConnectionAsync(QueueItem queueItem)
+   at System.Threading.Tasks.TaskCompletionSourceWithCancellation`1.WaitWithCancellationAsync(CancellationToken cancellationToken)
+   at System.Net.Http.HttpConnectionPool.SendWithVersionDetectionAndRetryAsync(HttpRequestMessage request, Boolean async, Boolean doRequestAuth, CancellationToken cancellationToken)
+   at System.Net.Http.DiagnosticsHandler.SendAsyncCore(HttpRequestMessage request, Boolean async, CancellationToken cancellationToken)
+   at System.Net.Http.HttpClient.<SendAsync>g__Core|83_0(HttpRequestMessage request, HttpCompletionOption completionOption, CancellationTokenSource cts, Boolean disposeCts, CancellationTokenSource pendingRequestsCts, CancellationToken originalCancellationToken)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   --- End of inner exception stack trace ---
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.HttpClientPipelineTransport.ProcessCoreAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessSyncOrAsync(PipelineMessage message, Boolean async)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message)
+   at System.ClientModel.Primitives.PipelineTransport.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)
+   at System.ClientModel.Primitives.MessageLoggingPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ApiKeyAuthenticationPolicy.ProcessAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.PipelinePolicy.ProcessNextAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex)
+   at System.ClientModel.Primitives.ClientRetryPolicy.ProcessSyncOrAsync(PipelineMessage message, IReadOnlyList`1 pipeline, Int32 currentIndex, Boolean async)<---
+[11:17:32 INF] Request starting HTTP/1.1 GET http://localhost:5262/index.html - null null
+[11:17:32 INF] The file /index.html was not modified
+[11:17:32 INF] Request finished HTTP/1.1 GET http://localhost:5262/index.html - 304 null text/html 0.7737ms
+[11:17:32 INF] Executed endpoint '/chatHub'
+[11:17:32 INF] Request finished HTTP/1.1 GET http://localhost:5262/chatHub?id=ZkpJkrliywn1Tnw5fw9dtg - 101 null null 606281.4422ms
+[11:17:32 INF] Request starting HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - null 0
+[11:17:32 INF] Executing endpoint '/chatHub/negotiate'
+[11:17:32 INF] Executed endpoint '/chatHub/negotiate'
+[11:17:32 INF] Request finished HTTP/1.1 POST http://localhost:5262/chatHub/negotiate?negotiateVersion=1 - 200 316 application/json 0.3686ms
+[11:17:32 INF] Request starting HTTP/1.1 GET http://localhost:5262/chatHub?id=AI5y7K9QhEPS5LTUBcbCHA - null null
+[11:17:32 INF] Executing endpoint '/chatHub'
+[11:18:18 INF] [Tool] correlationId=ssv1sd7p agent=BrainAgent tool=ListFleet args={} result=[{"tailNumber":"UAV-1","mode":"Transiting","lat":31.801447,"lng":34.643497},{"tailNumber":"UAV-2","mode":"Transiting","lat":31.801447,"lng":34.643497},{"tailNumber":"UAV-3","mode":"Transiting","lat":31.801447,"lng":34.643497}] durationMs=0
+[11:19:01 INF] [Tool] correlationId=wa22ml5m agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":220,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[11:19:01 INF] [Tool] correlationId=wa22ml5m agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":220,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[11:19:01 INF] [Tool] correlationId=wa22ml5m agent=BrainAgent tool=Navigate args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":220,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[11:19:01 INF] [Tool] correlationId=wa22ml5m agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-1","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[11:19:01 INF] [Tool] correlationId=wa22ml5m agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-2","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[11:19:01 INF] [Tool] correlationId=wa22ml5m agent=BrainAgent tool=SetSpeed args={"tailNumber":"UAV-3","speedKts":250} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":2200,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[11:19:01 INF] [Tool] correlationId=wa22ml5m agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-1","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[11:19:01 INF] [Tool] correlationId=wa22ml5m agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-2","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[11:19:01 INF] [Tool] correlationId=wa22ml5m agent=BrainAgent tool=SetAltitude args={"tailNumber":"UAV-3","altitudeFt":3000} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"home"} durationMs=0
+[11:20:38 INF] [Tool] correlationId=h9r553ii agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-1","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[11:20:38 INF] [Tool] correlationId=h9r553ii agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-2","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[11:20:38 INF] [Tool] correlationId=h9r553ii agent=BrainAgent tool=PointPayload args={"tailNumber":"UAV-3","location":"alpha"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"Transiting","payloadLockedOn":"alpha"} durationMs=0
+[12:04:40 INF] [Tool] correlationId=ivlbuqr2 agent=BrainAgent tool=ReturnToLaunch args={"tailNumber":"UAV-1"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"ReturningToLaunch","payloadLockedOn":"alpha"} durationMs=0
+[12:04:40 INF] [Tool] correlationId=ivlbuqr2 agent=BrainAgent tool=ReturnToLaunch args={"tailNumber":"UAV-2"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"ReturningToLaunch","payloadLockedOn":"alpha"} durationMs=0
+[12:04:40 INF] [Tool] correlationId=ivlbuqr2 agent=BrainAgent tool=ReturnToLaunch args={"tailNumber":"UAV-3"} result={"lat":31.812,"lng":34.66,"speedKts":250,"altitudeFt":3000,"mode":"ReturningToLaunch","payloadLockedOn":"alpha"} durationMs=0
