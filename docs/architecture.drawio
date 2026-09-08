@@ -51,37 +51,37 @@
         </mxCell>
 
         <!-- ===================== EDGES: actors <-> host (clear of everything, land above domain row) ===================== -->
-        <mxCell id="e1" value="SignalR" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.3;entryY=0;" edge="1" parent="1" source="actor_browser" target="host">
+        <mxCell id="e1" value="SignalR" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;exitX=0.5;exitY=1;entryX=0.3;entryY=0;" edge="1" parent="1" source="actor_browser" target="host">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e2" value="SignalR" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.9;entryY=0;" edge="1" parent="1" source="actor_fleet" target="host">
+        <mxCell id="e2" value="SignalR" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;exitX=0.5;exitY=1;entryX=0.9;entryY=0;" edge="1" parent="1" source="actor_fleet" target="host">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- ===================== EDGES: host <-> AI providers (short, horizontal, own lane left of host) ===================== -->
-        <mxCell id="e6" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2E8B75,#7FD9BE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=1;exitY=0.5;entryX=0;entryY=0.2;" edge="1" parent="1" source="llm" target="host">
+        <mxCell id="e6" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2E8B75,#7FD9BE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;exitX=1;exitY=0.5;entryX=0;entryY=0.2;" edge="1" parent="1" source="llm" target="host">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e7" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2E8B75,#7FD9BE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=1;exitY=0.5;entryX=0;entryY=0.6;" edge="1" parent="1" source="embed" target="host">
+        <mxCell id="e7" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2E8B75,#7FD9BE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;exitX=1;exitY=0.5;entryX=0;entryY=0.6;" edge="1" parent="1" source="embed" target="host">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- ===================== EDGES: host -> MCP servers (fan out into the clear gap below host) ===================== -->
-        <mxCell id="e3" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.2;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="moav">
+        <mxCell id="e3" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;exitX=0.2;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="moav">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e4" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="watchdog">
+        <mxCell id="e4" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="watchdog">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e5" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="simulator">
+        <mxCell id="e5" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="simulator">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
         <!-- ===================== EDGES: MCP servers -> their own external system (straight drop, no crossing) ===================== -->
-        <mxCell id="e8" value="HTTP / SCM" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#D6A756,#E8C077);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="watchdog" target="watchdogproc">
+        <mxCell id="e8" value="HTTP / SCM" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#D6A756,#E8C077);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="watchdog" target="watchdogproc">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e9" value="vmrun / PowerShell" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#9673A6,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="simulator" target="vmware">
+        <mxCell id="e9" value="vmrun / PowerShell" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#9673A6,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="simulator" target="vmware">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
