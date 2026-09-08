@@ -1,6 +1,6 @@
 <mxfile host="app.diagrams.net" agent="Claude Code" version="24.0.0">
   <diagram name="System Architecture" id="uavops-architecture">
-    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0" adaptiveColors="auto">
+    <mxGraphModel dx="1400" dy="860" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="860" math="0" shadow="0" adaptiveColors="auto">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -10,73 +10,78 @@
           <mxGeometry x="40" y="16" width="1320" height="34" as="geometry" />
         </mxCell>
 
-        <!-- ===================== ACTORS ===================== -->
-        <mxCell id="actor_browser" value="Operator&#10;(Browser)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#F5F5F5,#2B2B2B);strokeColor=light-dark(#666666,#AAAAAA);fontColor=light-dark(#1A1A1A,#F0F0F0);fontSize=14;fontStyle=1;arcSize=14;" vertex="1" parent="1">
-          <mxGeometry x="80" y="110" width="220" height="80" as="geometry" />
+        <!-- ===================== ACTORS (clients) ===================== -->
+        <mxCell id="actor_browser" value="Operator&#10;(Browser Client)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#F5F5F5,#2B2B2B);strokeColor=light-dark(#666666,#AAAAAA);fontColor=light-dark(#1A1A1A,#F0F0F0);fontSize=14;fontStyle=1;arcSize=14;" vertex="1" parent="1">
+          <mxGeometry x="80" y="100" width="220" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="actor_fleet" value="Fleet-Commanding App&#10;(Real / Mock)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#F5F5F5,#2B2B2B);strokeColor=light-dark(#666666,#AAAAAA);fontColor=light-dark(#1A1A1A,#F0F0F0);fontSize=14;fontStyle=1;arcSize=14;" vertex="1" parent="1">
-          <mxGeometry x="1100" y="110" width="220" height="80" as="geometry" />
-        </mxCell>
-
-        <!-- ===================== HOST ===================== -->
-        <mxCell id="host" value="UavOps.Agent&#10;BrainAgent  &#183;  Chat &amp; Fleet Hubs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#DAE8FC,#1F3A5F);strokeColor=light-dark(#6C8EBF,#8FB4E3);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=16;fontStyle=1;arcSize=8;" vertex="1" parent="1">
-          <mxGeometry x="480" y="260" width="440" height="110" as="geometry" />
+        <mxCell id="actor_fleet" value="Fleet-Commanding App&#10;(Client)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#F5F5F5,#2B2B2B);strokeColor=light-dark(#666666,#AAAAAA);fontColor=light-dark(#1A1A1A,#F0F0F0);fontSize=14;fontStyle=1;arcSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1100" y="100" width="220" height="80" as="geometry" />
         </mxCell>
 
-        <!-- ===================== DOMAIN SERVERS ===================== -->
-        <mxCell id="moav" value="Moav Domain&#10;Fleet Control" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#DDEBF7,#16324A);strokeColor=light-dark(#5B9BD5,#7FB2E5);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=15;fontStyle=1;arcSize=8;" vertex="1" parent="1">
+        <!-- ===================== EXTERNAL AI PROVIDERS (beside host, not below domain row) ===================== -->
+        <mxCell id="llm" value="LLM Provider&#10;(Ollama / vLLM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#D9F2E6,#1F4A3D);strokeColor=light-dark(#4DA88F,#7FD9BE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=13;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="240" width="220" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="embed" value="Embedding Provider&#10;(vLLM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#D9F2E6,#1F4A3D);strokeColor=light-dark(#4DA88F,#7FD9BE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=13;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="315" width="220" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== HOST SERVICE ===================== -->
+        <mxCell id="host" value="UavOps.Agent&#10;(Service)&#10;BrainAgent  &#183;  Chat &amp; Fleet Hubs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#DAE8FC,#1F3A5F);strokeColor=light-dark(#6C8EBF,#8FB4E3);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=16;fontStyle=1;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="460" y="240" width="440" height="130" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== MCP SERVERS ===================== -->
+        <mxCell id="moav" value="Moav MCP Server&#10;Fleet Control" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#DDEBF7,#16324A);strokeColor=light-dark(#5B9BD5,#7FB2E5);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=15;fontStyle=1;arcSize=8;" vertex="1" parent="1">
           <mxGeometry x="120" y="480" width="320" height="130" as="geometry" />
         </mxCell>
-        <mxCell id="watchdog" value="Watchdog Domain&#10;Health &amp; Service Config" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#FDF0D5,#4A3B1F);strokeColor=light-dark(#D6A756,#E8C077);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=15;fontStyle=1;arcSize=8;" vertex="1" parent="1">
+        <mxCell id="watchdog" value="Watchdog MCP Server&#10;Health &amp; Service Config" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#FDF0D5,#4A3B1F);strokeColor=light-dark(#D6A756,#E8C077);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=15;fontStyle=1;arcSize=8;" vertex="1" parent="1">
           <mxGeometry x="540" y="480" width="320" height="130" as="geometry" />
         </mxCell>
-        <mxCell id="simulator" value="Simulator Domain&#10;Training Environment" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#E6D9F2,#3B2A55);strokeColor=light-dark(#9673A6,#C6A8DE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=15;fontStyle=1;arcSize=8;" vertex="1" parent="1">
+        <mxCell id="simulator" value="Simulator MCP Server&#10;Training Environment" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#E6D9F2,#3B2A55);strokeColor=light-dark(#9673A6,#C6A8DE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=15;fontStyle=1;arcSize=8;" vertex="1" parent="1">
           <mxGeometry x="960" y="480" width="320" height="130" as="geometry" />
         </mxCell>
 
-        <!-- ===================== EXTERNAL SYSTEMS ===================== -->
-        <mxCell id="llm" value="LLM&#10;(Ollama / vLLM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#D9F2E6,#1F4A3D);strokeColor=light-dark(#4DA88F,#7FD9BE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
-          <mxGeometry x="80" y="700" width="240" height="90" as="geometry" />
+        <!-- ===================== EXTERNAL SYSTEMS (aligned directly under their own MCP server) ===================== -->
+        <mxCell id="watchdogproc" value="Watchdog&#10;(External Process)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#FDF0D5,#4A3B1F);strokeColor=light-dark(#D6A756,#E8C077);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=13;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="580" y="700" width="240" height="80" as="geometry" />
         </mxCell>
-        <mxCell id="embed" value="Embedding Model&#10;(vLLM)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#D9F2E6,#1F4A3D);strokeColor=light-dark(#4DA88F,#7FD9BE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
-          <mxGeometry x="360" y="700" width="240" height="90" as="geometry" />
-        </mxCell>
-        <mxCell id="watchdogproc" value="Watchdog Process" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#FDF0D5,#4A3B1F);strokeColor=light-dark(#D6A756,#E8C077);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
-          <mxGeometry x="640" y="700" width="240" height="90" as="geometry" />
-        </mxCell>
-        <mxCell id="vmware" value="VMware Simulator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#E6D9F2,#3B2A55);strokeColor=light-dark(#9673A6,#C6A8DE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
-          <mxGeometry x="1000" y="700" width="240" height="90" as="geometry" />
+        <mxCell id="vmware" value="VMware&#10;(External Host)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#E6D9F2,#3B2A55);strokeColor=light-dark(#9673A6,#C6A8DE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=13;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1000" y="700" width="240" height="80" as="geometry" />
         </mxCell>
 
-        <!-- ===================== EDGES ===================== -->
-        <mxCell id="e1" value="SignalR" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.2;entryY=0;" edge="1" parent="1" source="actor_browser" target="host">
+        <!-- ===================== EDGES: actors <-> host (clear of everything, land above domain row) ===================== -->
+        <mxCell id="e1" value="SignalR" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.3;entryY=0;" edge="1" parent="1" source="actor_browser" target="host">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e2" value="SignalR" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.8;entryY=0;" edge="1" parent="1" source="actor_fleet" target="host">
+        <mxCell id="e2" value="SignalR" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.9;entryY=0;" edge="1" parent="1" source="actor_fleet" target="host">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <mxCell id="e3" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.25;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="moav">
+        <!-- ===================== EDGES: host <-> AI providers (short, horizontal, own lane left of host) ===================== -->
+        <mxCell id="e6" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2E8B75,#7FD9BE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=1;exitY=0.5;entryX=0;entryY=0.2;" edge="1" parent="1" source="llm" target="host">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2E8B75,#7FD9BE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=1;exitY=0.5;entryX=0;entryY=0.6;" edge="1" parent="1" source="embed" target="host">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== EDGES: host -> MCP servers (fan out into the clear gap below host) ===================== -->
+        <mxCell id="e3" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.2;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="moav">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="e4" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="watchdog">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e5" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.75;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="simulator">
+        <mxCell id="e5" value="MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#7A4E96,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.8;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="host" target="simulator">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <mxCell id="e6" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2E8B75,#7FD9BE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;" edge="1" parent="1" source="host" target="llm">
+        <!-- ===================== EDGES: MCP servers -> their own external system (straight drop, no crossing) ===================== -->
+        <mxCell id="e8" value="HTTP / SCM" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#D6A756,#E8C077);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="watchdog" target="watchdogproc">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="e7" value="HTTP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#2E8B75,#7FD9BE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;" edge="1" parent="1" source="host" target="embed">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-
-        <mxCell id="e8" value="HTTP / SCM" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#D6A756,#E8C077);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;" edge="1" parent="1" source="watchdog" target="watchdogproc">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="e9" value="vmrun / PowerShell" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#9673A6,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;" edge="1" parent="1" source="simulator" target="vmware">
+        <mxCell id="e9" value="vmrun / PowerShell" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=light-dark(#9673A6,#C6A8DE);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=12;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="simulator" target="vmware">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
