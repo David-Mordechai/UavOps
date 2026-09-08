@@ -4,7 +4,7 @@ using YamlDotNet.Serialization.NamingConventions;
 namespace UavOps.Agent.Options;
 
 /// <summary>
-/// Loads the single <see cref="AgentConfig"/> from <c>AgentsConfig/BrainAgent.yaml</c> — one file,
+/// Loads the single <see cref="AgentConfig"/> from <c>Agents/BrainAgent.yaml</c> — one file,
 /// one agent, since the multi-agent delegation tree this used to load recursively (per-agent
 /// subfolders, filename-as-agent-name) was collapsed into one flat agent holding every real
 /// operation directly.

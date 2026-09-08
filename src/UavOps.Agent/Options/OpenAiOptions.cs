@@ -11,8 +11,8 @@ namespace UavOps.Agent.Options;
 /// underneath, just pointed at a different <see cref="Endpoint"/>/<see cref="ApiKey"/>. Only one
 /// such backend is configured at a time; switching which one just means changing these two values.
 ///
-/// Optional at startup, like <see cref="SimulatorOptions"/>/<see cref="WatchdogOptions"/> — most
-/// installs won't use it. The only fail-fast check is in <see cref="AgentConfigValidator"/>, and
+/// Optional at startup, like <see cref="Contracts.SimulatorOptions"/> — most installs won't use
+/// it. The only fail-fast check is in <see cref="AgentConfigValidator"/>, and
 /// only when some agent actually opts into <c>Provider: OpenAI</c> without an
 /// <see cref="ApiKey"/> configured.
 /// </summary>

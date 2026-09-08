@@ -1,4 +1,5 @@
 using Microsoft.Extensions.AI;
+using ModelContextProtocol.Client;
 using OllamaSharp;
 using OpenAI;
 using OpenAI.Chat;
@@ -6,18 +7,9 @@ using OpenAI.Embeddings;
 using Serilog;
 using System.ClientModel;
 using UavOps.Agent.Agents;
-using UavOps.Agent.Agents.MaintenanceAgent;
-using UavOps.Agent.Agents.MoavAgent.Hubs;
-using UavOps.Agent.Agents.MoavAgent.Operations;
-using UavOps.Agent.Agents.MoavAgent.Operations.Remote;
-using UavOps.Agent.Agents.MoavAgent.Simulation;
-using UavOps.Agent.Agents.SimulatorAgent;
-using UavOps.Agent.Contracts;
 using UavOps.Agent.Hubs;
 using UavOps.Agent.Options;
-using UavOps.Agent.Simulator.Fake;
 using UavOps.Agent.Tooling;
-using UavOps.Agent.Watchdog.Fake;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,14 +35,46 @@ var openAiOptions = builder.Configuration.GetSection(OpenAiOptions.SectionName).
 var embeddingOptions = builder.Configuration.GetSection(EmbeddingOptions.SectionName).Get<EmbeddingOptions>()
     ?? throw new InvalidOperationException($"Missing '{EmbeddingOptions.SectionName}' configuration section.");
 
-var operationBackend = Enum.TryParse<OperationBackend>(builder.Configuration["OperationBackend"], ignoreCase: true, out var backend)
-    ? backend
-    : OperationBackend.Simulated;
+var agentConfig = AgentConfigLoader.Load(Path.Combine(builder.Environment.ContentRootPath, "Agents", "BrainAgent.yaml"));
 
-var agentConfig = AgentConfigLoader.Load(Path.Combine(builder.Environment.ContentRootPath, "AgentsConfig", "BrainAgent.yaml"));
+// Two distinct ways an MCP server's real dll location gets resolved, for two distinct scenarios
+// (deliberately not one shared mechanism - a dev build's output and a real deployment's published
+// output aren't just "Debug vs Release", they're different directory *shapes* entirely - `dotnet
+// publish` doesn't produce a bin/<Configuration>/net8.0/ tree at all, confirmed directly rather
+// than assumed after an earlier version of this comment got that wrong):
+//
+// 1. Dev/debug default (Visual Studio F5, `dotnet run`, or `dotnet build` + run in place from this
+//    git checkout): BrainAgent.yaml's own args reference a sibling project's normal build output
+//    ("../UavOps.Agent.McpMoav/bin/{configuration}/net8.0/...") - "{configuration}" is a
+//    placeholder substituted below with whatever configuration THIS host binary was itself
+//    compiled as (#if DEBUG/#else, the same compile-time constant the -c Debug/-c Release flag
+//    that built this exact binary also used) - so it always points at the real, matching sibling
+//    build without touching BrainAgent.yaml. The 3 Mcp* projects are explicit Visual Studio
+//    "Project Dependencies" of this one in UavOps.sln (not a compile-time ProjectReference, since
+//    this host never calls their code directly - only spawns them as processes), specifically so
+//    F5-debugging this project in VS also rebuilds them first.
+// 2. Deploy override (a real single-machine deployment running `dotnet publish` output, wherever
+//    that landed): McpServerPaths:<name> in appsettings.json - left blank ("") by default, since
+//    plain .json doesn't support comments to explain that inline - is checked FIRST per server;
+//    when set (via appsettings.Production.json or an McpServerPaths__<name> environment variable,
+//    set once by whatever deploys this app, never by hand-editing BrainAgent.yaml) it replaces
+//    that server's dll path outright, however different that published layout is from the
+//    dev-mode bin/ tree.
+#if DEBUG
+const string buildConfiguration = "Debug";
+#else
+const string buildConfiguration = "Release";
+#endif
+foreach (var serverConfig in agentConfig.McpServers)
+{
+    var deployedPath = builder.Configuration[$"McpServerPaths:{serverConfig.Name}"];
+    serverConfig.Args = !string.IsNullOrWhiteSpace(deployedPath)
+        ? ["exec", deployedPath]
+        : serverConfig.Args.Select(a => a.Replace("{configuration}", buildConfiguration)).ToList();
+}
 
 // Single place to see/change which backend+model BrainAgent uses, instead of that being buried
-// in AgentsConfig/BrainAgent.yaml (which stays focused on behavior/content). Applied directly onto
+// in Agents/BrainAgent.yaml (which stays focused on behavior/content). Applied directly onto
 // the already-loaded AgentConfig, before validation runs so it sees the final provider/model it
 // will actually use.
 var agentModelOptions = builder.Configuration.GetSection("AgentModels").Get<AgentModelOptions>();
@@ -60,28 +84,11 @@ if (agentModelOptions is not null)
     agentConfig.Model = agentModelOptions.Model;
 }
 
-// Reflects over IOperationService's/ISimulatorService's methods — no network call, no
-// remotely-fetched spec — and validates BrainAgent's Tools[] against them before the app is
-// allowed to start.
-var catalog = new OperationCatalog(typeof(IOperationService));
-var simulatorCatalog = new OperationCatalog(typeof(ISimulatorService));
-var watchdogCatalog = new OperationCatalog(typeof(IWatchdogService));
-var watchdogConfigCatalog = new OperationCatalog(typeof(IWatchdogConfigService));
-AgentConfigValidator.Validate(agentConfig, catalog, simulatorCatalog, watchdogCatalog, watchdogConfigCatalog, openAiOptions);
-
-var simulatorOptions = builder.Configuration.GetSection(SimulatorOptions.SectionName).Get<SimulatorOptions>()
-    ?? new SimulatorOptions();
-
-var simulatorBackend = Enum.TryParse<SimulatorBackend>(builder.Configuration["SimulatorBackend"], ignoreCase: true, out var simBackend)
-    ? simBackend
-    : SimulatorBackend.Fake;
-
-var watchdogOptions = builder.Configuration.GetSection(WatchdogOptions.SectionName).Get<WatchdogOptions>()
-    ?? new WatchdogOptions();
-
-var watchdogBackend = Enum.TryParse<WatchdogBackend>(builder.Configuration["WatchdogBackend"], ignoreCase: true, out var wdBackend)
-    ? wdBackend
-    : WatchdogBackend.Fake;
+// Validates BrainAgent's own config fields before the app is allowed to start - every real
+// operation across every domain is an MCP tool now, nothing configured in-process. Moav,
+// watchdog, and simulator all moved to MCP (AgentConfig.McpServers) - their own startup check is
+// simply whether connecting to each and listing its tools succeeds, below.
+AgentConfigValidator.Validate(agentConfig, openAiOptions);
 
 var retrievalOptions = builder.Configuration.GetSection(RetrievalOptions.SectionName).Get<RetrievalOptions>()
     ?? new RetrievalOptions();
@@ -96,77 +103,21 @@ builder.Services.AddSingleton(retrievalOptions);
 builder.Services.AddSingleton(memoryOptions);
 builder.Services.AddSingleton(remoteOperationOptions);
 builder.Services.AddSingleton(agentConfig);
-builder.Services.AddSingleton(catalog);
-builder.Services.AddSingleton(simulatorCatalog);
-builder.Services.AddSingleton(simulatorOptions);
-builder.Services.AddSingleton(watchdogCatalog);
-builder.Services.AddSingleton(watchdogOptions);
-builder.Services.AddSingleton(watchdogConfigCatalog);
-
-// A real queue (not just a "busy" flag) so a second lesson request while one is already running
-// waits its turn instead of being rejected — consumed by SimulatorLessonJobProcessor below.
-builder.Services.AddSingleton<ISimulatorLessonJobQueue, SimulatorLessonJobQueue>();
-
-if (simulatorBackend == SimulatorBackend.Real)
-{
-    builder.Services.AddSingleton<IVmwareController, VmwareController>();
-    builder.Services.AddSingleton<ILocalLessonRunner, LocalLessonRunner>();
-    builder.Services.AddSingleton<ILessonExecutor, LocalLessonExecutor>();
-    builder.Services.AddSingleton<ISimulatorService, SimulatorService>();
-}
-else
-{
-    // No VMware/VM required — the default, so BrainAgent's simulator tools (all five, the
-    // operator lesson-choice prompt, the run-lesson confirmation) can be exercised end to end on
-    // any machine with nothing installed. Registered via the Fake DLL's own IoC extension
-    // (UavOps.Agent.Simulator.Fake) rather than this project registering the fake types itself.
-    builder.Services.AddFakeSimulator();
-}
-
-if (watchdogBackend == WatchdogBackend.Real)
-{
-    builder.Services.AddHttpClient("Watchdog", c => c.Timeout = TimeSpan.FromSeconds(watchdogOptions.HttpTimeoutSeconds));
-#pragma warning disable CA1416 // WindowsServiceController is [SupportedOSPlatform("windows")] — only reached when WatchdogBackend=Real, and this app already assumes Windows (VMware/PowerShell).
-    builder.Services.AddSingleton<IWindowsServiceController, WindowsServiceController>();
-#pragma warning restore CA1416
-    builder.Services.AddSingleton<IWatchdogHealthStore, WatchdogHealthStore>();
-    builder.Services.AddSingleton<IWatchdogService, WatchdogService>();
-    // Only meaningful under Real — there's no watchdog HTTP endpoint to poll under Fake, so this
-    // hosted service (unlike SimulatorLessonJobProcessor) is registered conditionally.
-    builder.Services.AddHostedService<WatchdogHealthPoller>();
-
-    builder.Services.AddSingleton<IServiceConfigFileStore, ServiceConfigFileStore>();
-    builder.Services.AddSingleton<IExecutablePathResolver, ExecutablePathResolver>();
-    builder.Services.AddSingleton<IServiceExecutableLocator, ServiceExecutableLocator>();
-    builder.Services.AddSingleton<IWatchdogConfigService, WatchdogConfigService>();
-}
-else
-{
-    // No watchdog HTTP endpoint or real Windows services required — the default, so BrainAgent's
-    // watchdog tools can be exercised end to end on any machine with nothing installed. Registered
-    // via the Fake DLL's own IoC extension (UavOps.Agent.Watchdog.Fake), same pattern as
-    // AddFakeSimulator above.
-    builder.Services.AddFakeWatchdog();
-}
 
 // A confirmation reply (or an operation's SubmitCommandResult reply) is just another call on
 // the same connection while the original call is still in flight, so raise the per-connection
 // parallel-invocation limit above SignalR's default of 1 (which would otherwise queue the reply
-// behind the in-progress call until it times out). This one call configures both hubs mapped below.
+// behind the in-progress call until it times out). Covers ChatHub's own two client roles (the
+// browser SPA at /chatHub, the real Moav-commanding client at /uavCommandHub - see ChatHub's own
+// doc comment for why both live on one Hub class).
 builder.Services.AddSignalR(options => options.MaximumParallelInvocationsPerClient = 10);
 
-// Always registered — a fleet command client can connect at any time without an app restart,
-// even while currently running OperationBackend=Simulated.
+// Always registered — a Moav command client can connect at any time without an app restart.
+// Backs both ChatHub's connection tracking and its Relay* methods, which UavOps.Agent.McpMoav's
+// own SignalR client calls into under its own OperationBackend: SignalR - see ChatHub's own doc
+// comment. RemoteOperationOptions (the broker's own reply timeout) stays here, not in McpMoav,
+// since the broker itself stays here.
 builder.Services.AddSingleton<IRemoteOperationBroker, RemoteOperationBroker>();
-
-if (operationBackend == OperationBackend.SignalR)
-{
-    builder.Services.AddSingleton<IOperationService, RemoteOperationService>();
-}
-else
-{
-    builder.Services.AddSingleton<IOperationService, SimulatedUavOperationService>();
-}
 
 builder.Services.AddSingleton<ToolInvocationLogger>();
 builder.Services.AddSingleton<ConfirmationGate>();
@@ -197,14 +148,6 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
         sp.GetRequiredService<Func<string, string?, IChatClient>>(),
         ollamaOptions.DefaultModel,
         agentConfig,
-        catalog,
-        sp.GetRequiredService<IOperationService>(),
-        simulatorCatalog,
-        sp.GetRequiredService<ISimulatorService>(),
-        watchdogCatalog,
-        sp.GetRequiredService<IWatchdogService>(),
-        watchdogConfigCatalog,
-        sp.GetRequiredService<IWatchdogConfigService>(),
         sp.GetRequiredService<RetrievalOptions>(),
         sp.GetRequiredService<MemoryOptions>(),
         sp.GetRequiredService<ToolInvocationLogger>(),
@@ -214,13 +157,113 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
 
 builder.Services.AddSingleton<MainAgentOrchestrator>();
 
-// Backend-agnostic (only depends on ILessonExecutor, registered above per SimulatorBackend) —
-// one consumer processes ISimulatorLessonJobQueue jobs one at a time under its own lifetime token
-// (app shutdown only, not any individual chat request's), so a browser disconnecting mid-lesson
-// can't affect a run already handed off to the queue.
-builder.Services.AddHostedService<SimulatorLessonJobProcessor>();
-
 var app = builder.Build();
+
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
+// One Hub class, two endpoints - the browser SPA and the real Moav-commanding client are two
+// different kinds of client of the same ChatHub (see its own doc comment); neither's connection
+// URL changes by mapping both here.
+app.MapHub<ChatHub>("/chatHub");
+app.MapHub<ChatHub>("/uavCommandHub");
+
+app.MapGet("/healthz", () =>
+{
+    // This endpoint is reachable as soon as Kestrel starts listening (app.StartAsync() above),
+    // which is now deliberately *before* the MCP connection loop and retrieval-index build below
+    // finish - so RetrievalIndex may still be its unset `null!` default for the first moment or
+    // two of the process's life. Report "starting" rather than let that surface as a 500.
+    var factory = app.Services.GetRequiredService<AgentFactory>();
+    if (factory.RetrievalIndex is null)
+    {
+        return Results.Ok(new { status = "starting" });
+    }
+
+    return Results.Ok(new
+    {
+        status = "ok",
+        ollamaModel = ollamaOptions.DefaultModel,
+        mcpServers = agentConfig.McpServers.Count,
+        mcpTools = factory.McpTools.Count,
+        retrievalTools = factory.RetrievalIndex.Count
+    });
+});
+
+app.MapGet("/api/agent-graph", () =>
+    Results.Ok(AgentGraphProjector.Build(app.Services.GetRequiredService<AgentFactory>().McpServerToolGroups)));
+
+// Starts Kestrel actually listening now, with every endpoint/middleware above already registered
+// (they must be mapped before this - late-mapped endpoints aren't guaranteed to take effect once
+// the pipeline starts serving) - app.Run() below would otherwise defer listening until after the
+// MCP connection loop, which is too late: UavOps.Agent.McpMoav's own SignalR client (under
+// OperationBackend: SignalR) dials back into this same process's /uavCommandHub at ITS startup.
+// Live-reproduced: without this, that dial-back failed with a connection error because nothing
+// was listening yet, which in turn failed the whole MCP connection loop below and crashed startup
+// entirely.
+await app.StartAsync();
+
+var agentFactory = app.Services.GetRequiredService<AgentFactory>();
+
+// Connects to every configured MCP server (stdio, spawned as a child process of this one - see
+// AgentConfig.McpServers's own doc comment) and discovers its tools, before anything else needs
+// them - AgentFactory.BuildTemplateTools() (right below) reads McpTools, and a turn's own
+// BuildToolsForTurn assumes it's already populated. Fail-fast at boot, same posture as the
+// embedding endpoint below: an MCP server that won't start/connect must stop the app from coming
+// up, not silently leave that domain's tools missing from every turn.
+var mcpClients = new List<McpClient>();
+var mcpTools = new List<AIFunction>();
+var mcpServerToolGroups = new List<(string ServerName, IReadOnlyList<AIFunction> Tools)>();
+foreach (var serverConfig in agentConfig.McpServers)
+{
+    try
+    {
+        var transport = new StdioClientTransport(new StdioClientTransportOptions
+        {
+            Name = serverConfig.Name,
+            Command = serverConfig.Command,
+            Arguments = serverConfig.Args,
+            // args like "../UavOps.Agent.McpMoav/..." are authored relative to this project's own
+            // directory (see Agents/BrainAgent.yaml) - explicit so they resolve the same way
+            // regardless of the launching process's own working directory (e.g. under `dotnet test`).
+            WorkingDirectory = builder.Environment.ContentRootPath
+        });
+        var client = await McpClient.CreateAsync(transport);
+        mcpClients.Add(client);
+        var tools = (await client.ListToolsAsync()).Cast<AIFunction>().ToList();
+        mcpTools.AddRange(tools);
+        mcpServerToolGroups.Add((serverConfig.Name, (IReadOnlyList<AIFunction>)tools));
+    }
+    catch (Exception ex)
+    {
+        throw new InvalidOperationException(
+            $"Failed to connect to MCP server '{serverConfig.Name}' ({serverConfig.Command} {string.Join(' ', serverConfig.Args)}). " +
+            $"Please ensure it can start correctly. {ex.Message}", ex);
+    }
+}
+agentFactory.McpTools = mcpTools;
+agentFactory.McpServerToolGroups = mcpServerToolGroups;
+
+// Each connected server tells BrainAgent how to use its own tools directly (McpServerOptions.
+// ServerInstructions on the server side - see each Mcp* project's own Program.cs) rather than that
+// domain knowledge being hand-authored centrally in Agents/BrainAgent.yaml. Appended once at
+// startup, after the YAML's own cross-cutting instructions (multi-part requests, reporting
+// discipline, resolving history) that don't belong to any one domain.
+var domainInstructions = mcpClients
+    .Select(c => c.ServerInstructions)
+    .Where(instructions => !string.IsNullOrWhiteSpace(instructions));
+agentConfig.Instructions = string.Join("\n\n", [agentConfig.Instructions, .. domainInstructions]);
+
+// Disposing an McpClient stops its child server process - do this on app shutdown, not before,
+// since BrainAgent's persistent session (and any in-flight turn) may call an MCP tool at any time
+// up to that point.
+app.Lifetime.ApplicationStopping.Register(() =>
+{
+    foreach (var client in mcpClients)
+    {
+        client.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+});
 
 // Resolves the AgentFactory singleton eagerly (forcing its DI construction now, not on first chat
 // request) so its tool-retrieval index can be built before the app starts serving - real semantic
@@ -231,7 +274,6 @@ var app = builder.Build();
 // AgentFactory.BuildTemplateTools() needs the real per-tool wrapping only a fully-constructed
 // AgentFactory can produce - see AgentFactory.RetrievalIndex's own doc comment for why this can't
 // be a constructor dependency.
-var agentFactory = app.Services.GetRequiredService<AgentFactory>();
 try
 {
     var embeddingClient = new EmbeddingClient(embeddingOptions.Model, new ApiKeyCredential("not-needed"),
@@ -247,28 +289,8 @@ catch (Exception ex)
         $"Please ensure your embedding server is running and accessible. {ex.Message}", ex);
 }
 
-app.UseDefaultFiles();
-app.UseStaticFiles();
-
-app.MapHub<ChatHub>("/chatHub");
-app.MapHub<OperationHub>("/uavCommandHub");
-
-app.MapGet("/healthz", () => Results.Ok(new
-{
-    status = "ok",
-    ollamaModel = ollamaOptions.DefaultModel,
-    operationBackend = operationBackend.ToString(),
-    simulatorBackend = simulatorBackend.ToString(),
-    watchdogBackend = watchdogBackend.ToString(),
-    operations = catalog.Operations.Count,
-    simulatorOperations = simulatorCatalog.Operations.Count,
-    watchdogOperations = watchdogCatalog.Operations.Count,
-    watchdogConfigOperations = watchdogConfigCatalog.Operations.Count,
-    retrievalTools = agentFactory.RetrievalIndex.Count
-}));
-
-app.MapGet("/api/agent-graph", () => Results.Ok(AgentGraphProjector.Build(agentConfig)));
-
-app.Run();
+// Kestrel is already listening (app.StartAsync() above) - just block until shutdown, the
+// equivalent second half of what app.Run() would otherwise have done as one call.
+await app.WaitForShutdownAsync();
 
 public partial class Program;

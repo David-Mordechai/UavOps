@@ -18,3 +18,6 @@ __pycache__/
 
 # Runtime logs (Serilog file sink)
 logs/
+
+# Test run artifacts (.trx, etc.)
+TestResults/

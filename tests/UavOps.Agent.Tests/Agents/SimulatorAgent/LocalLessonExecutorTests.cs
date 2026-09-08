@@ -1,8 +1,8 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using UavOps.Agent.Agents.SimulatorAgent;
 using UavOps.Agent.Contracts;
+using UavOps.Agent.McpSimulator;
 using Xunit;
 
 namespace UavOps.Agent.Tests.Agents.SimulatorAgent;

@@ -1,0 +1,478 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UavOps.Agent.Contracts -> D:\PlayGround\UavOps\src\UavOps.Agent.Contracts\bin\Debug\net8.0\UavOps.Agent.Contracts.dll
+  UavOps.Agent.Simulator.Fake -> D:\PlayGround\UavOps\src\UavOps.Agent.Simulator.Fake\bin\Debug\net8.0\UavOps.Agent.Simulator.Fake.dll
+  UavOps.Agent.Watchdog.Fake -> D:\PlayGround\UavOps\src\UavOps.Agent.Watchdog.Fake\bin\Debug\net8.0\UavOps.Agent.Watchdog.Fake.dll
+  UavOps.Agent.McpFleet -> D:\PlayGround\UavOps\src\UavOps.Agent.McpFleet\bin\Debug\net8.0\UavOps.Agent.McpFleet.dll
+  UavOps.Agent -> D:\PlayGround\UavOps\src\UavOps.Agent\bin\Debug\net8.0\UavOps.Agent.dll
+  UavOps.Agent.Tests -> D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll
+Test run for D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.14.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 8.0.25)
+[xUnit.net 00:00:00.05]   Discovering: UavOps.Agent.Tests
+[xUnit.net 00:00:00.09]   Discovered:  UavOps.Agent.Tests
+[xUnit.net 00:00:00.09]   Starting:    UavOps.Agent.Tests
+     Warning:
+     The component "Fluent Assertions" is governed by the rules defined in the Xceed License Agreement and
+     the Xceed Fluent Assertions Community License. You may use Fluent Assertions free of charge for
+     non-commercial use only. An active subscription is required to use Fluent Assertions for commercial use.
+     Please contact Xceed Sales mailto:sales@xceed.com to acquire a subscription at a very low cost.
+     A paid commercial license supports the development and continued increasing support of
+     Fluent Assertions users under both commercial and community licenses. Help us
+     keep Fluent Assertions at the forefront of unit testing.
+     For more information, visit https://xceed.com/products/unit-testing/fluent-assertions/
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.BuildToolsForTurn_IncludesTheObviouslyRelevantTool_ForThePhrasesThatFabricated [6 s]
+  Standard Output Messages:
+ === "What UAVs do we have?" ===
+ ListFleet, GetTelemetry, GetMissionStatus, ResetPayload, ReturnToLaunch, SetTrackingMode, GetLinkStatus, UploadWaypoints, PointPayload, SetSpeed
+ contains ListFleet: True
+ 
+ === "point their payloads there" ===
+ ResetPayload, PointPayload, UploadWaypoints, SetTrackingMode, Navigate, ReturnToLaunch, SetAltitude, SetSpeed, GetLinkStatus, GetTelemetry
+ contains PointPayload: True
+ 
+ === "fly them all to target alpha at speed 250 and altitude 3000" ===
+ SetAltitude, SetSpeed, UploadWaypoints, SetTrackingMode, ResetPayload, ReturnToLaunch, Navigate, PointPayload, ListFleet, GetMissionStatus
+ contains Navigate: True
+ 
+
+
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.MultiTurnFleetOpsScenario_MatchesRealFleetState [2 m 48 s]
+  Standard Output Messages:
+ === run 0: final summary (duration=4.0091078s) ===
+ Here's a summary of today's session:
+
+1. Initial fleet status:
+   - Three UAVs (UAV-1, UAV-2, UAV-3) were identified, all in orbiting mode at different coordinates
+
+2. Navigation commands:
+   - All three UAVs were commanded to fly to alpha at 250 knots speed and 3000 feet altitude
+   - All UAVs successfully transitioned to transiting mode toward alpha
+
+3. Payload configuration:
+   - All three UAVs' payloads were pointed toward alpha
+   - Payloads were successfully locked on to alpha
+
+4. Return to base:
+   - All three UAVs were commanded to return to their launch point
+   - All UAVs successfully transitioned to returning to launch mode while maintaining their speed, altitude, and payload lock
+
+The session concluded with all UAVs returning to their home base after completing the mission to alpha.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 1: final summary (duration=2.8990298s) ===
+ Here's a summary of today's session:
+
+1. You introduced yourself as David, the operator.
+2. I listed the fleet, which consists of three UAVs: UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+3. You commanded all UAVs to fly to alpha at 250 knots and 3000 feet altitude - this was completed successfully.
+4. You then ordered the payloads of all UAVs to be pointed at alpha - this was also completed successfully.
+5. Finally, you commanded all UAVs to return to their launch point - they are now in "ReturningToLaunch" mode.
+
+All commands were executed successfully for all three UAVs in the fleet. Is there anything else you'd like to know or any other actions you'd like to take?
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 2: final summary (duration=2.3899124s) ===
+ Here's a summary of today's session:
+
+1. We identified three UAVs in the fleet: UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+2. You commanded all three UAVs to:
+   - Fly to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+   - Point their payloads toward alpha
+
+3. Finally, you commanded all three UAVs to return to their launch point, which they are currently doing.
+
+All actions were successfully executed for the entire fleet. The UAVs are now in transit back to their home base.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 3: final summary (duration=2.9031658s) ===
+ Here's a summary of today's session:
+
+1. **Fleet Overview**: We have three UAVs in the fleet - UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+2. **Navigation Commands**: All three UAVs were commanded to:
+   - Navigate to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+
+3. **Payload Configuration**: All three UAVs had their payloads pointed at alpha.
+
+4. **Return to Base**: All three UAVs were commanded to return to their launch point and are currently in "ReturningToLaunch" mode.
+
+The session focused on coordinating all three UAVs to perform a mission at alpha and then return to base. All commands were successfully executed across the entire fleet.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 4: final summary (duration=2.6715099s) ===
+ Here's a summary of today's session:
+
+1. You introduced yourself as David, the operator.
+
+2. I listed the fleet, which consists of three UAVs: UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+3. You commanded all UAVs to:
+   - Fly to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+   - Point their payloads toward alpha
+
+4. Finally, you commanded all UAVs to return to their launch point, which they are currently doing while maintaining their speed, altitude, and payload lock on alpha.
+
+All actions were successfully executed for all three UAVs in the fleet.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 5: final summary (duration=2.5428793s) ===
+ Here's a summary of today's session:
+
+1. We started by identifying the fleet, which consists of three UAVs: UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+2. You commanded all three UAVs to:
+   - Fly to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+   - Point their payloads toward alpha
+
+3. Finally, you commanded all three UAVs to return to their launch point, which they are currently doing.
+
+All actions were successfully executed for the entire fleet. The UAVs are now returning to base with their payloads still locked on to alpha.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 6: final summary (duration=2.7511601s) ===
+ Here's a summary of today's session:
+
+1. We identified three UAVs in our fleet: UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+2. You commanded all three UAVs to:
+   - Navigate to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+
+3. You then commanded all three UAVs to point their payloads at alpha.
+
+4. Finally, you commanded all three UAVs to return to their launch point, which they are currently doing in "ReturningToLaunch" mode.
+
+All commands were successfully executed and the UAVs are now returning to their base. Is there anything else you'd like me to help you with?
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 7: final summary (duration=3.0029554s) ===
+ Here's a summary of today's session:
+
+1. We started by identifying the fleet, which consists of three UAVs: UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+2. You commanded all UAVs to:
+   - Fly to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+   - Point their payloads toward alpha
+
+3. All commands were successfully executed, and the UAVs were transiting to alpha with their payloads locked on.
+
+4. You then commanded all UAVs to return to their launch point, which they are now doing in "ReturningToLaunch" mode.
+
+The session concluded with all three UAVs returning to their home base. Is there anything else you'd like to know or any other operations you'd like to perform?
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ Verified successes: 8/8
+
+
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.PointPayloadFollowUp_AfterSeparateFlightCommand_StillCallsRealTool [2 m 7 s]
+  Standard Output Messages:
+ === run 0: follow-up response (duration=2.4280329s) ===
+ I've successfully pointed the payloads of all three UAVs (UAV-1, UAV-2, and UAV-3) toward alpha. Their sensors/gimbals are now locked onto that location as they transit there. Is there anything else you'd like me to do with the fleet?
+ UAV-1: payload=alpha
+ UAV-2: payload=alpha
+ UAV-3: payload=alpha
+   => REAL PointPayload CALLS CONFIRMED
+ === run 1: follow-up response (duration=1.987146s) ===
+ All three UAVs (UAV-1, UAV-2, and UAV-3) now have their payloads pointed at alpha. Their payloads are locked on to the target as they continue transiting at 250 knots and 3000 feet altitude.
+ UAV-1: payload=alpha
+ UAV-2: payload=alpha
+ UAV-3: payload=alpha
+   => REAL PointPayload CALLS CONFIRMED
+ === run 2: follow-up response (duration=1.9738356s) ===
+ I've pointed the payloads of all three UAVs (UAV-1, UAV-2, and UAV-3) toward alpha. The payloads are now locked on to alpha as requested. Is there anything else you'd like me to do with the fleet?
+ UAV-1: payload=alpha
+ UAV-2: payload=alpha
+ UAV-3: payload=alpha
+   => REAL PointPayload CALLS CONFIRMED
+ === run 3: follow-up response (duration=2.2395239s) ===
+ I've pointed all UAV payloads to alpha:
+
+- UAV-1: Payload now locked on alpha
+- UAV-2: Payload now locked on alpha
+- UAV-3: Payload now locked on alpha
+
+All three UAVs are now transiting to alpha with their payloads pointed at the target location.
+ UAV-1: payload=alpha
+ UAV-2: payload=alpha
+ UAV-3: payload=alpha
+   => REAL PointPayload CALLS CONFIRMED
+ === run 4: follow-up response (duration=1.8338322s) ===
+ I've pointed the payloads of all three UAVs (UAV-1, UAV-2, and UAV-3) toward alpha. The payloads are now locked on to alpha as requested.
+ UAV-1: payload=alpha
+ UAV-2: payload=alpha
+ UAV-3: payload=alpha
+   => REAL PointPayload CALLS CONFIRMED
+ === run 5: follow-up response (duration=2.0460575s) ===
+ I've pointed the payloads of all three UAVs (UAV-1, UAV-2, and UAV-3) toward alpha. The payloads are now locked on to that location. Is there anything else you'd like me to do with the fleet?
+ UAV-1: payload=alpha
+ UAV-2: payload=alpha
+ UAV-3: payload=alpha
+   => REAL PointPayload CALLS CONFIRMED
+ === run 6: follow-up response (duration=1.8925942s) ===
+ I've pointed the payloads of all three UAVs (UAV-1, UAV-2, and UAV-3) toward alpha. The payloads are now locked on to alpha as requested.
+ UAV-1: payload=alpha
+ UAV-2: payload=alpha
+ UAV-3: payload=alpha
+   => REAL PointPayload CALLS CONFIRMED
+ === run 7: follow-up response (duration=1.8695881s) ===
+ I've pointed the payloads of all three UAVs (UAV-1, UAV-2, and UAV-3) toward alpha. The payloads are now locked on to alpha as requested.
+ UAV-1: payload=alpha
+ UAV-2: payload=alpha
+ UAV-3: payload=alpha
+   => REAL PointPayload CALLS CONFIRMED
+ Real successes: 8/8
+
+
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.FlyAllFleetWideCommand_NeverClaimsSuccessWithoutRealMutation [1 m 55 s]
+  Standard Output Messages:
+ === run 0: response (duration=6.4602345s) ===
+ All commands have been successfully executed for all three UAVs (UAV-1, UAV-2, and UAV-3):
+
+1. All UAVs are now transiting to alpha
+2. Speed has been set to 250 knots for all UAVs
+3. Altitude has been set to 3000 feet for all UAVs
+4. All payloads are now pointed at alpha
+
+The UAVs are currently en route to alpha at the specified speed and altitude, with their payloads locked on to the target.
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 1: response (duration=4.8457524s) ===
+ I've completed all the requested actions for all three UAVs:
+
+1. All UAVs (UAV-1, UAV-2, UAV-3) have been commanded to fly to alpha
+2. Speed has been set to 250 knots for all UAVs
+3. Altitude has been set to 3000 feet for all UAVs
+4. All payloads have been pointed at alpha
+
+The UAVs are now transiting to alpha at 250 knots and 3000 feet altitude, with their payloads locked on to alpha.
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 2: response (duration=4.9068292s) ===
+ I've completed all the requested actions for all three UAVs:
+
+1. All UAVs (UAV-1, UAV-2, UAV-3) have been commanded to navigate to alpha.
+2. All UAVs have been set to a speed of 250 knots.
+3. All UAVs have been set to an altitude of 3000 feet.
+4. All payloads have been pointed at alpha.
+
+The UAVs are now transiting to alpha at the specified speed and altitude, with their payloads locked on to the target. Is there anything else you'd like me to do with the fleet?
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 3: response (duration=4.8746023s) ===
+ I've completed all the requested actions for all three UAVs:
+
+1. All UAVs (UAV-1, UAV-2, UAV-3) have been commanded to navigate to alpha
+2. Speed has been set to 250 knots for all UAVs
+3. Altitude has been set to 3000 feet for all UAVs
+4. All payloads have been pointed at alpha
+
+The UAVs are now transiting to alpha with the specified speed and altitude, and their payloads are locked on to alpha. Is there anything else you'd like me to do with the fleet?
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 4: response (duration=4.8963448s) ===
+ I've completed all the requested actions for all three UAVs:
+
+1. All UAVs (UAV-1, UAV-2, UAV-3) have been commanded to fly to alpha.
+2. All UAVs have been set to a speed of 250 knots.
+3. All UAVs have been set to an altitude of 3000 feet.
+4. All payloads have been pointed at alpha.
+
+The UAVs are now transiting to alpha at the specified speed and altitude, with their payloads locked on to the target. Is there anything else you'd like me to do with the fleet?
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 5: response (duration=4.9944258s) ===
+ I've completed all the requested actions for all three UAVs:
+
+1. All UAVs (UAV-1, UAV-2, UAV-3) have been commanded to navigate to alpha.
+2. Speed has been set to 250 knots for all UAVs.
+3. Altitude has been set to 3000 feet for all UAVs.
+4. All payloads have been pointed at alpha.
+
+The UAVs are now transiting to alpha at 250 knots and 3000 feet altitude, with their payloads locked on to alpha. Is there anything else you'd like me to do with the fleet?
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 6: response (duration=4.9460717s) ===
+ I've executed all the requested commands for all three UAVs:
+
+1. All UAVs (UAV-1, UAV-2, UAV-3) have been directed to fly to alpha
+2. Speed has been set to 250 knots for all UAVs
+3. Altitude has been set to 3000 feet for all UAVs
+4. All payloads have been pointed at alpha
+
+The UAVs are now transiting to alpha at 250 knots and 3000 feet altitude, with their payloads locked on to alpha. Is there anything else you'd like me to do with the fleet?
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ === run 7: response (duration=4.8863608s) ===
+ I've completed all the requested actions for all three UAVs:
+
+1. All UAVs (UAV-1, UAV-2, UAV-3) have been commanded to navigate to alpha.
+2. All UAVs have been set to a speed of 250 knots.
+3. All UAVs have been set to an altitude of 3000 feet.
+4. All payloads have been pointed at alpha.
+
+The UAVs are now transiting to alpha at the specified speed and altitude, with their payloads locked on to the target. Is there anything else you'd like me to do with the fleet?
+ UAV-1: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=Transiting payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=Transiting payload=alpha
+   => VERIFIED SUCCESS
+ Verified successes: 8/8   Honest failures: 0/8
+
+
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.Greeting_NeverTriggersASpuriousRealOperation [55 s]
+  Standard Output Messages:
+ === run 0: greeting response (duration=0.5010385s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 1: greeting response (duration=0.4989618s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 2: greeting response (duration=0.4994869s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 3: greeting response (duration=0.498346s) ===
+ Hello David! I'm ready to assist you as your UAV fleet operations assistant. How can I help you today?
+ === run 4: greeting response (duration=0.5080647s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 5: greeting response (duration=0.7373694s) ===
+ Hello David! I'm glad to meet you. I'm your operations assistant, ready to help you with UAV fleet management, training simulations, and system monitoring. How can I assist you today?
+ === run 6: greeting response (duration=0.474308s) ===
+ Hello David! I'm BrainAgent, your UAV fleet operations assistant. How can I help you today?
+ === run 7: greeting response (duration=0.6550182s) ===
+ Hello David! I'm glad to meet you. I'm your operations assistant, ready to help you with your UAV fleet operations today. How can I assist you?
+
+
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.GetLiveResponse [2 m 8 s]
+  Standard Output Messages:
+ === RESULT RESPONSE ===
+ I see the tool didn't execute because I need to confirm the exact tail number. Could you confirm you want to set the speed of UAV-1 to 250 knots?
+ duration=122.4836487s
+ =======================
+
+
+[xUnit.net 00:12:10.33]   Finished:    UavOps.Agent.Tests
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.RepeatedFleetQuery_AfterStateChange_ReflectsCurrentStateNotStaleHistory [2 m 7 s]
+  Standard Output Messages:
+ === run 0: second fleet-query response (duration=2.7828243s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha at 250 knots and 3000 feet altitude as previously commanded.
+   => FRESH, CORRECT ANSWER
+ === run 1: second fleet-query response (duration=2.7850189s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha as previously commanded. Is there anything else you'd like me to do with the fleet?
+   => FRESH, CORRECT ANSWER
+ === run 2: second fleet-query response (duration=2.6986982s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha at 250 knots and 3000 feet altitude as previously commanded.
+   => FRESH, CORRECT ANSWER
+ === run 3: second fleet-query response (duration=2.7431226s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha as previously commanded. Is there anything specific you'd like to do with any of them?
+   => FRESH, CORRECT ANSWER
+ === run 4: second fleet-query response (duration=2.7199013s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha as previously commanded. Is there anything specific you'd like me to do with any of them?
+   => FRESH, CORRECT ANSWER
+ === run 5: second fleet-query response (duration=2.6184075s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha. How would you like to proceed with them?
+   => FRESH, CORRECT ANSWER
+ === run 6: second fleet-query response (duration=2.929338s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode and appear to be at the same location, which is likely alpha based on your previous command. Is there anything specific you'd like me to do with any of these UAVs?
+   => FRESH, CORRECT ANSWER
+ === run 7: second fleet-query response (duration=2.6394753s) ===
+ We have three UAVs in our fleet:
+
+1. UAV-1 - Currently transiting at coordinates 31.812, 34.66
+2. UAV-2 - Currently transiting at coordinates 31.812, 34.66
+3. UAV-3 - Currently transiting at coordinates 31.812, 34.66
+
+All three UAVs are currently in transiting mode, heading toward alpha. How would you like to proceed with them?
+   => FRESH, CORRECT ANSWER
+ Fresh answers: 8/8
+
+
+
+Test Run Successful.
+Total tests: 7
+     Passed: 7
+ Total time: 12.1778 Minutes

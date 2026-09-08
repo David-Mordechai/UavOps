@@ -1,7 +1,6 @@
 using FluentAssertions;
-using UavOps.Agent.Agents.MaintenanceAgent;
+using UavOps.Agent.McpWatchdog;
 using UavOps.Agent.Contracts;
-using UavOps.Agent.Options;
 using Xunit;
 
 namespace UavOps.Agent.Tests.Agents.MaintenanceAgent;

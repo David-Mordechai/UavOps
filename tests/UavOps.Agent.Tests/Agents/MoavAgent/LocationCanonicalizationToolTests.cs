@@ -1,7 +1,7 @@
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.AI;
-using UavOps.Agent.Agents.MoavAgent;
+using UavOps.Agent.Tooling;
 using Xunit;
 
 namespace UavOps.Agent.Tests.Agents.MoavAgent;

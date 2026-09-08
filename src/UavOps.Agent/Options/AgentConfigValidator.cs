@@ -1,25 +1,25 @@
-using UavOps.Agent.Tooling;
-
 namespace UavOps.Agent.Options;
 
 /// <summary>
-/// Fail-fast startup validation: catches the "prompt advertises tools that don't exist" bug class
-/// at boot instead of silently at inference time. Any violation stops the app from starting with a
-/// message naming exactly which tool/parameter/field is wrong. Also compensates for
-/// <see cref="AgentConfig"/>/<see cref="AgentToolConfig"/> using plain mutable properties instead
-/// of <c>required</c>/<c>init</c> (needed for YamlDotNet deserialization) — a required field
-/// silently omitted from a YAML file becomes `""` rather than a compile-time error, so this
-/// explicitly checks for that instead. Takes a single <see cref="AgentConfig"/> now (one flat
-/// agent) — no more cross-agent <c>Children</c>-reference check, since there's nothing left to
-/// delegate to.
+/// Fail-fast startup validation: catches basic YAML/config authoring mistakes at boot instead of
+/// silently at inference time. Any violation stops the app from starting with a message naming
+/// exactly which field is wrong. Also compensates for <see cref="AgentConfig"/> using plain mutable
+/// properties instead of <c>required</c>/<c>init</c> (needed for YamlDotNet deserialization) — a
+/// required field silently omitted from a YAML file becomes `""` rather than a compile-time error,
+/// so this explicitly checks for that instead. Takes a single <see cref="AgentConfig"/> now (one
+/// flat agent) — no more cross-agent <c>Children</c>-reference check, since there's nothing left to
+/// delegate to. Every real operation across every domain (Moav, watchdog, simulator) is an MCP
+/// tool now (<see cref="AgentConfig.McpServers"/>), including the operator lesson-choice prompt —
+/// nothing is configured in-process anymore, so their own startup check is simply whether
+/// connecting to each configured server and listing its tools succeeds (see <c>Program.cs</c>,
+/// same fail-fast-at-boot posture already established for the embedding endpoint), not a
+/// reflection check here.
 /// </summary>
 public static class AgentConfigValidator
 {
-    private const string OperatorPromptKind = "OperatorPrompt";
-
     private static readonly string[] KnownProviders = ["Ollama", "OpenAI"];
 
-    public static void Validate(AgentConfig config, OperationCatalog catalog, OperationCatalog simulatorCatalog, OperationCatalog watchdogCatalog, OperationCatalog watchdogConfigCatalog, OpenAiOptions openAiOptions)
+    public static void Validate(AgentConfig config, OpenAiOptions openAiOptions)
     {
         var errors = new List<string>();
 
@@ -43,67 +43,6 @@ public static class AgentConfigValidator
             errors.Add("BrainAgent has provider: OpenAI (from 'AgentModels' in appsettings.json) but " +
                         "no API key is configured. Set one via " +
                         "`dotnet user-secrets set \"OpenAI:ApiKey\" \"...\" --project src/UavOps.Agent`.");
-        }
-
-        foreach (var tool in config.Tools)
-        {
-            if (string.IsNullOrWhiteSpace(tool.Description))
-            {
-                errors.Add($"Tool '{tool.Operation}' is missing a 'Description'.");
-            }
-
-            if (string.IsNullOrWhiteSpace(tool.ExampleUtterance))
-            {
-                errors.Add($"Tool '{tool.Operation}' is missing an 'ExampleUtterance'.");
-            }
-
-            if (tool.Kind == OperatorPromptKind)
-            {
-                // Bespoke ask-the-operator tool (AskOperatorChoiceTool) — not reflected off
-                // any catalog, so there's no parameter contract to check it against.
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(tool.Operation))
-            {
-                errors.Add("A tool is missing an 'Operation'.");
-                continue;
-            }
-
-            var resolved = catalog.TryResolve(tool.Operation, out var descriptor) && descriptor is not null;
-            if (!resolved)
-            {
-                resolved = simulatorCatalog.TryResolve(tool.Operation, out descriptor) && descriptor is not null;
-            }
-            if (!resolved)
-            {
-                resolved = watchdogCatalog.TryResolve(tool.Operation, out descriptor) && descriptor is not null;
-            }
-            if (!resolved)
-            {
-                resolved = watchdogConfigCatalog.TryResolve(tool.Operation, out descriptor) && descriptor is not null;
-            }
-
-            if (!resolved || descriptor is null)
-            {
-                errors.Add($"References unknown operation '{tool.Operation}'. " +
-                            "Check the spelling against IOperationService's/ISimulatorService's/IWatchdogService's/IWatchdogConfigService's method names.");
-                continue;
-            }
-
-            foreach (var p in descriptor.Parameters)
-            {
-                if (tool.FixedParameters.ContainsKey(p.Name))
-                {
-                    continue;
-                }
-
-                if (!tool.Parameters.ContainsKey(p.Name))
-                {
-                    errors.Add($"Tool '{tool.Operation}' is missing a description for " +
-                                $"parameter '{p.Name}' — add it under Parameters or FixedParameters.");
-                }
-            }
         }
 
         if (errors.Count > 0)

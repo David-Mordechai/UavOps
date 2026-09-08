@@ -23,6 +23,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\UavOps.Agent\UavOps.Agent.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.Contracts\UavOps.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\UavOps.Agent.McpMoav\UavOps.Agent.McpMoav.csproj" />
+    <ProjectReference Include="..\..\src\UavOps.Agent.McpSimulator\UavOps.Agent.McpSimulator.csproj" />
+    <ProjectReference Include="..\..\src\UavOps.Agent.McpWatchdog\UavOps.Agent.McpWatchdog.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.Simulator.Fake\UavOps.Agent.Simulator.Fake.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.Watchdog.Fake\UavOps.Agent.Watchdog.Fake.csproj" />
   </ItemGroup>

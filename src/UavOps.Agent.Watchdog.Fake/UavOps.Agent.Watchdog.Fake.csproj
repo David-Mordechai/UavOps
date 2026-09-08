@@ -7,7 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <!-- Bumped from 8.0.2: UavOps.Agent.Contracts now transitively requires a much newer floor via
+         its own ModelContextProtocol package reference (added for McpToolsBuilder) - NuGet treats
+         this project's own lower explicit pin as a downgrade otherwise. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.10" />
   </ItemGroup>
 
   <ItemGroup>

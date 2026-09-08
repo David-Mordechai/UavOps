@@ -6,7 +6,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
 using UavOps.Agent.Agents;
-using UavOps.Agent.Agents.MoavAgent.Operations;
 using UavOps.Agent.Contracts;
 using UavOps.Agent.Hubs;
 using UavOps.Agent.Options;
@@ -43,14 +42,6 @@ public class AgentFactoryHierarchyTests
             (_, _) => new FakeChatClient(),
             "test-model",
             config,
-            new OperationCatalog(typeof(IOperationService)),
-            Substitute.For<IOperationService>(),
-            new OperationCatalog(typeof(ISimulatorService)),
-            Substitute.For<ISimulatorService>(),
-            new OperationCatalog(typeof(IWatchdogService)),
-            Substitute.For<IWatchdogService>(),
-            new OperationCatalog(typeof(IWatchdogConfigService)),
-            Substitute.For<IWatchdogConfigService>(),
             new RetrievalOptions { TopK = topK },
             new MemoryOptions(),
             toolLogger,
@@ -79,23 +70,23 @@ public class AgentFactoryHierarchyTests
     private static List<string> ToolNames(List<AITool> tools) =>
         tools.OfType<AIFunction>().Select(f => f.Name).ToList();
 
+    // Every real operation across every domain, including the operator lesson-choice prompt, is an
+    // MCP tool now - nothing is configured in AgentConfig anymore. These tests get their tools
+    // entirely through the merged, correlationId-scoped tool list this class builds via MCP-sourced
+    // candidates set directly on AgentFactory.McpTools (a settable property, so no real MCP server
+    // connection is needed here).
+    private static AIFunction FakeMcpTool(string name) => AIFunctionFactory.Create(() => "ok", name: name, description: "x");
+
     [Fact]
-    public void BuildTemplateTools_OneToolPerConfiguredOperation()
+    public void BuildTemplateTools_OneToolPerConnectedMcpTool()
     {
-        var config = new AgentConfig
-        {
-            Instructions = "x",
-            Tools =
-            [
-                new AgentToolConfig { Operation = "ListFleet", Description = "x", ExampleUtterance = "x" },
-                new AgentToolConfig { Operation = "GetServicesHealth", Description = "x", ExampleUtterance = "x" }
-            ]
-        };
+        var config = new AgentConfig { Instructions = "x" };
         var sut = CreateSut(config);
+        sut.McpTools = [FakeMcpTool("RunSimulatorLesson"), FakeMcpTool("AskOperatorWhichLesson")];
 
         var tools = sut.BuildTemplateTools();
 
-        ToolNames(tools).Should().BeEquivalentTo(["ListFleet", "GetServicesHealth"]);
+        ToolNames(tools).Should().BeEquivalentTo(["RunSimulatorLesson", "AskOperatorWhichLesson"]);
     }
 
     [Fact]
@@ -103,12 +94,9 @@ public class AgentFactoryHierarchyTests
     {
         // No "safe no-op" tool appended anymore - tool_choice is never forced (see
         // MainAgentOrchestrator's own doc comment), so there's nothing that must always be present.
-        var config = new AgentConfig
-        {
-            Instructions = "x",
-            Tools = [new AgentToolConfig { Operation = "ListFleet", Description = "x", ExampleUtterance = "x" }]
-        };
+        var config = new AgentConfig { Instructions = "x" };
         var sut = CreateSut(config, topK: 0);
+        sut.McpTools = [FakeMcpTool("RunSimulatorLesson")];
         sut.RetrievalIndex = await BuildFixedIndexAsync(sut.BuildTemplateTools());
 
         var tools = await sut.BuildToolsForTurn("corr1", "hi there", CancellationToken.None);
@@ -119,17 +107,9 @@ public class AgentFactoryHierarchyTests
     [Fact]
     public async Task BuildToolsForTurn_NarrowsToTopK()
     {
-        var config = new AgentConfig
-        {
-            Instructions = "x",
-            Tools =
-            [
-                new AgentToolConfig { Operation = "ListFleet", Description = "x", ExampleUtterance = "x" },
-                new AgentToolConfig { Operation = "GetServicesHealth", Description = "x", ExampleUtterance = "x" },
-                new AgentToolConfig { Operation = "ListSimulatorLessons", Description = "x", ExampleUtterance = "x" }
-            ]
-        };
+        var config = new AgentConfig { Instructions = "x" };
         var sut = CreateSut(config, topK: 1);
+        sut.McpTools = [FakeMcpTool("EnsureVmwareHostRunning"), FakeMcpTool("RunSimulatorLesson")];
         sut.RetrievalIndex = await BuildFixedIndexAsync(sut.BuildTemplateTools());
 
         var tools = await sut.BuildToolsForTurn("corr1", "anything", CancellationToken.None);

@@ -4,8 +4,6 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using UavOps.Agent.Agents.MoavAgent;
-using UavOps.Agent.Agents.MoavAgent.Operations;
 using UavOps.Agent.Contracts;
 using UavOps.Agent.Hubs;
 using UavOps.Agent.Tooling;
@@ -15,10 +13,10 @@ namespace UavOps.Agent.Tests.Agents.MoavAgent;
 
 public class TailNumberDisambiguationToolTests
 {
-    /// <summary>A minimal inner AIFunction standing in for the wrapped OperationTool - just
-    /// records the tailNumber it was actually invoked with, so tests can assert exactly which
-    /// UAV(s) execution reached without needing a real IOperationService/reflection round trip
-    /// (that combination is already covered by OperationToolTests).</summary>
+    /// <summary>A minimal inner AIFunction standing in for the wrapped fleet tool (an
+    /// MCP-backed one in production - see <see cref="Tooling.McpBackedTool"/>) - just records the
+    /// tailNumber it was actually invoked with, so tests can assert exactly which UAV(s) execution
+    /// reached without needing a real MCP round trip.</summary>
     private sealed class FakeInnerTool(string name = "SetSpeed") : AIFunction
     {
         public List<string?> InvokedTailNumbers { get; } = [];
@@ -47,7 +45,7 @@ public class TailNumberDisambiguationToolTests
     /// operator prompt exactly like ChatHub does - mirrors AskOperatorChoiceToolTests/
     /// OperationToolTests's CreateSutWithConfirmation, since this tool needs to exercise
     /// InvokeCoreAsync itself, including its own ask-and-wait round trip.</summary>
-    private static (TailNumberDisambiguationTool Tool, FakeInnerTool Inner, IOperationService OperationService, IClientProxy Proxy) CreateSut(
+    private static (TailNumberDisambiguationTool Tool, FakeInnerTool Inner, Func<CancellationToken, Task<OperationResult>> ListFleet, IClientProxy Proxy) CreateSut(
         List<UavSummary>? fleet, string? chatReply, string operatorText = "", TailNumberResolutionScope? scope = null)
     {
         var replySent = false;
@@ -69,16 +67,15 @@ public class TailNumberDisambiguationToolTests
         hub.Clients.Returns(clients);
         promptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromSeconds(30));
 
-        var operationService = Substitute.For<IOperationService>();
-        operationService.ListFleet(Arg.Any<CancellationToken>()).Returns(
+        Task<OperationResult> ListFleet(CancellationToken cancellationToken) => Task.FromResult(
             fleet is not null ? OperationResult.Ok(fleet) : OperationResult.Invalid("fleet lookup failed"));
 
         var inner = new FakeInnerTool();
         var tool = new TailNumberDisambiguationTool(
-            inner, operationService, promptGate, scope ?? new TailNumberResolutionScope(),
+            inner, ListFleet, promptGate, scope ?? new TailNumberResolutionScope(),
             "FlightControlAgent", "corr1", operatorText);
 
-        return (tool, inner, operationService, proxy);
+        return (tool, inner, ListFleet, proxy);
     }
 
     [Fact]
@@ -229,12 +226,11 @@ public class TailNumberDisambiguationToolTests
         // two DIFFERENT actions each still get their own independent fan-out, not that a second call
         // to the SAME action is deduped (that's InvokeCoreAsync_SameToolCalled*_OnlyFansOutOnce).
         var secondInner = new FakeInnerTool("SetAltitude");
-        var operationService = Substitute.For<IOperationService>();
-        operationService.ListFleet(Arg.Any<CancellationToken>()).Returns(OperationResult.Ok(ThreeUavFleet()));
+        Task<OperationResult> secondListFleet(CancellationToken cancellationToken) => Task.FromResult(OperationResult.Ok(ThreeUavFleet()));
         var hub = Substitute.For<IHubContext<ChatHub>>();
         var secondPromptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromMilliseconds(200));
         var secondTool = new TailNumberDisambiguationTool(
-            secondInner, operationService, secondPromptGate, scope, "FlightControlAgent", "corr1", "set speed to 250");
+            secondInner, secondListFleet, secondPromptGate, scope, "FlightControlAgent", "corr1", "set speed to 250");
 
         await secondTool.InvokeAsync(
             new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);

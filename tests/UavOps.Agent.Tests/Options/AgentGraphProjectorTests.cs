@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.AI;
 using UavOps.Agent.Options;
 using Xunit;
 
@@ -9,32 +10,26 @@ public class AgentGraphProjectorTests
 {
     // AgentGraphProjector.Build returns anonymous objects, so tests round-trip through JSON to
     // inspect the shape by property name rather than depending on the anonymous types directly.
-    private static JsonElement BuildAsJson(AgentConfig config)
+    private static JsonElement BuildAsJson(IReadOnlyList<(string ServerName, IReadOnlyList<AIFunction> Tools)> groups)
     {
-        var json = JsonSerializer.Serialize(AgentGraphProjector.Build(config));
+        var json = JsonSerializer.Serialize(AgentGraphProjector.Build(groups));
         return JsonDocument.Parse(json).RootElement;
     }
 
+    private static AIFunction FakeTool(string name, string description, string? tailNumberDescription = null) =>
+        tailNumberDescription is null
+            ? AIFunctionFactory.Create(() => "ok", name: name, description: description)
+            : AIFunctionFactory.Create((string tailNumber) => "ok", name: name, description: description);
+
     [Fact]
-    public void Build_SingleFlatAgent_ProducesRootNodePlusOneToolNodePerTool()
+    public void Build_OneServerOneTool_ProducesRootServerAndToolNodes()
     {
-        var config = new AgentConfig
+        var groups = new List<(string ServerName, IReadOnlyList<AIFunction> Tools)>
         {
-            Instructions = "x",
-            Tools =
-            [
-                new AgentToolConfig
-                {
-                    Operation = "SetSpeed",
-                    Description = "Change speed.",
-                    ExampleUtterance = "set UAV-1's speed to 250 knots",
-                    Parameters = new Dictionary<string, string> { ["tailNumber"] = "the tail number", ["speedKts"] = "the speed" },
-                    FixedParameters = new Dictionary<string, string> { ["mode"] = "cruise" }
-                }
-            ]
+            ("moav", [FakeTool("SetSpeed", "Change speed.", tailNumberDescription: "the tail number")])
         };
 
-        var root = BuildAsJson(config);
+        var root = BuildAsJson(groups);
         var nodes = root.GetProperty("nodes").EnumerateArray().ToList();
         var edges = root.GetProperty("edges").EnumerateArray().ToList();
 
@@ -42,25 +37,31 @@ public class AgentGraphProjectorTests
         brainNode.GetProperty("type").GetString().Should().Be("agent");
         brainNode.GetProperty("isRoot").GetBoolean().Should().BeTrue();
 
-        var toolNode = nodes.Single(n => n.GetProperty("id").GetString() == "BrainAgent::SetSpeed");
+        var serverNode = nodes.Single(n => n.GetProperty("id").GetString() == "server::moav");
+        serverNode.GetProperty("type").GetString().Should().Be("server");
+        serverNode.GetProperty("name").GetString().Should().Be("moav");
+
+        var toolNode = nodes.Single(n => n.GetProperty("id").GetString() == "server::moav::SetSpeed");
         toolNode.GetProperty("type").GetString().Should().Be("tool");
-        toolNode.GetProperty("ownerAgent").GetString().Should().Be("BrainAgent");
+        toolNode.GetProperty("ownerServer").GetString().Should().Be("moav");
         toolNode.GetProperty("operation").GetString().Should().Be("SetSpeed");
         toolNode.GetProperty("description").GetString().Should().Be("Change speed.");
-        toolNode.GetProperty("exampleUtterance").GetString().Should().Be("set UAV-1's speed to 250 knots");
 
         edges.Should().ContainSingle(e =>
             e.GetProperty("from").GetString() == "BrainAgent" &&
-            e.GetProperty("to").GetString() == "BrainAgent::SetSpeed" &&
+            e.GetProperty("to").GetString() == "server::moav" &&
+            e.GetProperty("kind").GetString() == "connects");
+
+        edges.Should().ContainSingle(e =>
+            e.GetProperty("from").GetString() == "server::moav" &&
+            e.GetProperty("to").GetString() == "server::moav::SetSpeed" &&
             e.GetProperty("kind").GetString() == "uses");
     }
 
     [Fact]
-    public void Build_NoTools_OnlyRootNodeAndNoEdges()
+    public void Build_NoServers_OnlyRootNodeAndNoEdges()
     {
-        var config = new AgentConfig { Instructions = "x" };
-
-        var root = BuildAsJson(config);
+        var root = BuildAsJson([]);
         var nodes = root.GetProperty("nodes").EnumerateArray().ToList();
         var edges = root.GetProperty("edges").EnumerateArray().ToList();
 
@@ -70,29 +71,36 @@ public class AgentGraphProjectorTests
     }
 
     [Fact]
-    public void Build_ToolParameters_ExcludesFixedParameters()
+    public void Build_MultipleServers_EachGetsItsOwnServerNode()
     {
-        var config = new AgentConfig
+        var groups = new List<(string ServerName, IReadOnlyList<AIFunction> Tools)>
         {
-            Instructions = "x",
-            Tools =
-            [
-                new AgentToolConfig
-                {
-                    Operation = "DoThing",
-                    Description = "x",
-                    ExampleUtterance = "x",
-                    Parameters = new Dictionary<string, string> { ["visible"] = "shown to the LLM" },
-                    FixedParameters = new Dictionary<string, string> { ["hidden"] = "never shown" }
-                }
-            ]
+            ("moav", [FakeTool("ListFleet", "x")]),
+            ("watchdog", [FakeTool("GetServicesHealth", "x")]),
+            ("simulator", [FakeTool("ListSimulatorLessons", "x")])
         };
 
-        var root = BuildAsJson(config);
+        var root = BuildAsJson(groups);
+        var serverNodes = root.GetProperty("nodes").EnumerateArray()
+            .Where(n => n.GetProperty("type").GetString() == "server")
+            .Select(n => n.GetProperty("name").GetString())
+            .ToList();
+
+        serverNodes.Should().BeEquivalentTo(["moav", "watchdog", "simulator"]);
+    }
+
+    [Fact]
+    public void Build_ToolParameters_ReflectsTheToolsOwnJsonSchema()
+    {
+        var groups = new List<(string ServerName, IReadOnlyList<AIFunction> Tools)>
+        {
+            ("moav", [FakeTool("SetSpeed", "x", tailNumberDescription: "the tail number")])
+        };
+
+        var root = BuildAsJson(groups);
         var toolNode = root.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("type").GetString() == "tool");
         var parameters = toolNode.GetProperty("parameters").EnumerateArray().Select(p => p.GetString()).ToList();
 
-        parameters.Should().BeEquivalentTo(["visible"]);
-        parameters.Should().NotContain("hidden");
+        parameters.Should().Contain("tailNumber");
     }
 }

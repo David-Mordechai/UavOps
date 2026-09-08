@@ -11,6 +11,14 @@
          Agents.MaintenanceAgent.ServiceConfigFileStore can quote string values (not keys) to match
          the watchdog config file's own documented examples, without a second, YAML-specific DTO. -->
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
+    <!-- For McpToolsBuilder, shared by all 3 Mcp* projects: McpServerTool/McpServerToolCreateOptions
+         (ModelContextProtocol), AIJsonSchemaCreateOptions (Microsoft.Extensions.AI.Abstractions),
+         and IServiceCollection.BuildServiceProvider() (Microsoft.Extensions.DependencyInjection) -
+         builds each server's tools programmatically from its own ToolsConfig.yaml instead of
+         compile-time [McpServerTool]/[Description] attributes. -->
+    <PackageReference Include="ModelContextProtocol" Version="2.2.0" />
+    <PackageReference Include="Microsoft.Extensions.AI.Abstractions" Version="10.9.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
   </ItemGroup>
 
 </Project>

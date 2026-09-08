@@ -1,52 +1,10 @@
 namespace UavOps.Agent.Options;
 
 /// <summary>
-/// One tool an agent may call. <see cref="Operation"/> must match a method name on
-/// <c>IOperationService</c> (or <c>ISimulatorService</c>) exactly — that interface supplies the
-/// mechanical parameter contract (names, CLR types). Everything the LLM actually reads —
-/// <see cref="Description"/> and every parameter description — is authored here, never taken
-/// from the interface.
-///
-/// Plain mutable properties, not <c>required</c>/<c>init</c> — this is deserialized by
-/// YamlDotNet (see <c>AgentConfigLoader</c>), which builds objects via reflection and doesn't
-/// participate in C#'s compile-time <c>required</c>-member checking, so a <c>required</c>
-/// property here would silently end up default/empty instead of failing fast when a YAML file
-/// omits it. <see cref="Options.AgentConfigValidator"/> checks non-emptiness explicitly instead.
-/// </summary>
-public sealed class AgentToolConfig
-{
-    public string Operation { get; set; } = "";
-    public string Description { get; set; } = "";
-
-    /// <summary>An example chat utterance an operator could type that would plausibly trigger this
-    /// tool — shown on hover in the agent-graph UI (see <see cref="AgentGraphProjector"/>). Always
-    /// required (checked by <see cref="Options.AgentConfigValidator"/>).</summary>
-    public string ExampleUtterance { get; set; } = "";
-
-    /// <summary>"Operation" (default) resolves <see cref="Operation"/> against a catalog via
-    /// reflection, as above. "OperatorPrompt" builds a bespoke ask-the-operator-and-wait tool
-    /// instead (see <c>Agents.AskOperatorChoiceTool</c>) — <see cref="Operation"/> is then just
-    /// the tool name shown to the LLM, not resolved against any catalog.</summary>
-    public string Kind { get; set; } = "Operation";
-
-    /// <summary>Parameter name -> description shown to the LLM. Must cover every parameter
-    /// the operation requires that isn't listed in <see cref="FixedParameters"/>.</summary>
-    public Dictionary<string, string> Parameters { get; set; } = [];
-
-    /// <summary>Parameter name -> literal value sent on every call. Never shown to the LLM.</summary>
-    public Dictionary<string, string> FixedParameters { get; set; } = [];
-
-    /// <summary>When true, a call to this tool must be approved by the operator in chat before
-    /// it executes (subject to <see cref="UavOps.Agent.Options.ExecutionMode"/>). Opt-in and
-    /// per-tool — which specific actions are consequential enough to warrant approval is a
-    /// judgment call the config author makes.</summary>
-    public bool RequiresConfirmation { get; set; }
-}
-
-/// <summary>
 /// The single flat agent (BrainAgent) — one consolidated YAML file
-/// (<c>AgentsConfig/BrainAgent.yaml</c>) replaces what used to be 11 files across a multi-agent
-/// delegation tree; every real operation lives directly in <see cref="Tools"/> now. No
+/// (<c>Agents/BrainAgent.yaml</c>) replaces what used to be 11 files across a multi-agent
+/// delegation tree; every real operation is now discovered from a connected MCP server (see
+/// <see cref="McpServers"/>) — nothing is configured in-process anymore. No
 /// <c>Children</c>/<c>Description</c>/<c>ExampleUtterance</c> concept anymore — both existed only
 /// to be shown to a parent agent as this agent's own tool description, or fed to agent-selection
 /// embedding retrieval; with exactly one agent that is nobody's delegate, neither purpose exists.
@@ -70,8 +28,31 @@ public sealed class AgentConfig
     /// the provider's default.</summary>
     public float? Temperature { get; set; }
 
-    /// <summary>Operation-backed tools this agent may call.</summary>
-    public List<AgentToolConfig> Tools { get; set; } = [];
+    /// <summary>MCP servers BrainAgent connects to at startup for domain-split tools (see
+    /// <c>CLAUDE.md</c>, "Split BrainAgent's 3 domains into separate MCP servers") — each is a
+    /// separate .NET process launched over stdio, exposing only that domain's own tools with its
+    /// own <c>[Description]</c>-authored names/descriptions/schemas, never mixed with another
+    /// domain's. Every real tool BrainAgent can call comes from here — see
+    /// <c>AgentFactory.BuildAllTools</c>.</summary>
+    public List<McpServerConfig> McpServers { get; set; } = [];
+}
+
+/// <summary>One MCP server BrainAgent launches (stdio transport) and connects to at startup.
+/// <see cref="Command"/>/<see cref="Args"/> are a plain process launch, deliberately not a bespoke
+/// per-server config shape — <c>dotnet run --project ...</c> for every server today, but nothing
+/// here assumes that specifically.</summary>
+public sealed class McpServerConfig
+{
+    public string Name { get; set; } = "";
+    public string Command { get; set; } = "";
+    public List<string> Args { get; set; } = [];
+
+    /// <summary>Optional: the name of this server's own MCP tool that enumerates the real UAV
+    /// fleet - set only on the <c>moav</c> server's entry. Lets
+    /// <c>AgentFactory.ListRealMoavFleetAsync</c> (the tail-number disambiguation safety net's
+    /// fleet lookup) find the right tool without the host hardcoding the Moav domain's own tool
+    /// naming in C#. Null for every server that doesn't supply one.</summary>
+    public string? FleetListingTool { get; set; }
 }
 
 public enum ExecutionMode

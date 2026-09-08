@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using UavOps.Agent.Agents.MoavAgent.Simulation;
+using UavOps.Agent.Contracts;
 using UavOps.Agent.Tooling;
 
 namespace UavOps.Agent.Agents;
@@ -34,7 +34,7 @@ namespace UavOps.Agent.Agents;
 /// the identical flat design with auto-mode tool choice never exhibited this at all). Removing
 /// forcing directly fixes that regression, and the fleet-wide fabrication scenario was re-verified
 /// live, repeatedly, with forcing/retry both removed, before this was considered safe to ship - see
-/// <see cref="LiveAgentResponseTests.FlyAllFleetWideCommand_NeverClaimsSuccessWithoutRealMutation"/>
+/// <see cref="FlyAllFleetWideLiveTests.FlyAllFleetWideCommand_NeverClaimsSuccessWithoutRealMutation"/>
 /// (now run with a real repeat count, not 1) for the current data.
 ///
 /// What this does NOT change: the deterministic guards that protect against something no amount of

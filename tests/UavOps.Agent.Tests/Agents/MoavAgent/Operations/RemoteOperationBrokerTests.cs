@@ -3,8 +3,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using UavOps.Agent.Agents.MoavAgent.Hubs;
-using UavOps.Agent.Agents.MoavAgent.Operations.Remote;
+using UavOps.Agent.Hubs;
 using UavOps.Agent.Contracts;
 using UavOps.Agent.Options;
 using Xunit;
@@ -19,7 +18,7 @@ public class RemoteOperationBrokerTests
         var clients = Substitute.For<IHubClients<IOperationClientProxy>>();
         clients.Client(Arg.Any<string>()).Returns(proxy);
 
-        var hub = Substitute.For<IHubContext<OperationHub, IOperationClientProxy>>();
+        var hub = Substitute.For<IHubContext<ChatHub, IOperationClientProxy>>();
         hub.Clients.Returns(clients);
 
         var broker = new RemoteOperationBroker(
@@ -128,7 +127,7 @@ public class RemoteOperationBrokerTests
         var proxy = Substitute.For<IOperationClientProxy>();
         var clients = Substitute.For<IHubClients<IOperationClientProxy>>();
         clients.Client(Arg.Any<string>()).Returns(proxy);
-        var hub = Substitute.For<IHubContext<OperationHub, IOperationClientProxy>>();
+        var hub = Substitute.For<IHubContext<ChatHub, IOperationClientProxy>>();
         hub.Clients.Returns(clients);
         var broker = new RemoteOperationBroker(hub, new RemoteOperationOptions(), NullLogger<RemoteOperationBroker>.Instance, TimeSpan.FromSeconds(30));
 

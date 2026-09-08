@@ -62,12 +62,12 @@ function toolIconDataUri(strokeColor) {
   return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
 }
 
-function buildTooltip(node) {
+function buildTooltip(node, toolCount) {
   const el = document.createElement("div");
   el.className = "graph-tooltip";
 
   const desc = document.createElement("p");
-  desc.textContent = node.description || "(no description)";
+  desc.textContent = node.type === "server" ? `MCP server - ${toolCount} tool${toolCount === 1 ? "" : "s"}` : node.description || "(no description)";
   el.appendChild(desc);
 
   if (node.exampleUtterance) {
@@ -134,6 +134,17 @@ function buildGroups(colors) {
       margin: { top: 10, right: 14, bottom: 10, left: 14 },
       shadow: { enabled: true, color: colors.nodeShadow, size: 7, x: 0, y: 2 },
     },
+    // One real, separately-deployable MCP server process (see AgentGraphProjector) - visually
+    // between "agent" (BrainAgent itself) and "tool" (a leaf), a plain box like "agent" but
+    // slightly smaller/dashed to read as "a process boundary", not another agent.
+    server: {
+      shape: "box",
+      color: { background: colors.bgElevated, border: colors.border },
+      font: { color: colors.text, size: 12.5, face: colors.font },
+      shapeProperties: { borderRadius: 8, borderDashes: [2, 2] },
+      margin: { top: 8, right: 12, bottom: 8, left: 12 },
+      shadow: { enabled: true, color: colors.nodeShadow, size: 6, x: 0, y: 2 },
+    },
     tool: {
       shape: "circularImage",
       image: toolIconDataUri(colors.textMuted),
@@ -161,7 +172,11 @@ class AgentGraph {
     this.parentOf = new Map();
 
     for (const edge of data.edges) {
-      if (edge.kind === "delegates") {
+      // "connects" (BrainAgent -> an MCP server) is the direct successor of the old multi-agent
+      // tree's "delegates" edge kind - same expand/collapse role in this UI (a parent revealing
+      // its children on click), just an honest reflection of a real process boundary now instead
+      // of an agent-delegation hop. "uses" (a server -> one of its own tools) is unchanged.
+      if (edge.kind === "delegates" || edge.kind === "connects") {
         this._push(this.childrenOf, edge.from, edge.to);
         this.parentOf.set(edge.to, edge.from);
       } else if (edge.kind === "uses") {
@@ -305,9 +320,9 @@ class AgentGraph {
   }
 
   _labelFor(node) {
-    const text = node.type === "tool" ? node.operation : node.id;
+    const text = node.type === "tool" ? node.operation : node.type === "server" ? node.name : node.id;
     if (node.type === "tool") return text; // tools are always leaves
-    if (this._expandableChildrenOf(node.id).length === 0) return text; // childless/toolless agent
+    if (this._expandableChildrenOf(node.id).length === 0) return text; // childless/toolless node
     // The "small triangle" Unicode variants (▸/▾) rendered too faintly at label font size; the
     // plain black-triangle glyphs (▶/▼) are visually heavier and read clearly at the same size.
     return (this.expanded.has(node.id) ? "▼ " : "▶ ") + text; // ▼ expanded / ▶ collapsed
@@ -319,8 +334,8 @@ class AgentGraph {
     return {
       id: node.id,
       label: this._labelFor(node),
-      group: node.isRoot ? "root" : node.type === "tool" ? "tool" : node.retrievalBased ? "agentRetrieval" : "agent",
-      title: buildTooltip(node),
+      group: node.isRoot ? "root" : node.type === "tool" ? "tool" : node.type === "server" ? "server" : node.retrievalBased ? "agentRetrieval" : "agent",
+      title: buildTooltip(node, (this.toolsOf.get(node.id) || []).length),
       x: pos.x,
       y: pos.y,
     };

@@ -1,8 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
-using UavOps.Agent.Agents.MaintenanceAgent;
-using UavOps.Agent.Options;
+using UavOps.Agent.McpWatchdog;
 using Xunit;
 
 namespace UavOps.Agent.Tests.Agents.MaintenanceAgent;

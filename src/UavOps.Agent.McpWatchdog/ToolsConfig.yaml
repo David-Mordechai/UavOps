@@ -1,0 +1,93 @@
+serverInstructions: |
+  Watchdog domain notes:
+  - WatchdogServiceAgent-style tools (GetServicesHealth, StartService, StopService, RestartService)
+    are live health/status of the watchdog and its supervised services, or starting/stopping/
+    restarting the watchdog service itself - never a child service, that isn't supported yet.
+  - WatchdogConfigAgent-style tools (ListConfigurations, ListConfiguredServices,
+    AddConfiguredService, UpdateConfiguredService, RemoveConfiguredService) are the declarative
+    service definitions a named configuration (e.g. 'Flight', 'Simulator') will launch - distinct
+    from checking the watchdog's live health or controlling the watchdog process itself. "Is X
+    healthy right now" is always a watchdog-service question; "set/change/add a service's health
+    endpoint/API/check URL" is a stored configuration field, exactly like changing its executable or
+    args - that is always a watchdog-config question, never routed to the health/service tools, which
+    have no way to do that.
+
+  Watchdog configuration rules:
+  - Configuration names (e.g. 'Flight', 'Simulator') are matched case-insensitively - don't ask for
+    clarification just over casing. Only ask when the operator's wording could plausibly mean a
+    genuinely different configuration name - call ListConfigurations first to see the real list
+    before deciding it's genuinely ambiguous.
+  - Never invent a service's description for UpdateConfiguredService/RemoveConfiguredService - call
+    ListConfiguredServices first to confirm the exact spelling if you're not certain.
+  - Only pass an executable path to AddConfiguredService if the operator specifically stated a full
+    path themselves - otherwise pass null and the system looks for a matching service folder. If more
+    than one folder looks like an equally good match, relay the candidates the tool returns and ask
+    which one they meant rather than guessing yourself.
+  - Enabling/disabling a service is always the 'disabled' field (false to enable, true to disable) -
+    there is no separate 'enabled' field, never invent one. For every other optional field, pass null
+    unless the operator specifically asked for that field to be set or changed; on
+    UpdateConfiguredService, null always means 'leave this field unchanged', never 'clear it'.
+tools:
+  - operation: GetServicesHealth
+    description: "Returns the health status of the watchdog and every child service it supervises, plus an overall status, from the most recently polled state - this is cached state refreshed automatically every few seconds in the background, not a live check made right now."
+    readOnly: true
+
+  - operation: StartService
+    description: "Starts the watchdog service itself. Does not ask for confirmation before running. Always targets the watchdog process itself - there is no service name to ask about or choose, and this does not support starting a child service by name (not supported yet)."
+    destructive: false
+
+  - operation: StopService
+    description: "Stops the watchdog service itself. Does not ask for confirmation before running. Always targets the watchdog process itself - there is no service name to ask about or choose, and this does not support stopping a child service by name (not supported yet)."
+    destructive: false
+
+  - operation: RestartService
+    description: "Restarts the watchdog service itself (stops it, then starts it again). Does not ask for confirmation before running. Always targets the watchdog process itself - there is no service name to ask about or choose, and this does not support restarting a child service by name (not supported yet)."
+    destructive: false
+
+  - operation: ListConfigurations
+    description: "Lists the names of every watchdog configuration that exists (e.g. 'Flight', 'Simulator')."
+    readOnly: true
+
+  - operation: ListConfiguredServices
+    description: "Lists every service defined in one named configuration, with its executable path and other settings."
+    readOnly: true
+    parameters:
+      configurationName: "The exact configuration name, as returned by ListConfigurations - never invent or guess one."
+
+  - operation: AddConfiguredService
+    description: "Adds a new service to a named configuration."
+    destructive: false
+    parameters:
+      configurationName: "The exact configuration name, as returned by ListConfigurations - never invent or guess one."
+      description: "The new service's unique name within this configuration, as the operator described it."
+      executable: "The full executable path, only if the operator specifically stated one - otherwise pass null and the system looks for a matching service folder under the products path (or infers a path from the configuration's other services if no folder matches)."
+      args: "Command-line arguments for the service, only if the operator specifically gave any - otherwise pass null."
+      id: "An id for future referral, only if the operator specifically gave one - otherwise pass null."
+      disabled: "Whether the service starts disabled - false to enable it, true to disable it. Only if the operator specifically asked for that - otherwise pass null."
+      retries: "Number of retries on failure, only if the operator specifically gave one - otherwise pass null."
+      isManaged: "Whether this service is managed, only if the operator specifically said so - otherwise pass null."
+      healthEndPoint: "The service's own health-check URL, only if the operator specifically gave one - otherwise pass null."
+      group: "The service's group/category, only if the operator specifically gave one - otherwise pass null."
+
+  - operation: UpdateConfiguredService
+    description: "Changes one or more fields of an existing service in a named configuration."
+    destructive: false
+    parameters:
+      configurationName: "The exact configuration name, as returned by ListConfigurations - never invent or guess one."
+      description: "The exact current name of the service to update, as returned by ListConfiguredServices - never invent or guess one."
+      newDescription: "A new name for the service, only if the operator asked to rename it - otherwise pass null to leave the name unchanged."
+      executable: "A new executable path, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
+      args: "New command-line arguments, only if the operator specifically asked to change them - otherwise pass null to leave them unchanged."
+      id: "A new id, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
+      disabled: "Whether the service is disabled - false to enable it, true to disable it. Pass this whenever the operator asks to enable or disable the service; otherwise pass null to leave it unchanged."
+      retries: "A new retries value, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
+      isManaged: "A new isManaged value, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
+      healthEndPoint: "A new health-check URL, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
+      group: "A new group/category, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
+
+  - operation: RemoveConfiguredService
+    description: "Removes an existing service from a named configuration."
+    destructive: false
+    parameters:
+      configurationName: "The exact configuration name, as returned by ListConfigurations - never invent or guess one."
+      description: "The exact name of the service to remove, as returned by ListConfiguredServices - never invent or guess one."

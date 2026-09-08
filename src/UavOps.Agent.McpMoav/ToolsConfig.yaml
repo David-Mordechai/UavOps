@@ -1,0 +1,107 @@
+serverInstructions: |
+  Moav domain notes:
+  - FlightControlAgent-style tools (Navigate, SetSpeed, SetAltitude, ReturnToLaunch, GetTelemetry,
+    ListFleet) vs. MissionAgent-style tools (UploadWaypoints, GetMissionStatus): mission waypoints
+    and mission status only belong to the mission tools, never navigation/speed/altitude/return-to-
+    launch even though those also end a mission - those are flight tools. Checking mission status is
+    NOT the same as confirming a return-to-launch happened - never claim return-to-launch is done
+    just because a status check shows no remaining waypoints.
+  - PayloadControlAgent-style tools (PointPayload, ResetPayload) are the sensor/gimbal, distinct from
+    GdtControlAgent-style tools (GetLinkStatus, SetTrackingMode), which are the ground-side antenna/
+    datalink equipment - GetLinkStatus/SetTrackingMode are placeholder mock tools today.
+
+  Tail numbers:
+  - Never guess a target location or a tail number you were not given. If you don't already know the
+    fleet's real tail numbers this turn, call ListFleet first; if a command doesn't name a UAV and
+    more than one exists, ask the operator which UAV they mean instead of picking one.
+  - A message that simply doesn't name a UAV is NOT the same as one that refers to every UAV. Pass
+    'ALL' for tailNumber (see each tool's own parameter description) when the request contains a word
+    like 'all', 'every', 'each', 'both', or 'the fleet' - AND also when it uses a plural pronoun
+    ('them', 'they', 'their') that refers back to the whole fleet from earlier in the conversation
+    (e.g. after you already listed all known UAVs, 'fly them to alpha' means every UAV you just
+    listed, not one unspecified UAV) - otherwise ask, don't assume. A plural pronoun with no fleet
+    context established yet, or a singular pronoun ('it', 'that one'), still means ask.
+  - Copy the operator's numbers exactly as given; never add, guess, or convert a unit (feet, meters,
+    knots) they didn't state - the tools already know the correct unit.
+  - Never add your own framing about checking or confirming with the operator first, even for a
+    fleet-wide action (e.g. call the tool for 'fly all of them to target alpha' directly - never ask
+    "should I confirm the full list of affected UAVs first?" in plain text instead of calling
+    anything). A tool that genuinely requires operator approval prompts for it automatically, at the
+    tool-call level, the moment you call it - asking about it yourself in prose instead of calling
+    the tool means nothing happens at all.
+tools:
+  - operation: ListFleet
+    description: "List all known UAVs by tail number with a brief status summary for each. Use this to find out which UAVs exist, or to help resolve an ambiguous or unnamed UAV."
+    readOnly: true
+
+  - operation: GetTelemetry
+    description: "Get a UAV's current position, speed, altitude, and mode."
+    readOnly: true
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+
+  - operation: Navigate
+    description: "Send a UAV to a named location."
+    destructive: false
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+      location: "Name of a known point, e.g. 'home', 'alpha', 'bravo'. If the operator says 'target alpha'/'target bravo', either that full phrase or just 'alpha'/'bravo' is fine - use whichever the operator's own wording makes natural."
+
+  - operation: SetSpeed
+    description: "Change a UAV's target cruise speed."
+    destructive: false
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+      speedKts: "Target speed in knots. Integer, 1-500. This is always knots - never convert the number from or to mph, km/h, or m/s; use the number exactly as stated."
+
+  - operation: SetAltitude
+    description: "Change a UAV's target altitude."
+    destructive: false
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+      altitudeFt: "Target altitude in feet above mean sea level (MSL). Integer, 0-60000. This is always feet - never convert the number from or to meters; use the number exactly as stated, even if surrounding text mentions another unit."
+
+  - operation: ReturnToLaunch
+    description: "Command a UAV to return to and land at its launch point."
+    destructive: false
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+
+  - operation: PointPayload
+    description: "Point a UAV's sensor/gimbal at a named location."
+    destructive: false
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+      location: "Name of a known point to look at, e.g. 'home', 'alpha', 'bravo'. If the operator says 'target alpha'/'target bravo', either that full phrase or just 'alpha'/'bravo' is fine - use whichever the operator's own wording makes natural."
+
+  - operation: ResetPayload
+    description: "Reset a UAV's payload/gimbal to its default forward-facing position."
+    destructive: false
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+
+  - operation: GetLinkStatus
+    description: "Get the ground data terminal's link status for a UAV: signal strength, link state, and antenna tracking mode."
+    readOnly: true
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+
+  - operation: SetTrackingMode
+    description: "Set the ground data terminal antenna's tracking mode for a UAV."
+    destructive: false
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+      mode: "Either 'Auto' (antenna automatically tracks the UAV) or 'Manual' (antenna position is fixed/manually controlled). Use the operator's exact intent - do not default to one or the other."
+
+  - operation: UploadWaypoints
+    description: "Upload a list of mission waypoints for a UAV to fly in order."
+    destructive: false
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."
+      waypoints: "Array of waypoints to fly in order, each with lat (decimal degrees), lng (decimal degrees), and altitudeFt (feet MSL)."
+
+  - operation: GetMissionStatus
+    description: "Get a UAV's current mission execution status and remaining waypoint count."
+    readOnly: true
+    parameters:
+      tailNumber: "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'."

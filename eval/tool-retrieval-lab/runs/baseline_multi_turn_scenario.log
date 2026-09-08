@@ -1,0 +1,195 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  UavOps.Agent.Contracts -> D:\PlayGround\UavOps\src\UavOps.Agent.Contracts\bin\Debug\net8.0\UavOps.Agent.Contracts.dll
+  UavOps.Agent.Watchdog.Fake -> D:\PlayGround\UavOps\src\UavOps.Agent.Watchdog.Fake\bin\Debug\net8.0\UavOps.Agent.Watchdog.Fake.dll
+  UavOps.Agent.Simulator.Fake -> D:\PlayGround\UavOps\src\UavOps.Agent.Simulator.Fake\bin\Debug\net8.0\UavOps.Agent.Simulator.Fake.dll
+  UavOps.Agent -> D:\PlayGround\UavOps\src\UavOps.Agent\bin\Debug\net8.0\UavOps.Agent.dll
+  UavOps.Agent.Tests -> D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll
+Test run for D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.14.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+D:\PlayGround\UavOps\tests\UavOps.Agent.Tests\bin\Debug\net8.0\UavOps.Agent.Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v2.8.2+699d445a1a (64-bit .NET 8.0.25)
+[xUnit.net 00:00:00.04]   Discovering: UavOps.Agent.Tests
+[xUnit.net 00:00:00.08]   Discovered:  UavOps.Agent.Tests
+[xUnit.net 00:00:00.08]   Starting:    UavOps.Agent.Tests
+[xUnit.net 00:01:58.01]   Finished:    UavOps.Agent.Tests
+  Passed UavOps.Agent.Tests.Agents.LiveAgentResponseTests.MultiTurnFleetOpsScenario_MatchesRealFleetState [1 m 57 s]
+  Standard Output Messages:
+ === run 0: final summary (duration=3.0510068s) ===
+ Here's a summary of today's session:
+
+1. **Fleet Overview**: We have three UAVs in our fleet - UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+2. **Navigation Commands**: All three UAVs were commanded to:
+   - Navigate to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+
+3. **Payload Configuration**: All three UAVs had their payloads pointed at alpha, with payloads locked on to the target location.
+
+4. **Return to Base**: All three UAVs were commanded to return to their launch point. They are now in "ReturningToLaunch" mode, maintaining their current speed and altitude while heading home.
+
+The session involved coordinating all three UAVs through navigation, speed/altitude adjustments, payload pointing, and finally returning them to base.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 1: final summary (duration=2.4430746s) ===
+ Here's a summary of today's session:
+
+1. Initial fleet status: We have three UAVs (UAV-1, UAV-2, UAV-3) all in orbiting mode at various coordinates.
+
+2. Navigation commands: All three UAVs were commanded to:
+   - Navigate to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+   - Point their payloads toward alpha
+
+3. Return command: All three UAVs were then commanded to return to their launch point, entering "ReturningToLaunch" mode while maintaining their current speed and altitude.
+
+All actions were successfully executed across the entire fleet.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 2: final summary (duration=2.7441964s) ===
+ Here's a summary of today's session:
+
+1. We identified three UAVs in our fleet: UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+2. You commanded all three UAVs to:
+   - Navigate to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+   - Point their payloads at alpha
+
+3. All UAVs successfully executed these commands and were in transiting mode toward alpha with payloads locked on.
+
+4. You then commanded all three UAVs to return to their launch point, which they are currently doing in "ReturningToLaunch" mode.
+
+The session concluded with all UAVs returning to base after completing the mission to alpha.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 3: final summary (duration=3.06225s) ===
+ Here's a summary of today's session:
+
+1. We started by identifying the fleet, which consists of three UAVs: UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+2. You commanded all three UAVs to:
+   - Navigate to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+   - Point their payloads at alpha
+
+3. All UAVs successfully executed these commands and were transiting to alpha with their payloads locked on.
+
+4. You then commanded all three UAVs to return to launch, which they are currently doing (in "ReturningToLaunch" mode).
+
+The session involved coordinating all three UAVs through a series of flight operations, from orbiting to transiting to a target location, and finally returning to their home base.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 4: final summary (duration=3.3462772s) ===
+ Here's a summary of today's session:
+
+1. Initial fleet status:
+   - Three UAVs (UAV-1, UAV-2, UAV-3) were identified, all in orbiting mode at different coordinates
+
+2. Navigation commands:
+   - All three UAVs were directed to fly to alpha
+   - Speed was set to 250 knots for all UAVs
+   - Altitude was set to 3,000 feet for all UAVs
+
+3. Payload configuration:
+   - All UAVs' payloads were pointed at alpha
+
+4. Return to base:
+   - All three UAVs were commanded to return to their launch point
+   - They are currently in "ReturningToLaunch" mode at 250 knots and 3,000 feet altitude
+   - Payloads remain locked on to alpha during return
+
+The session concluded with all UAVs returning to their home base after completing the mission parameters you specified.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 5: final summary (duration=3.2587275s) ===
+ Here's a summary of today's session:
+
+1. Initial fleet status:
+   - Three UAVs (UAV-1, UAV-2, UAV-3) were identified, all in orbiting mode at different coordinates
+
+2. Navigation commands:
+   - All three UAVs were directed to navigate to alpha
+   - Speed was set to 250 knots for all UAVs
+   - Altitude was set to 3000 feet for all UAVs
+
+3. Payload configuration:
+   - All UAVs' payloads were pointed at alpha
+
+4. Return to base:
+   - All three UAVs were commanded to return to their launch point
+   - They are currently in "ReturningToLaunch" mode at 250 knots and 3000 feet altitude
+   - Payloads remain locked on to alpha during the return journey
+
+The session concluded with all UAVs returning to their home base.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 6: final summary (duration=2.7997211s) ===
+ Here's a summary of today's session:
+
+1. We started by identifying the three UAVs in our fleet: UAV-1, UAV-2, and UAV-3, all initially in orbiting mode.
+
+2. You commanded all three UAVs to:
+   - Navigate to alpha
+   - Set speed to 250 knots
+   - Set altitude to 3000 feet
+   - Point their payloads at alpha
+
+3. You then commanded all three UAVs to return to their launch point, which they are currently doing while maintaining their speed, altitude, and payload lock on alpha.
+
+All actions were successfully executed for all three UAVs in the fleet. Is there anything else you'd like to know or any additional commands you'd like to issue?
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ === run 7: final summary (duration=3.2217444s) ===
+ Here's a summary of today's session:
+
+1. Initial fleet status:
+   - Three UAVs identified: UAV-1, UAV-2, and UAV-3
+   - All were in orbiting mode at various coordinates
+
+2. Commands executed:
+   - All three UAVs were directed to navigate to alpha
+   - Speed was set to 250 knots for all UAVs
+   - Altitude was set to 3000 feet for all UAVs
+   - Payloads on all UAVs were pointed at alpha
+   - All UAVs were commanded to return to launch
+
+3. Final status:
+   - All UAVs were in "ReturningToLaunch" mode
+   - Maintaining 250 knots speed and 3000 feet altitude
+   - Payloads remained locked on alpha during return
+
+The session concluded with all UAVs returning to their launch point after completing the mission to alpha.
+ UAV-1: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-2: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+ UAV-3: speed=250 altitude=3000 mode=ReturningToLaunch payload=alpha
+   => VERIFIED SUCCESS
+ Verified successes: 8/8
+
+
+
+Test Run Successful.
+Total tests: 1
+     Passed: 1
+ Total time: 1.9733 Minutes

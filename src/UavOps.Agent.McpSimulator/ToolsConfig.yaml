@@ -1,0 +1,48 @@
+serverInstructions: |
+  Simulator domain notes:
+  - These tools set up the training simulator environment (the local VMware host/VM and lesson
+    discovery) and start a chosen lesson running. Always call AskOperatorWhichLesson before
+    RunSimulatorLesson, passing it the exact list of lesson names ListSimulatorLessons returned
+    (unmodified) plus the operator's own current message verbatim (unmodified, not paraphrased) -
+    even if you think you already know which lesson the operator meant, since AskOperatorWhichLesson
+    resolves automatically without actually asking when their message already named one clearly,
+    and only actually prompts when it's genuinely unclear. Never guess, shorten, or invent a
+    lesson name yourself.
+  - "Start the simulator" requires, in order: EnsureVmwareHostRunning first (starts the VMware host
+    if needed), then EnsureSimulatorVmRunning (starts the simulator VM itself, which needs the host
+    already running) - never skip the host check just because the VM-start tool sounds like the
+    closer match to what the operator said.
+  - RunSimulatorLesson starts the lesson running in the background and returns almost immediately -
+    it does NOT wait for the lesson to finish, and its result tells you nothing about whether the
+    lesson ultimately succeeds or fails. Tell the operator the lesson has started and that they
+    will be notified separately, automatically, once it finishes - never claim in that same reply
+    that the lesson succeeded, failed, or produced any particular result, since you genuinely
+    don't know yet.
+tools:
+  - operation: EnsureVmwareHostRunning
+    description: "Checks whether the VMware Workstation host application is running, starts it if not, and waits until it is actually ready to accept commands (not just that the process started). Required first step before the training simulator can start."
+    destructive: false
+
+  - operation: EnsureSimulatorVmRunning
+    description: "Checks whether the simulator virtual machine is powered on and starts it if not, makes sure all of its virtual network adapters are connected (VMware sometimes fails to auto-connect one on power-on), and waits until the guest OS has actually finished booting before returning."
+    destructive: false
+
+  - operation: ListSimulatorLessons
+    description: "Lists the available training lesson scripts (stored locally alongside this agent, not on the simulator VM)."
+    readOnly: true
+
+  - operation: RunSimulatorLesson
+    description: "Starts the operator's chosen training lesson script running in the background on this machine (it may start other services, e.g. Docker Compose) and returns immediately with status 'queued' - it does not wait for the lesson to finish or tell you whether it succeeded. The operator will be notified separately, automatically, when it's actually done."
+    # readOnly/destructive deliberately omitted - keeps the SDK's own conservative default
+    # (Destructive = true when unspecified), which is exactly what should require operator
+    # confirmation here: starting a real background job (possibly Docker Compose and friends) is
+    # genuinely the consequential action in this domain. Every other tool above explicitly opts out.
+    parameters:
+      lessonName: "The exact lesson name the operator chose, as returned by AskOperatorWhichLesson - never invent or guess one."
+
+  - operation: AskOperatorWhichLesson
+    description: "Asks the operator, in chat, which training lesson to run from a given list of discovered lesson names. Resolves automatically without actually prompting when the operator's own current message already named a lesson from the list clearly - always pass the operator's message verbatim, unmodified, so that auto-resolve can work; never paraphrase or summarize it."
+    destructive: false
+    parameters:
+      lessons: "The exact list of lesson names discovered by ListSimulatorLessons, unmodified."
+      operatorMessage: "The operator's current chat message, verbatim - used to auto-resolve without asking when they already named a lesson."
