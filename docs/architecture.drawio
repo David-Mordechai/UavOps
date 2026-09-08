@@ -88,4 +88,101 @@
       </root>
     </mxGraphModel>
   </diagram>
+  <diagram name="Tool Selection Mechanism" id="uavops-tool-retrieval">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1400" pageHeight="900" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- ===================== TITLE ===================== -->
+        <mxCell id="t_title" value="Embedding-Based Tool Selection" style="text;html=1;fontSize=24;fontStyle=1;align=center;verticalAlign=middle;fontColor=light-dark(#1A1A1A,#F5F5F5);" vertex="1" parent="1">
+          <mxGeometry x="40" y="16" width="1320" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="t_subtitle" value="How BrainAgent narrows dozens of MCP tools down to the top-K most relevant, every turn" style="text;html=1;fontSize=13;fontStyle=2;align=center;verticalAlign=middle;fontColor=light-dark(#5A5A5A,#B5B5B5);" vertex="1" parent="1">
+          <mxGeometry x="40" y="48" width="1320" height="22" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== PHASE 1 BACKDROP: STARTUP ===================== -->
+        <mxCell id="t_phase1_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#F3F3F3,#202020);strokeColor=light-dark(#AAAAAA,#666666);dashed=1;arcSize=3;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="1320" height="260" as="geometry" />
+        </mxCell>
+        <mxCell id="t_phase1_label" value="STARTUP — build the tool index once (Program.cs)" style="text;html=1;fontSize=14;fontStyle=1;align=left;verticalAlign=middle;fontColor=light-dark(#1A1A1A,#F5F5F5);" vertex="1" parent="1">
+          <mxGeometry x="60" y="106" width="700" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="t_mcp" value="3 MCP Servers&#10;Moav &#183; Watchdog &#183; Simulator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#E6D9F2,#3B2A55);strokeColor=light-dark(#9673A6,#C6A8DE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="80" y="180" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="t_template" value="Template Tool List&#10;name + description per tool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#DAE8FC,#1F3A5F);strokeColor=light-dark(#6C8EBF,#8FB4E3);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="410" y="180" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="t_embed1" value="Embedding Model&#10;vLLM &#183; Qwen3-Embedding-8B" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#D9F2E6,#1F4A3D);strokeColor=light-dark(#4DA88F,#7FD9BE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="740" y="180" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="t_index" value="Tool Vector Index&#10;one vector per tool, in-memory" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#DDEBF7,#16324A);strokeColor=light-dark(#5B9BD5,#7FB2E5);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="180" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="t_note1" value="no vector database — brute-force cosine scan is sub-millisecond at this tool count" style="text;html=1;fontSize=11;fontStyle=2;align=center;verticalAlign=middle;fontColor=light-dark(#5A5A5A,#B5B5B5);" vertex="1" parent="1">
+          <mxGeometry x="1030" y="288" width="330" height="40" as="geometry" />
+        </mxCell>
+
+        <mxCell id="t_e1" value="1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;" edge="1" parent="1" source="t_mcp" target="t_template">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="t_e2" value="2  embed &quot;name: description&quot;" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;" edge="1" parent="1" source="t_template" target="t_embed1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="t_e3" value="3  store" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;" edge="1" parent="1" source="t_embed1" target="t_index">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===================== PHASE 2 BACKDROP: PER TURN ===================== -->
+        <mxCell id="t_phase2_bg" value="" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#F3F3F3,#202020);strokeColor=light-dark(#AAAAAA,#666666);dashed=1;arcSize=3;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="40" y="420" width="1320" height="380" as="geometry" />
+        </mxCell>
+        <mxCell id="t_phase2_label" value="EVERY TURN — rank tools by relevance, narrow to top-K" style="text;html=1;fontSize=14;fontStyle=1;align=left;verticalAlign=middle;fontColor=light-dark(#1A1A1A,#F5F5F5);" vertex="1" parent="1">
+          <mxGeometry x="60" y="426" width="700" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="t_turntext" value="Operator's Turn Text&#10;raw chat message" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#F5F5F5,#2B2B2B);strokeColor=light-dark(#666666,#AAAAAA);fontColor=light-dark(#1A1A1A,#F0F0F0);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="80" y="500" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="t_embed2" value="Embedding Model&#10;same vLLM endpoint" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#D9F2E6,#1F4A3D);strokeColor=light-dark(#4DA88F,#7FD9BE);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="410" y="500" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="t_cosine" value="Cosine Similarity&#10;query vector vs every tool vector" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#DDEBF7,#16324A);strokeColor=light-dark(#5B9BD5,#7FB2E5);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="740" y="500" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="t_topk" value="Top-K Ranked Tools&#10;default K = 10" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#FDF0D5,#4A3B1F);strokeColor=light-dark(#D6A756,#E8C077);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="500" width="260" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="t_note2" value="K is configurable — Retrieval:TopK in appsettings.json" style="text;html=1;fontSize=11;fontStyle=2;align=center;verticalAlign=middle;fontColor=light-dark(#5A5A5A,#B5B5B5);" vertex="1" parent="1">
+          <mxGeometry x="1040" y="608" width="320" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="t_brain" value="BrainAgent&#10;sees only this turn's top-K tools" style="rounded=1;whiteSpace=wrap;html=1;fillColor=light-dark(#DAE8FC,#1F3A5F);strokeColor=light-dark(#6C8EBF,#8FB4E3);fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;arcSize=10;" vertex="1" parent="1">
+          <mxGeometry x="1070" y="670" width="260" height="100" as="geometry" />
+        </mxCell>
+
+        <mxCell id="t_e4" value="4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;" edge="1" parent="1" source="t_turntext" target="t_embed2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="t_e5" value="5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;fontStyle=1;" edge="1" parent="1" source="t_embed2" target="t_cosine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="t_e6" value="6  rank &amp; take top K" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;" edge="1" parent="1" source="t_cosine" target="t_topk">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="t_e7" value="7  hand to this turn's agent run" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=light-dark(#2B2B2B,#E0E0E0);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=14;" edge="1" parent="1" source="t_topk" target="t_brain">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Cross-phase dependency: the index built once is what every turn compares against -->
+        <mxCell id="t_e8" value="compares against" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;dashed=1;strokeColor=light-dark(#555555,#BBBBBB);strokeWidth=2;fontColor=light-dark(#1A1A1A,#F5F5F5);fontSize=13;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" edge="1" parent="1" source="t_index" target="t_cosine">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
 </mxfile>
