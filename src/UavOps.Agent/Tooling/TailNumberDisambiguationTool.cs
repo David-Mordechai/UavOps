@@ -102,7 +102,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
         // safety net this routes through instead.
         if (string.Equals(guessed, AllSentinel, StringComparison.OrdinalIgnoreCase))
         {
-            var resolved = await _scope.GetOrAskAsync(() => ResolveAllUavsRequestAsync(cancellationToken));
+            var resolved = await _scope.GetOrAskAsync(AllSentinel, () => ResolveAllUavsRequestAsync(cancellationToken));
 
             if (resolved is null)
             {
@@ -119,6 +119,46 @@ public sealed class TailNumberDisambiguationTool : AIFunction
             return BuildConfirmedTargetNote(resolved) + confirmedSingleResult;
         }
 
+        // A genuinely different, specific SUBSET of the fleet - not "ALL", not one UAV - e.g. "the
+        // rest", "the other two", "UAV-2 and UAV-3" once UAV-1 was already handled separately. This
+        // is expressed as a single comma-separated list of real tail numbers computed by the model
+        // itself (which has the full conversation history to work out which ones those are), rather
+        // than one ambiguous single-UAV guess per tool call. Live-reproduced why this matters: asked
+        // to "bring the rest UAVs home" with two UAVs remaining, the model correctly resolved and
+        // executed against the first only, and simply never attempted the second, in 6 of 8 trials -
+        // it was reliable at completing ONE ambiguous call but not at reliably issuing a SECOND one
+        // to finish a multi-target request. A single call naming the whole subset removes that
+        // reliance on the model correctly counting and looping back. Unlike InvokeForAllUavsAsync,
+        // this never touches a UAV outside the exact set named - re-applying some operations (e.g.
+        // UploadWaypoints, SetTrackingMode) to a UAV the operator meant to exclude would be a real,
+        // unwanted behavior change, not a harmless no-op the way redundantly re-confirming an
+        // already-returning UAV's ReturnToLaunch is.
+        if (guessed.Contains(','))
+        {
+            var candidates = guessed.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var subsetFleetLookup = await _listFleet(cancellationToken);
+            if (subsetFleetLookup.Success && subsetFleetLookup.Value is List<UavSummary> subsetTails)
+            {
+                var validTails = new List<string>();
+                foreach (var candidate in candidates)
+                {
+                    var match = subsetTails.FirstOrDefault(t => string.Equals(t.TailNumber, candidate, StringComparison.OrdinalIgnoreCase));
+                    if (match is not null && !validTails.Contains(match.TailNumber, StringComparer.OrdinalIgnoreCase))
+                    {
+                        validTails.Add(match.TailNumber);
+                    }
+                }
+
+                if (validTails.Count > 0)
+                {
+                    var subsetKey = string.Join(",", validTails.OrderBy(t => t, StringComparer.OrdinalIgnoreCase));
+                    return await _scope.GetOrFanOutAsync($"{Name}:{subsetKey}", () => InvokeForExplicitSubsetAsync(arguments, cancellationToken, validTails));
+                }
+            }
+            // No known tail number could be matched out of the list - fall through to the normal
+            // single-value handling below, the same safe failure mode as any other unrecognized guess.
+        }
+
         // Trust it without asking whenever the operator's own turn text already named this tail
         // number - same substring-match reasoning AskOperatorChoiceTool.TryAutoResolve already
         // uses to skip a redundant prompt when the answer was already given.
@@ -130,12 +170,17 @@ public sealed class TailNumberDisambiguationTool : AIFunction
         var fleet = await _listFleet(cancellationToken);
         if (fleet.Success && fleet.Value is List<UavSummary> { Count: > 1 } tails)
         {
-            // Deduplicated via _scope: only the first tailNumber-taking call in this turn actually
-            // opens an OperatorPromptGate round-trip - any sibling call (SetAltitude right after
-            // SetSpeed, say) awaits that same in-flight/already-resolved answer instead of asking
-            // again, since one delegate call always targets exactly one UAV (or, now, all of them).
+            // Deduplicated via _scope, keyed by the model's own guessed value: only the first
+            // tailNumber-taking call in this turn that guessed THIS SAME value actually opens an
+            // OperatorPromptGate round-trip - a sibling call that guessed the same thing (SetAltitude
+            // right after SetSpeed, both defaulting to the same ungrounded guess) awaits that same
+            // in-flight/already-resolved answer instead of asking again. A sibling call that guessed
+            // a DIFFERENT value (e.g. a separate ReturnToLaunch call the model intended for a
+            // different UAV) gets its own independent prompt instead of silently inheriting this
+            // one's answer - see TailNumberResolutionScope's own doc comment for the live bug this
+            // fixes.
             var choices = tails.Select(t => t.TailNumber).Append(AllSentinel).ToList();
-            var chosen = await _scope.GetOrAskAsync(() => _promptGate.RequestChoiceAsync(
+            var chosen = await _scope.GetOrAskAsync(guessed, () => _promptGate.RequestChoiceAsync(
                 _correlationId,
                 _agentName,
                 "Which UAV do you mean?",
@@ -236,6 +281,26 @@ public sealed class TailNumberDisambiguationTool : AIFunction
         return $"IMPORTANT - this action actually executed against all {tails.Count} known UAVs listed below, and ONLY those - " +
                "your summary must name exactly these, not any other UAV number (including whatever single UAV, if any, you originally " +
                "specified in this call's own arguments - that value was never used). " + string.Join("; ", results);
+    }
+
+    /// <summary>Resolves a model-computed, explicit comma-separated SUBSET of the fleet (e.g. "the
+    /// rest", "the other two") to real per-UAV invocations - see the call site's own comment for why
+    /// this exists and how it differs from <see cref="InvokeForAllUavsAsync"/>. Sequential, not
+    /// concurrent, for the same reason InvokeForAllUavsAsync is: a requiresConfirmation operation
+    /// needs to ask once per UAV in a predictable order through ConfirmationGate's single
+    /// turnstile.</summary>
+    private async Task<string> InvokeForExplicitSubsetAsync(AIFunctionArguments arguments, CancellationToken cancellationToken, IReadOnlyList<string> tailNumbers)
+    {
+        var results = new List<string>();
+        foreach (var tail in tailNumbers)
+        {
+            var perUav = new AIFunctionArguments(arguments) { ["tailNumber"] = tail };
+            var result = await _inner.InvokeAsync(perUav, cancellationToken);
+            results.Add($"{tail}: {result}");
+        }
+
+        return $"IMPORTANT - this action actually executed against exactly these {tailNumbers.Count} UAVs listed below, and ONLY those - " +
+               "your summary must name exactly these, not any other UAV number. " + string.Join("; ", results);
     }
 
     /// <summary>Builds the ground-truth note prefixed to a single-UAV result once disambiguation

@@ -43,7 +43,7 @@ public class RunSimulatorLessonLiveTests(ITestOutputHelper output)
         for (var i = 0; i < repeats; i++)
         {
             LiveTestSupport.LiveLog(output, $"[RunSimulatorLesson] starting repeat {i + 1}/{repeats}...");
-            var (orchestrator, _, _, _, fleetClient, confirmationGate) = await LiveTestSupport.BuildLiveOrchestrator();
+            var (orchestrator, _, _, _, fleetClient, confirmationGate, _) = await LiveTestSupport.BuildLiveOrchestrator();
             await using var _ = fleetClient;
             var correlationId = $"sim-run-lesson-{i}";
 

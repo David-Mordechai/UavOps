@@ -23,7 +23,7 @@ public class BuildToolsForTurnLiveTests(ITestOutputHelper output)
     [Trait("Category", "Live")]
     public async Task BuildToolsForTurn_IncludesTheObviouslyRelevantTool_ForThePhrasesThatFabricated()
     {
-        var (_, _, _, factory, fleetClient, _) = await LiveTestSupport.BuildLiveOrchestrator();
+        var (_, _, _, factory, fleetClient, _, _) = await LiveTestSupport.BuildLiveOrchestrator();
         await using var _ = fleetClient;
 
         var cases = new (string Text, string ExpectedTool)[]

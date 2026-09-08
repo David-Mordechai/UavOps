@@ -122,7 +122,7 @@ internal static class LiveTestSupport
     /// an OpenAI-compatible endpoint instead (as it does at the time of writing) - a fix validated
     /// against the wrong model proves nothing about the deployed behavior.
     /// </summary>
-    public static async Task<(MainAgentOrchestrator Orchestrator, ToolInvocationLogger ToolLogger, Func<string, CancellationToken, Task<TelemetrySnapshot>> GetTelemetry, AgentFactory Factory, McpClientGroup McpClients, ConfirmationGate ConfirmationGate)> BuildLiveOrchestrator()
+    public static async Task<(MainAgentOrchestrator Orchestrator, ToolInvocationLogger ToolLogger, Func<string, CancellationToken, Task<TelemetrySnapshot>> GetTelemetry, AgentFactory Factory, McpClientGroup McpClients, ConfirmationGate ConfirmationGate, OperatorPromptGate PromptGate)> BuildLiveOrchestrator()
     {
         var currentDir = AppContext.BaseDirectory;
         var srcAgentDir = Path.GetFullPath(Path.Combine(currentDir, "..", "..", "..", "..", "..", "src", "UavOps.Agent"));
@@ -192,6 +192,10 @@ internal static class LiveTestSupport
         // by calling TryHandleChatReplyAsync directly (see ConfirmationGate below) rather than
         // waiting out any timeout at all.
         var confirmationGate = new ConfirmationGate(mockHubContext, mockConfig, NullLogger<ConfirmationGate>.Instance, TimeSpan.FromSeconds(20));
+        // Same reasoning as ConfirmationGate's own shortened timeout above - tests that need to
+        // answer a "which UAV do you mean?" prompt do so almost immediately via
+        // AnswerOperatorPromptsAsync's polling loop, never waiting out the real 120s default.
+        var promptGate = new OperatorPromptGate(mockHubContext, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromSeconds(20));
 
         var factory = new AgentFactory(
             chatClientFactory,
@@ -201,7 +205,7 @@ internal static class LiveTestSupport
             new MemoryOptions(),
             toolLogger,
             confirmationGate,
-            new OperatorPromptGate(mockHubContext, NullLogger<OperatorPromptGate>.Instance, null)
+            promptGate
         );
 
         // Every configured MCP server (Moav, watchdog, simulator) - a brand-new child process per
@@ -255,7 +259,7 @@ internal static class LiveTestSupport
         // MainAgentOrchestrator and AgentFactory are both singletons in production (Program.cs) -
         // reusing the same instances across the two HandleAsync calls below reproduces the
         // persistent-session lifetime that let the fabrication bug happen for real.
-        return (new MainAgentOrchestrator(factory, toolLogger), toolLogger, GetTelemetryAsync, factory, new McpClientGroup(mcpClients), confirmationGate);
+        return (new MainAgentOrchestrator(factory, toolLogger), toolLogger, GetTelemetryAsync, factory, new McpClientGroup(mcpClients), confirmationGate, promptGate);
     }
 
     /// <summary>
@@ -274,6 +278,33 @@ internal static class LiveTestSupport
             if (await gate.TryHandleChatReplyAsync("yes", CancellationToken.None))
             {
                 return;
+            }
+            await Task.Delay(50);
+        }
+    }
+
+    /// <summary>
+    /// Feeds <paramref name="answersInOrder"/> to <see cref="OperatorPromptGate.TryHandleChatReplyAsync"/>
+    /// one at a time, in order, polling until <paramref name="guard"/> completes - the
+    /// <see cref="OperatorPromptGate"/> counterpart to <see cref="ApproveAnyPendingConfirmationAsync"/>,
+    /// needed for the same reason (these orchestrator-level tests call
+    /// <see cref="MainAgentOrchestrator.HandleAsync"/> directly with no real chat hub in the loop, so
+    /// nothing else here would ever answer a pending "which UAV do you mean?" prompt). Multiple
+    /// answers matter now that one turn can legitimately open more than one independent prompt (see
+    /// <see cref="TailNumberResolutionScope"/>'s own doc comment for the live bug that made this
+    /// necessary) - each answer is only consumed once an actual prompt is pending, so if a turn opens
+    /// fewer prompts than answers were supplied, the extras are simply never used, and if it opens
+    /// none at all, this just waits harmlessly until <paramref name="guard"/> completes on its own.
+    /// </summary>
+    public static async Task AnswerOperatorPromptsAsync(OperatorPromptGate gate, Task guard, params string[] answersInOrder)
+    {
+        var answers = new Queue<string>(answersInOrder);
+        while (!guard.IsCompleted)
+        {
+            if (answers.Count > 0 && await gate.TryHandleChatReplyAsync(answers.Peek(), CancellationToken.None))
+            {
+                answers.Dequeue();
+                continue;
             }
             await Task.Delay(50);
         }

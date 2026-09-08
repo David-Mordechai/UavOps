@@ -238,4 +238,122 @@ public class TailNumberDisambiguationToolTests
         firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
         secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
     }
+
+    [Fact]
+    public async Task InvokeCoreAsync_TwoCallsGuessDifferentTailNumbers_EachResolvesIndependently_NeitherClobbersTheOther()
+    {
+        // Direct regression test for a live-reported bug: operator says "bring the other two home"
+        // (no tail number literally in the text) and the model issues two ReturnToLaunch calls in
+        // the same turn, guessing UAV-2 then UAV-3 - two genuinely different intended targets, not
+        // one ambiguous UAV asked about twice. The old un-keyed TailNumberResolutionScope answered
+        // only the FIRST ask and silently applied that same answer to the second call too, so both
+        // UAVs ended up commanded against whatever was asked about first instead of their own real,
+        // different targets - exactly the transcript the operator reported (four ReturnToLaunch
+        // calls, all executed against UAV-1). Keying the scope by the model's own guessed value
+        // fixes this: two different guesses must each get their own independent prompt.
+        var scope = new TailNumberResolutionScope();
+        var fleet = ThreeUavFleet();
+        var replies = new Queue<string>(["UAV-2", "UAV-3"]);
+        OperatorPromptGate? promptGate = null;
+        var proxy = Substitute.For<IClientProxy>();
+        proxy.SendCoreAsync("ReceiveChatMessage", Arg.Any<object?[]>(), Arg.Any<CancellationToken>())
+            .Returns(callInfo =>
+            {
+                // RequestChoiceAsync sends TWO ReceiveChatMessage events per prompt - the question
+                // itself, then a "Got it - proceeding with: X" confirmation once resolved. Only the
+                // question (identifiable by "Options:") should consume a queued reply - otherwise
+                // the first prompt's own confirmation message wrongly steals the SECOND prompt's
+                // reply before it's even been asked.
+                var message = callInfo.ArgAt<object?[]>(1)[1] as string ?? "";
+                if (message.Contains("Options:") && replies.Count > 0)
+                {
+                    _ = promptGate!.TryHandleChatReplyAsync(replies.Dequeue(), CancellationToken.None);
+                }
+                return Task.CompletedTask;
+            });
+        var clients = Substitute.For<IHubClients>();
+        clients.All.Returns(proxy);
+        var hub = Substitute.For<IHubContext<ChatHub>>();
+        hub.Clients.Returns(clients);
+        promptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromSeconds(30));
+
+        Task<OperationResult> ListFleet(CancellationToken cancellationToken) => Task.FromResult(OperationResult.Ok(fleet));
+
+        var inner = new FakeInnerTool("ReturnToLaunch");
+        var tool = new TailNumberDisambiguationTool(
+            inner, ListFleet, promptGate, scope, "FlightControlAgent", "corr1", "bring the other two home");
+
+        await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2" }), CancellationToken.None);
+        await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-3" }), CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_CommaSeparatedTailNumbers_InvokesExactlyThatSubset_NoAsking()
+    {
+        // Option 2 fix for the same live incident: rather than relying on the model to reliably
+        // issue one separate tool call per remaining UAV (proven unreliable - see the test above's
+        // own comment and the live ReturnRemainingFleet scenario, which failed 6/8 times), the model
+        // computes the exact subset itself and passes it as one comma-separated value. This must
+        // execute against exactly that subset, with no operator prompt at all - the model already
+        // did the resolution.
+        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "bring the rest UAVs home");
+
+        var result = await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2,UAV-3" }), CancellationToken.None);
+
+        await proxy.DidNotReceive().SendCoreAsync("ReceiveChatMessage", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
+        result!.ToString().Should().Contain("UAV-2:").And.Contain("UAV-3:").And.NotContain("UAV-1:");
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_CommaSeparatedTailNumbers_IgnoresUnknownEntries_KeepsValidOnes()
+    {
+        var (tool, inner, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "bring the rest UAVs home");
+
+        await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2,UAV-9,UAV-3" }), CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_CommaSeparatedTailNumbers_CalledTwiceThisTurn_OnlyFansOutOnce()
+    {
+        // Same duplicate-call protection GetOrFanOutAsync already gives the "ALL" and single-UAV
+        // paths, extended to an explicit subset - a repeat of the identical subset this turn must
+        // not re-execute.
+        var (tool, inner, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "bring the rest UAVs home");
+        var args = new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2,UAV-3" });
+
+        await tool.InvokeAsync(args, CancellationToken.None);
+        await tool.InvokeAsync(args, CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_DifferentCommaSeparatedSubsets_BothExecuteIndependently()
+    {
+        var scope = new TailNumberResolutionScope();
+        var (firstTool, firstInner, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "bring the rest home", scope: scope);
+        await firstTool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2,UAV-3" }), CancellationToken.None);
+
+        var secondInner = new FakeInnerTool("SetSpeed");
+        Task<OperationResult> secondListFleet(CancellationToken cancellationToken) => Task.FromResult(OperationResult.Ok(ThreeUavFleet()));
+        var hub = Substitute.For<IHubContext<ChatHub>>();
+        var secondPromptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromMilliseconds(200));
+        var secondTool = new TailNumberDisambiguationTool(
+            secondInner, secondListFleet, secondPromptGate, scope, "FlightControlAgent", "corr1", "set the rest to 250");
+        await secondTool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1,UAV-3" }), CancellationToken.None);
+
+        firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
+        secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-3"]);
+    }
 }

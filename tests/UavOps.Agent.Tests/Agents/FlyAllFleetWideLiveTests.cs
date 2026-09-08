@@ -40,7 +40,7 @@ public class FlyAllFleetWideLiveTests(ITestOutputHelper output)
         for (var i = 0; i < repeats; i++)
         {
             LiveTestSupport.LiveLog(output, $"[FlyAllFleetWide] starting repeat {i + 1}/{repeats}...");
-            var (orchestrator, _, getTelemetry, _, fleetClient, _) = await LiveTestSupport.BuildLiveOrchestrator();
+            var (orchestrator, _, getTelemetry, _, fleetClient, _, _) = await LiveTestSupport.BuildLiveOrchestrator();
             await using var _ = fleetClient;
             var correlationPrefix = $"fleet-wide-{i}";
 

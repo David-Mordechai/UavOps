@@ -18,7 +18,7 @@ public class GetLiveResponseTests(ITestOutputHelper output)
     public async Task GetLiveResponse()
     {
         LiveTestSupport.LiveLog(output, "[GetLiveResponse] starting...");
-        var (orchestrator, _, _, _, fleetClient, _) = await LiveTestSupport.BuildLiveOrchestrator();
+        var (orchestrator, _, _, _, fleetClient, _, _) = await LiveTestSupport.BuildLiveOrchestrator();
         await using var _ = fleetClient;
 
         var (responseText, duration) = await orchestrator.HandleAsync("set speed to 250 to uav 1", "corr-123", CancellationToken.None);
