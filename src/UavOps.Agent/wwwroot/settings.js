@@ -331,14 +331,6 @@ function renderFields(value, pathParts, formRoot, liveFieldsSet, pathFieldsSet, 
   parentEl.appendChild(group);
 }
 
-function renderApiKeyNote(container) {
-  const note = document.createElement("p");
-  note.className = "settings-note";
-  note.textContent =
-    'OpenAI API key: set via "dotnet user-secrets set \\"OpenAI:ApiKey\\" ..." or the OpenAI__ApiKey environment variable — not editable here, never saved to disk by this page.';
-  container.appendChild(note);
-}
-
 // Compares the original GET payload against the current edited form state, returning the dotted
 // paths of every leaf that actually changed - used to decide whether Save needs to show the
 // "restart required" banner or just the lightweight "applied immediately" toast.
@@ -462,7 +454,6 @@ function renderSettings(data, flash) {
   const agentTitle = document.createElement("h3");
   agentTitle.textContent = "Agent";
   agentSection.appendChild(agentTitle);
-  renderApiKeyNote(agentSection);
   renderFields(formState.agent, ["agent"], formState, liveFieldsSet, pathFieldsSet, agentSection);
   container.appendChild(agentSection);
 

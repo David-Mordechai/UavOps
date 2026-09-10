@@ -111,6 +111,13 @@ builder.Services.AddSingleton(remoteOperationOptions);
 builder.Services.AddSingleton(agentConfig);
 builder.Services.AddSingleton<SettingsStore>();
 
+// Same singleton registered both ways so the MCP connection loop below (which runs after
+// app.StartAsync()) can populate its Clients list, and the Generic Host separately treats it as
+// this app's one IHostedService to stop - see McpClientsLifetimeService's own doc comment for why
+// this replaced a synchronous ApplicationStopping.Register callback.
+builder.Services.AddSingleton<McpClientsLifetimeService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<McpClientsLifetimeService>());
+
 // A confirmation reply (or an operation's SubmitCommandResult reply) is just another call on
 // the same connection while the original call is still in flight, so raise the per-connection
 // parallel-invocation limit above SignalR's default of 1 (which would otherwise queue the reply
@@ -264,6 +271,17 @@ foreach (var serverConfig in agentConfig.McpServers)
             Name = serverConfig.Name,
             Command = serverConfig.Command,
             Arguments = serverConfig.Args,
+            // How long to wait for this server's own process to exit cleanly before forcibly
+            // killing it (StdioClientTransportOptions' own real purpose - not a workaround).
+            // Root-caused, not guessed: confirmed via the MCP C# SDK's own source
+            // (StreamServerTransport.ReadMessagesAsync) that hitting EOF on stdin only calls
+            // SetDisconnected() - it never stops the hosting process itself, and the SDK's own
+            // official QuickstartWeatherServer sample doesn't wire up self-termination either, so
+            // this server never exits on its own; live-reproduced across all 3 servers that the
+            // default 5s value was hit in full, every time, before this - a short, deliberate
+            // value is the correct, SDK-intended way to control that wait, safe here since a
+            // killed child is just a stateless local JSON-RPC listener loop with nothing to flush.
+            ShutdownTimeout = TimeSpan.FromSeconds(2),
             // args like "../UavOps.Agent.McpMoav/..." are authored relative to this project's own
             // directory (see Agents/BrainAgent.yaml) - explicit so they resolve the same way
             // regardless of the launching process's own working directory (e.g. under `dotnet test`).
@@ -284,6 +302,7 @@ foreach (var serverConfig in agentConfig.McpServers)
 }
 agentFactory.McpTools = mcpTools;
 agentFactory.McpServerToolGroups = mcpServerToolGroups;
+app.Services.GetRequiredService<McpClientsLifetimeService>().Clients.AddRange(mcpClients);
 
 // Every discovered tool's owning server, for ToolRetrievalIndex to tag each embedded entry with -
 // see its own doc comment for why every tool is always indexed regardless of that server's
@@ -301,17 +320,6 @@ var domainInstructions = mcpClients
     .Select(c => c.ServerInstructions)
     .Where(instructions => !string.IsNullOrWhiteSpace(instructions));
 agentConfig.Instructions = string.Join("\n\n", [agentConfig.Instructions, .. domainInstructions]);
-
-// Disposing an McpClient stops its child server process - do this on app shutdown, not before,
-// since BrainAgent's persistent session (and any in-flight turn) may call an MCP tool at any time
-// up to that point.
-app.Lifetime.ApplicationStopping.Register(() =>
-{
-    foreach (var client in mcpClients)
-    {
-        client.DisposeAsync().AsTask().GetAwaiter().GetResult();
-    }
-});
 
 // Resolves the AgentFactory singleton eagerly (forcing its DI construction now, not on first chat
 // request) so its tool-retrieval index can be built before the app starts serving - real semantic
