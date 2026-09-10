@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="chat.css" />
   <link rel="stylesheet" href="lib/vis-network.min.css" />
   <link rel="stylesheet" href="graph.css" />
+  <link rel="stylesheet" href="settings.css" />
 </head>
 <body>
   <header>
@@ -31,6 +32,12 @@
     </nav>
     <div class="header-actions">
       <span id="connectionStatus" class="status status-connecting">connecting…</span>
+      <button id="settingsToggle" class="icon-btn" type="button" aria-label="Open settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82A1.65 1.65 0 0 0 3 13.09H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+      </button>
       <button id="themeToggle" class="icon-btn" type="button" aria-label="Toggle color theme">
         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="4" />
@@ -91,10 +98,17 @@
     </div>
   </div>
 
+  <div id="view-settings" class="view" hidden>
+    <div id="settings-container">
+      <div class="settings-loading">Loading settings…</div>
+    </div>
+  </div>
+
   <script src="lib/signalr.min.js"></script>
   <script src="lib/vis-network.min.js"></script>
   <script src="chat.js"></script>
   <script src="graph.js"></script>
+  <script src="settings.js"></script>
   <script src="theme.js"></script>
   <script src="app.js"></script>
 </body>

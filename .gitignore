@@ -21,3 +21,9 @@ logs/
 
 # Test run artifacts (.trx, etc.)
 TestResults/
+
+# scripts/build.ps1 output
+publish/
+
+# Settings-page saved overrides (one per process - host + each MCP server's own directory)
+appsettings.Local.json

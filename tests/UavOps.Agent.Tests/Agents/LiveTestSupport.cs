@@ -197,6 +197,12 @@ internal static class LiveTestSupport
         // AnswerOperatorPromptsAsync's polling loop, never waiting out the real 120s default.
         var promptGate = new OperatorPromptGate(mockHubContext, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromSeconds(20));
 
+        // A real, empty IConfiguration (not the mockConfig substitute above, which would throw
+        // GetSection/Get<T> off a null substitute return) - AgentFactory.BuildToolsForTurn reads
+        // McpServersEnabled live off this; an empty config means every server defaults to enabled,
+        // matching production's own default.
+        var realConfiguration = new ConfigurationBuilder().Build();
+
         var factory = new AgentFactory(
             chatClientFactory,
             ollamaOptions.DefaultModel,
@@ -205,7 +211,8 @@ internal static class LiveTestSupport
             new MemoryOptions(),
             toolLogger,
             confirmationGate,
-            promptGate
+            promptGate,
+            realConfiguration
         );
 
         // Every configured MCP server (Moav, watchdog, simulator) - a brand-new child process per
@@ -215,6 +222,7 @@ internal static class LiveTestSupport
         // orchestrator/repeat.
         var mcpClients = new List<McpClient>();
         var mcpTools = new List<AIFunction>();
+        var toolNameToServerName = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var serverConfig in agentConfig.McpServers)
         {
             var transport = new StdioClientTransport(new StdioClientTransportOptions
@@ -228,7 +236,12 @@ internal static class LiveTestSupport
             });
             var client = await McpClient.CreateAsync(transport);
             mcpClients.Add(client);
-            mcpTools.AddRange(await client.ListToolsAsync());
+            var tools = await client.ListToolsAsync();
+            mcpTools.AddRange(tools);
+            foreach (var tool in tools)
+            {
+                toolNameToServerName[tool.Name] = serverConfig.Name;
+            }
         }
         factory.McpTools = mcpTools;
 
@@ -254,7 +267,7 @@ internal static class LiveTestSupport
         var embeddingClient = new EmbeddingClient(embeddingOptions.Model, new ApiKeyCredential("not-needed"),
             new OpenAIClientOptions { Endpoint = new Uri(embeddingOptions.Endpoint) });
         var embeddingGenerator = embeddingClient.AsIEmbeddingGenerator();
-        factory.RetrievalIndex = await ToolRetrievalIndex.BuildAsync(factory.BuildTemplateTools(), embeddingGenerator, CancellationToken.None);
+        factory.RetrievalIndex = await ToolRetrievalIndex.BuildAsync(factory.BuildTemplateTools(), toolNameToServerName, embeddingGenerator, CancellationToken.None);
 
         // MainAgentOrchestrator and AgentFactory are both singletons in production (Program.cs) -
         // reusing the same instances across the two HandleAsync calls below reproduces the

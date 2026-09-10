@@ -46,13 +46,18 @@ public class AgentFactoryHierarchyTests
             new MemoryOptions(),
             toolLogger,
             confirmationGate,
-            operatorPromptGate);
+            operatorPromptGate,
+            new ConfigurationBuilder().Build());
     }
 
     // Vector content is irrelevant to what these tests check (which NAMES survive retrieval, not
     // ranking quality - that's covered live by eval/tool-retrieval-lab) - a fake generator
     // returning an identical vector for every text just needs to satisfy
-    // ToolRetrievalIndex.BuildAsync's batched embedding call.
+    // ToolRetrievalIndex.BuildAsync's batched embedding call. Every tool is tagged with the same
+    // fake "test-server" name - CreateSut's AgentConfig.McpServers must declare that same name (see
+    // each test below) so AgentFactory.BuildToolsForTurn's live enabled-servers filter (which reads
+    // AgentConfig.McpServers, empty config in these tests defaulting everything to enabled) doesn't
+    // filter out every candidate.
     private static async Task<ToolRetrievalIndex> BuildFixedIndexAsync(IReadOnlyList<AITool> templateTools)
     {
         var generator = Substitute.For<IEmbeddingGenerator<string, Embedding<float>>>();
@@ -64,7 +69,8 @@ public class AgentFactoryHierarchyTests
                 return Task.FromResult(new GeneratedEmbeddings<Embedding<float>>(embeddings));
             });
 
-        return await ToolRetrievalIndex.BuildAsync(templateTools, generator, CancellationToken.None);
+        var toolNameToServerName = templateTools.OfType<AIFunction>().ToDictionary(t => t.Name, _ => "test-server", StringComparer.Ordinal);
+        return await ToolRetrievalIndex.BuildAsync(templateTools, toolNameToServerName, generator, CancellationToken.None);
     }
 
     private static List<string> ToolNames(List<AITool> tools) =>
@@ -94,7 +100,7 @@ public class AgentFactoryHierarchyTests
     {
         // No "safe no-op" tool appended anymore - tool_choice is never forced (see
         // MainAgentOrchestrator's own doc comment), so there's nothing that must always be present.
-        var config = new AgentConfig { Instructions = "x" };
+        var config = new AgentConfig { Instructions = "x", McpServers = [new McpServerConfig { Name = "test-server" }] };
         var sut = CreateSut(config, topK: 0);
         sut.McpTools = [FakeMcpTool("RunSimulatorLesson")];
         sut.RetrievalIndex = await BuildFixedIndexAsync(sut.BuildTemplateTools());
@@ -107,7 +113,7 @@ public class AgentFactoryHierarchyTests
     [Fact]
     public async Task BuildToolsForTurn_NarrowsToTopK()
     {
-        var config = new AgentConfig { Instructions = "x" };
+        var config = new AgentConfig { Instructions = "x", McpServers = [new McpServerConfig { Name = "test-server" }] };
         var sut = CreateSut(config, topK: 1);
         sut.McpTools = [FakeMcpTool("EnsureVmwareHostRunning"), FakeMcpTool("RunSimulatorLesson")];
         sut.RetrievalIndex = await BuildFixedIndexAsync(sut.BuildTemplateTools());

@@ -6,14 +6,12 @@ namespace UavOps.Agent.Tests;
 
 public class AgentConfigValidatorTests
 {
-    private static OpenAiOptions OpenAi() => new();
-
     [Fact]
     public void Validate_MissingInstructions_Throws()
     {
         var config = new AgentConfig { Instructions = "" };
 
-        var act = () => AgentConfigValidator.Validate(config, OpenAi());
+        var act = () => AgentConfigValidator.Validate(config);
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*Instructions*");
     }
@@ -27,7 +25,7 @@ public class AgentConfigValidatorTests
             McpServers = [new McpServerConfig { Name = "moav", Command = "dotnet", Args = ["exec", "x.dll"] }]
         };
 
-        var act = () => AgentConfigValidator.Validate(config, OpenAi());
+        var act = () => AgentConfigValidator.Validate(config);
 
         act.Should().NotThrow();
     }
@@ -37,18 +35,21 @@ public class AgentConfigValidatorTests
     {
         var config = new AgentConfig { Instructions = "x", Provider = "Anthropic" };
 
-        var act = () => AgentConfigValidator.Validate(config, OpenAi());
+        var act = () => AgentConfigValidator.Validate(config);
 
         act.Should().Throw<InvalidOperationException>().WithMessage("*Anthropic*");
     }
 
     [Fact]
-    public void Validate_OpenAiProviderWithoutApiKey_Throws()
+    public void Validate_OpenAiProviderWithoutApiKey_DoesNotThrow()
     {
+        // A self-hosted OpenAI-compatible server (vLLM, llama.cpp) doesn't require a real key —
+        // only a genuine OpenAI/OpenRouter-style endpoint does, and that's the operator's own
+        // responsibility to configure correctly, not something worth failing startup over.
         var config = new AgentConfig { Instructions = "x", Provider = "OpenAI" };
 
-        var act = () => AgentConfigValidator.Validate(config, new OpenAiOptions { ApiKey = null });
+        var act = () => AgentConfigValidator.Validate(config);
 
-        act.Should().Throw<InvalidOperationException>().WithMessage("*API key*");
+        act.Should().NotThrow();
     }
 }

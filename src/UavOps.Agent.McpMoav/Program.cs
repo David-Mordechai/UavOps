@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -17,6 +18,11 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
     Args = args,
     ContentRootPath = AppContext.BaseDirectory
 });
+
+// Operator-saved Settings-page overrides (see UavOps.Agent's Options/SettingsStore.cs), written
+// into this server's own directory - never the checked-in appsettings.json. Loaded last so it has
+// final precedence.
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
 
 // Stdout is the MCP transport channel itself - any log line written there would corrupt the
 // protocol stream, so every log has to go to stderr instead (the SDK's own documented setup).

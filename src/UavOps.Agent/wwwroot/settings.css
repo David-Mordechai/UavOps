@@ -1,0 +1,248 @@
+/* Settings view (see index.html/settings.js) — built entirely on theme.css's own tokens, same as
+   chat.css/graph.css already do, so it never needs its own palette. */
+
+#settings-container {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.75rem 1rem 3rem;
+}
+
+.settings-loading {
+  color: var(--text-muted);
+  padding: 2rem;
+}
+
+.settings-heading {
+  width: 100%;
+  max-width: 640px;
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.settings-banner {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  margin-bottom: 1rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+}
+
+.settings-banner-restart { background: var(--warning-bg); color: var(--warning); }
+.settings-banner-saved { background: var(--success-bg); color: var(--success); }
+.settings-banner-error { background: var(--danger-bg); color: var(--danger); }
+
+.settings-shutdown-btn {
+  flex-shrink: 0;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-shutdown-btn:hover { filter: brightness(1.1); }
+.settings-shutdown-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+
+.settings-domain {
+  width: 100%;
+  max-width: 640px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.settings-domain h3 {
+  margin: 0 0 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.settings-note {
+  margin: 0 0 0.85rem;
+  padding: 0.5rem 0.7rem;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.settings-group {
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.settings-group:first-of-type {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.settings-group-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
+  margin-bottom: 0.4rem;
+}
+
+.settings-field {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+}
+
+.settings-field-label {
+  flex: 0 0 45%;
+  font-size: 0.83rem;
+  color: var(--text-muted);
+}
+
+.settings-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font-size: 0.83rem;
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.settings-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.settings-field-enabled {
+  padding-bottom: 0.75rem;
+  margin-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-badge {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.settings-badge-live { color: var(--success); background: var(--success-bg); }
+.settings-badge-restart { color: var(--text-faint); background: var(--bg-subtle); }
+
+.settings-path-status {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  min-width: 1.4em;
+  text-align: center;
+}
+
+.settings-path-ok { color: var(--success); }
+.settings-path-missing { color: var(--danger); }
+
+/* Overrides .settings-field's row layout above for the list/dictionary editors — declared after
+   it on purpose so this wins at equal specificity. */
+.settings-field-list {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.settings-field-list .settings-field-label {
+  margin-bottom: 0.3rem;
+}
+
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.settings-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.settings-dict-key {
+  flex: 0 0 35%;
+}
+
+.settings-list-remove {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.settings-list-remove:hover {
+  background: var(--bg-subtle);
+  color: var(--danger);
+}
+
+.settings-list-add {
+  align-self: flex-start;
+  margin-top: 0.3rem;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.settings-list-add:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.settings-save-row {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.5rem 0 2rem;
+}
+
+.settings-save-btn {
+  border: none;
+  background: var(--accent);
+  color: var(--accent-text);
+  padding: 0.55rem 1.4rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-save-btn:hover { filter: brightness(1.08); }

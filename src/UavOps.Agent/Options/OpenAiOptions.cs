@@ -12,9 +12,10 @@ namespace UavOps.Agent.Options;
 /// such backend is configured at a time; switching which one just means changing these two values.
 ///
 /// Optional at startup, like <see cref="Contracts.SimulatorOptions"/> — most installs won't use
-/// it. The only fail-fast check is in <see cref="AgentConfigValidator"/>, and
-/// only when some agent actually opts into <c>Provider: OpenAI</c> without an
-/// <see cref="ApiKey"/> configured.
+/// it. <see cref="ApiKey"/> itself is also optional: a self-hosted OpenAI-compatible server (vLLM,
+/// llama.cpp) doesn't check it at all, so leaving it unset falls back to a placeholder value
+/// (Program.cs) rather than failing startup — only a real OpenAI/OpenRouter-style endpoint needs a
+/// genuine key set here.
 /// </summary>
 public sealed class OpenAiOptions
 {

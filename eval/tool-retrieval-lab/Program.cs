@@ -26,6 +26,8 @@ var repeats = int.TryParse(GetOption(args, "--repeats"), out var rp) ? rp : 8;
 var seed = int.TryParse(GetOption(args, "--seed"), out var sd) ? sd : 42;
 var retrievalEnabled = args.Contains("--retrieval");
 var onlyScenario = GetOption(args, "--scenario");
+var maxScoreGapFromBest = float.TryParse(GetOption(args, "--max-gap"), out var mg) ? mg : (float?)null;
+var disabledNames = (GetOption(args, "--disable") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
 
 var systemPrompt = GetSystemPrompt();
 const int RealToolCount = 6 + 4 + 3; // fleet + watchdog + simulator-infra
@@ -69,6 +71,16 @@ var scenarioPassCounts = new Dictionary<string, int>();
 var recallHits = 0;
 var recallTotal = 0;
 
+// Score-distribution measurement for RetrievalOptions.MinConfidenceForAutoExecute (see
+// UavOps.Agent's Tooling/RetrievalConfidenceGuardTool.cs) - a true positive is a required tool's
+// own score for the turn that required it; a false positive is any other candidate's score for
+// that same turn (an offered-but-not-actually-needed tool, exactly the "backfill" shape that
+// prompted this measurement). Scores are deterministic per turn text (embeddings aren't sampled),
+// so this doesn't need --repeats > 1 to be meaningful - it's collected once per turn regardless of
+// how many repeats run, just accumulated across every repeat/scenario that does run.
+var truePositiveScores = new List<float>();
+var falsePositiveScores = new List<float>();
+
 foreach (var scenario in scenarios)
 {
     Console.WriteLine($"\n\n########## SCENARIO: {scenario.Name} ##########");
@@ -108,10 +120,17 @@ foreach (var scenario in scenarios)
 
             if (retrievalEnabled && retrievalIndex is not null)
             {
+                var enabledNames = disabledNames.Count > 0 ? nameToTool.Keys.Where(n => !disabledNames.Contains(n)).ToHashSet() : null;
                 var query = await retrievalIndex.EmbedQueryAsync(turn.Text);
-                var (_, ranked) = retrievalIndex.RankCandidates(query, topK);
+                var (_, ranked) = retrievalIndex.RankCandidates(query, topK, enabledNames, maxScoreGapFromBest);
                 candidateNames = ranked.Select(x => x.Name).ToList();
                 candidateTools = candidateNames.Select(n => nameToTool[n]).ToList();
+
+                foreach (var (name, score) in ranked)
+                {
+                    if (turn.RequiredTools.Contains(name)) truePositiveScores.Add(score);
+                    else falsePositiveScores.Add(score);
+                }
             }
             else
             {
@@ -155,6 +174,27 @@ foreach (var (name, passes) in scenarioPassCounts)
 if (recallTotal > 0)
 {
     Console.WriteLine($"  RECALL (required tools present in candidate set): {recallHits}/{recallTotal}");
+}
+if (truePositiveScores.Count > 0 || falsePositiveScores.Count > 0)
+{
+    Console.WriteLine($"\nSCORE DISTRIBUTION (for RetrievalOptions.MinConfidenceForAutoExecute):");
+    if (truePositiveScores.Count > 0)
+    {
+        Console.WriteLine($"  True positives  (required tool's own score, n={truePositiveScores.Count}): " +
+            $"min={truePositiveScores.Min():F4} p5={Percentile(truePositiveScores, 5):F4} mean={truePositiveScores.Average():F4} max={truePositiveScores.Max():F4}");
+    }
+    if (falsePositiveScores.Count > 0)
+    {
+        Console.WriteLine($"  Other candidates (not required, n={falsePositiveScores.Count}): " +
+            $"min={falsePositiveScores.Min():F4} mean={falsePositiveScores.Average():F4} p95={Percentile(falsePositiveScores, 95):F4} max={falsePositiveScores.Max():F4}");
+    }
+}
+
+static float Percentile(List<float> values, double percentile)
+{
+    var sorted = values.OrderBy(v => v).ToList();
+    var index = (int)Math.Clamp(Math.Round(percentile / 100.0 * (sorted.Count - 1)), 0, sorted.Count - 1);
+    return sorted[index];
 }
 
 static string? GetOption(string[] args, string name)

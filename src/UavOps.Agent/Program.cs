@@ -13,6 +13,12 @@ using UavOps.Agent.Tooling;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Operator-saved Settings-page overrides (see Options/SettingsStore.cs) - never the checked-in
+// appsettings.json. Loaded last so it has final precedence; reloadOnChange means a save's new
+// McpServersEnabled value is visible to a live IConfiguration read (see
+// Options/McpServerSelection.cs) on the very next access, no restart needed for that one setting.
+builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+
 // File sink alongside the console one so tool-call/agent-reasoning behavior (e.g. the
 // BrainAgent verified-retry logging in MainAgentOrchestrator) can be inspected after the fact
 // without needing to have been watching the console at the time - added after a live incident
@@ -88,7 +94,7 @@ if (agentModelOptions is not null)
 // operation across every domain is an MCP tool now, nothing configured in-process. Moav,
 // watchdog, and simulator all moved to MCP (AgentConfig.McpServers) - their own startup check is
 // simply whether connecting to each and listing its tools succeeds, below.
-AgentConfigValidator.Validate(agentConfig, openAiOptions);
+AgentConfigValidator.Validate(agentConfig);
 
 var retrievalOptions = builder.Configuration.GetSection(RetrievalOptions.SectionName).Get<RetrievalOptions>()
     ?? new RetrievalOptions();
@@ -103,6 +109,7 @@ builder.Services.AddSingleton(retrievalOptions);
 builder.Services.AddSingleton(memoryOptions);
 builder.Services.AddSingleton(remoteOperationOptions);
 builder.Services.AddSingleton(agentConfig);
+builder.Services.AddSingleton<SettingsStore>();
 
 // A confirmation reply (or an operation's SubmitCommandResult reply) is just another call on
 // the same connection while the original call is still in flight, so raise the per-connection
@@ -128,10 +135,13 @@ builder.Services.AddSingleton<Func<string, string?, IChatClient>>(sp => (modelNa
     IChatClient inner;
     if (string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase))
     {
-        // AgentConfigValidator already guarantees ApiKey is set for any agent that reaches this
-        // branch — the null-forgiving operator below reflects that, not an unchecked assumption.
+        // ApiKey is optional, same reasoning as the embedding client below — a self-hosted
+        // OpenAI-compatible server (vLLM, llama.cpp) doesn't check it at all, only a real
+        // OpenAI/OpenRouter-style endpoint does, and ApiKeyCredential itself requires a non-empty
+        // string regardless.
         var options = sp.GetRequiredService<OpenAiOptions>();
-        var chatClient = new ChatClient(modelName, new ApiKeyCredential(options.ApiKey!),
+        var apiKey = string.IsNullOrWhiteSpace(options.ApiKey) ? "not-needed" : options.ApiKey;
+        var chatClient = new ChatClient(modelName, new ApiKeyCredential(apiKey),
             new OpenAIClientOptions { Endpoint = new Uri(options.Endpoint) });
         inner = chatClient.AsIChatClient();
     }
@@ -152,7 +162,8 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
         sp.GetRequiredService<MemoryOptions>(),
         sp.GetRequiredService<ToolInvocationLogger>(),
         sp.GetRequiredService<ConfirmationGate>(),
-        sp.GetRequiredService<OperatorPromptGate>()
+        sp.GetRequiredService<OperatorPromptGate>(),
+        sp.GetRequiredService<IConfiguration>()
     ));
 
 builder.Services.AddSingleton<MainAgentOrchestrator>();
@@ -191,7 +202,37 @@ app.MapGet("/healthz", () =>
 });
 
 app.MapGet("/api/agent-graph", () =>
-    Results.Ok(AgentGraphProjector.Build(app.Services.GetRequiredService<AgentFactory>().McpServerToolGroups)));
+{
+    var enabledServers = McpServerSelection.GetEnabledServerNames(
+        app.Services.GetRequiredService<IConfiguration>(), agentConfig.McpServers.Select(s => s.Name));
+    return Results.Ok(AgentGraphProjector.Build(app.Services.GetRequiredService<AgentFactory>().McpServerToolGroups, enabledServers));
+});
+
+app.MapGet("/api/settings", async () =>
+    Results.Ok(await app.Services.GetRequiredService<SettingsStore>().GetEffectiveSettingsAsync()));
+
+app.MapPost("/api/settings", async (System.Text.Json.Nodes.JsonObject body) =>
+{
+    await app.Services.GetRequiredService<SettingsStore>().SaveAsync(body);
+    return Results.Ok();
+});
+
+app.MapGet("/api/validate-path", (string path) =>
+    Results.Ok(new { exists = File.Exists(path) || Directory.Exists(path) }));
+
+// Gives the Settings page's "Shut down now" button something to call after a save that needs a
+// restart - this app has no self-relaunch/supervisor mechanism (see CLAUDE.md's "Running it"), so
+// the operator relaunches it themselves right after. The short delay lets this response flush
+// before Kestrel actually stops.
+app.MapPost("/api/shutdown", (IHostApplicationLifetime lifetime) =>
+{
+    _ = Task.Run(async () =>
+    {
+        await Task.Delay(300);
+        lifetime.StopApplication();
+    });
+    return Results.Ok();
+});
 
 // Starts Kestrel actually listening now, with every endpoint/middleware above already registered
 // (they must be mapped before this - late-mapped endpoints aren't guaranteed to take effect once
@@ -244,6 +285,13 @@ foreach (var serverConfig in agentConfig.McpServers)
 agentFactory.McpTools = mcpTools;
 agentFactory.McpServerToolGroups = mcpServerToolGroups;
 
+// Every discovered tool's owning server, for ToolRetrievalIndex to tag each embedded entry with -
+// see its own doc comment for why every tool is always indexed regardless of that server's
+// enabled/disabled state.
+var toolNameToServerName = mcpServerToolGroups
+    .SelectMany(group => group.Tools.Select(tool => (tool.Name, group.ServerName)))
+    .ToDictionary(x => x.Name, x => x.ServerName, StringComparer.Ordinal);
+
 // Each connected server tells BrainAgent how to use its own tools directly (McpServerOptions.
 // ServerInstructions on the server side - see each Mcp* project's own Program.cs) rather than that
 // domain knowledge being hand-authored centrally in Agents/BrainAgent.yaml. Appended once at
@@ -280,7 +328,7 @@ try
         new OpenAIClientOptions { Endpoint = new Uri(embeddingOptions.Endpoint) });
     var embeddingGenerator = embeddingClient.AsIEmbeddingGenerator();
     var templateTools = agentFactory.BuildTemplateTools();
-    agentFactory.RetrievalIndex = await ToolRetrievalIndex.BuildAsync(templateTools, embeddingGenerator, CancellationToken.None);
+    agentFactory.RetrievalIndex = await ToolRetrievalIndex.BuildAsync(templateTools, toolNameToServerName, embeddingGenerator, CancellationToken.None);
 }
 catch (Exception ex)
 {

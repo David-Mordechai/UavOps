@@ -41,7 +41,8 @@ public sealed class AgentFactory(
     MemoryOptions memoryOptions,
     ToolInvocationLogger toolLogger,
     ConfirmationGate confirmationGate,
-    OperatorPromptGate operatorPromptGate)
+    OperatorPromptGate operatorPromptGate,
+    IConfiguration configuration)
 {
     public const string RootAgentName = "BrainAgent";
     private const string StartupTemplateCorrelationId = "startup-template";
@@ -139,16 +140,35 @@ public sealed class AgentFactory(
     /// top-K most relevant via <see cref="ToolRetrievalIndex.RankCandidates"/> (ranked against the
     /// operator's own turn text). No "safe no-op" tool appended - <c>tool_choice</c> is never
     /// forced (see <see cref="BuildAgent"/>), so the model can always answer in plain text when no
-    /// real operation applies; nothing needs to be picked among just to satisfy a forced choice.</summary>
+    /// real operation applies; nothing needs to be picked among just to satisfy a forced choice.
+    ///
+    /// Which MCP servers are currently enabled is read fresh from <see cref="IConfiguration"/> on
+    /// every call (see <see cref="McpServerSelection"/>), same live-read pattern as
+    /// <see cref="Tooling.ConfirmationGate.CurrentMode"/> — every connected server's tools are
+    /// still embedded in <see cref="RetrievalIndex"/> regardless of enabled state (see
+    /// <see cref="BuildAllTools"/>/<see cref="BuildTemplateTools"/>, both unchanged), only which
+    /// names make the top-K changes, so a Settings-page save disabling a server takes effect on the
+    /// very next turn with no restart.
+    ///
+    /// <see cref="ToolRetrievalIndex.RankCandidates"/> also refuses to pad a weak candidate into an
+    /// otherwise-empty top-K slot just because a disabled server hid the real answer — see that
+    /// method's own doc comment for the live-reproduced incident this closes (a disabled domain
+    /// causing a real, unrequested action to run with zero operator confirmation, since every real
+    /// mutation in this app is configured not to need one). When nothing enabled is a strong enough
+    /// match, this can legitimately return fewer than <see cref="RetrievalOptions.TopK"/> tools —
+    /// including zero — and the model answers in plain text instead, which it already does fine
+    /// since <c>tool_choice</c> is never forced.</summary>
     public async Task<List<AITool>> BuildToolsForTurn(string correlationId, string operatorText, CancellationToken cancellationToken)
     {
         var allTools = BuildAllTools(correlationId, operatorText);
         var nameToTool = allTools.ToDictionary(t => ((AIFunction)t).Name, StringComparer.Ordinal);
 
-        var query = await RetrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
-        var candidateNames = RetrievalIndex.RankCandidates(query, retrievalOptions.TopK);
+        var enabledServers = McpServerSelection.GetEnabledServerNames(configuration, config.McpServers.Select(s => s.Name));
 
-        return candidateNames.Select(n => nameToTool[n]).ToList();
+        var query = await RetrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
+        var candidates = RetrievalIndex.RankCandidates(query, retrievalOptions.TopK, enabledServers, retrievalOptions.MaxScoreGapFromBest);
+
+        return candidates.Select(c => nameToTool[c.Name]).ToList();
     }
 
     /// <summary>Builds one agent standalone, with no tools at all — used for a background job's

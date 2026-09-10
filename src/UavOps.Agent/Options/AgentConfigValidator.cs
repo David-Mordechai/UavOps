@@ -19,7 +19,7 @@ public static class AgentConfigValidator
 {
     private static readonly string[] KnownProviders = ["Ollama", "OpenAI"];
 
-    public static void Validate(AgentConfig config, OpenAiOptions openAiOptions)
+    public static void Validate(AgentConfig config)
     {
         var errors = new List<string>();
 
@@ -32,17 +32,6 @@ public static class AgentConfigValidator
         {
             errors.Add($"BrainAgent has unknown provider '{config.Provider}' (from 'AgentModels' in " +
                         $"appsettings.json) — must be one of: {string.Join(", ", KnownProviders)}.");
-        }
-
-        // Config-only check (no network call, same as everything else here) — turns "forgot to
-        // set the secret" into an immediate startup error instead of a confusing failure the
-        // first time this agent tries to respond.
-        if (string.Equals(config.Provider, "OpenAI", StringComparison.OrdinalIgnoreCase)
-            && string.IsNullOrWhiteSpace(openAiOptions.ApiKey))
-        {
-            errors.Add("BrainAgent has provider: OpenAI (from 'AgentModels' in appsettings.json) but " +
-                        "no API key is configured. Set one via " +
-                        "`dotnet user-secrets set \"OpenAI:ApiKey\" \"...\" --project src/UavOps.Agent`.");
         }
 
         if (errors.Count > 0)

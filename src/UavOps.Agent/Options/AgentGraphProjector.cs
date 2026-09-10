@@ -17,7 +17,13 @@ public static class AgentGraphProjector
 {
     private const string RootAgentName = AgentFactory.RootAgentName;
 
-    public static object Build(IReadOnlyList<(string ServerName, IReadOnlyList<AIFunction> Tools)> mcpServerToolGroups)
+    /// <summary><paramref name="enabledServerNames"/> never changes which servers/tools are
+    /// included here — a disabled server is still connected (see <see cref="McpServerSelection"/>'s
+    /// own doc comment) and still shown, just marked <c>disabled: true</c> so the graph doesn't
+    /// misleadingly imply a disabled server's tools are still being offered to the model.</summary>
+    public static object Build(
+        IReadOnlyList<(string ServerName, IReadOnlyList<AIFunction> Tools)> mcpServerToolGroups,
+        IReadOnlySet<string> enabledServerNames)
     {
         var nodes = new List<object>
         {
@@ -28,8 +34,9 @@ public static class AgentGraphProjector
         foreach (var (serverName, tools) in mcpServerToolGroups)
         {
             var serverId = $"server::{serverName}";
-            nodes.Add(new { id = serverId, type = "server", name = serverName });
-            edges.Add(new { from = RootAgentName, to = serverId, kind = "connects" });
+            var disabled = !enabledServerNames.Contains(serverName);
+            nodes.Add(new { id = serverId, type = "server", name = serverName, disabled });
+            edges.Add(new { from = RootAgentName, to = serverId, kind = "connects", disabled });
 
             foreach (var tool in tools)
             {
@@ -51,9 +58,10 @@ public static class AgentGraphProjector
                     // followed everywhere else this distinction matters.
                     parameters = tool.JsonSchema.TryGetProperty("properties", out var properties)
                         ? properties.EnumerateObject().Select(p => p.Name).ToArray()
-                        : []
+                        : [],
+                    disabled
                 });
-                edges.Add(new { from = serverId, to = toolId, kind = "uses" });
+                edges.Add(new { from = serverId, to = toolId, kind = "uses", disabled });
             }
         }
 

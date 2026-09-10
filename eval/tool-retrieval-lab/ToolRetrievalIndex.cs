@@ -55,15 +55,28 @@ sealed class ToolRetrievalIndex
 
     /// <summary>Ranks every indexed tool by cosine similarity to <paramref name="query"/>, returns
     /// the top <paramref name="topK"/> tools plus each tool's (name, score) for logging - highest
-    /// similarity first. Fixed top-K for now, not adaptive - see the lab's own plan doc for why.</summary>
-    public (List<AITool> Tools, List<(string Name, float Score)> Ranked) RankCandidates(Embedding<float> query, int topK)
+    /// similarity first. Fixed top-K for now, not adaptive - see the lab's own plan doc for why.
+    /// Mirrors the real app's own <c>Tooling.ToolRetrievalIndex.RankCandidates</c> -
+    /// <paramref name="maxScoreGapFromBest"/> is the same "don't pad a weak candidate into an
+    /// empty slot" cutoff, measured here against this lab's own scenario set before being trusted
+    /// as the real app's default.</summary>
+    public (List<AITool> Tools, List<(string Name, float Score)> Ranked) RankCandidates(
+        Embedding<float> query, int topK, IReadOnlySet<string>? enabledNames = null, float? maxScoreGapFromBest = null)
     {
         var scored = _index
             .Select(entry => (entry.Tool.Name, Score: CosineSimilarity(query.Vector, entry.Embedding.Vector), entry.Tool))
-            .OrderByDescending(x => x.Score)
             .ToList();
 
-        var top = scored.Take(topK).ToList();
+        var minAcceptableScore = maxScoreGapFromBest is { } gap && scored.Count > 0
+            ? scored.Max(x => x.Score) - gap
+            : float.NegativeInfinity;
+
+        var top = scored
+            .Where(x => enabledNames is null || enabledNames.Contains(x.Name))
+            .Where(x => x.Score >= minAcceptableScore)
+            .OrderByDescending(x => x.Score)
+            .Take(topK)
+            .ToList();
         return (top.Select(x => x.Tool).ToList(), top.Select(x => (x.Name, x.Score)).ToList());
     }
 

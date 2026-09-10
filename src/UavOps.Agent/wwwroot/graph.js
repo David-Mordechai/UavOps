@@ -99,6 +99,15 @@ function buildTooltip(node, toolCount) {
     el.appendChild(retrieval);
   }
 
+  // Set from the Settings page (see Options/McpServerSelection.cs) — the server is still
+  // connected either way, this just means its tools aren't currently offered to the model.
+  if (node.disabled) {
+    const disabledNote = document.createElement("p");
+    disabledNote.className = "params";
+    disabledNote.textContent = "Disabled in Settings — connected, but not offered to the model";
+    el.appendChild(disabledNote);
+  }
+
   return el;
 }
 
@@ -338,6 +347,9 @@ class AgentGraph {
       title: buildTooltip(node, (this.toolsOf.get(node.id) || []).length),
       x: pos.x,
       y: pos.y,
+      // Dimmed, not hidden — a disabled MCP server is still connected (see
+      // Options/McpServerSelection.cs), it just isn't currently offered to the model.
+      opacity: node.disabled ? 0.35 : 1,
     };
   }
 
@@ -352,7 +364,8 @@ class AgentGraph {
       for (const kid of kids) {
         if (visibleSet.has(kid)) {
           const dashes = (this.toolsOf.get(parent) || []).includes(kid);
-          visEdges.push({ id: `${parent}::${kid}`, from: parent, to: kid, dashes });
+          const disabled = !!this.nodesById.get(kid).disabled;
+          visEdges.push({ id: `${parent}::${kid}`, from: parent, to: kid, dashes, opacity: disabled ? 0.3 : 1 });
         }
       }
     }

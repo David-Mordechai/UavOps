@@ -10,9 +10,14 @@ public class AgentGraphProjectorTests
 {
     // AgentGraphProjector.Build returns anonymous objects, so tests round-trip through JSON to
     // inspect the shape by property name rather than depending on the anonymous types directly.
-    private static JsonElement BuildAsJson(IReadOnlyList<(string ServerName, IReadOnlyList<AIFunction> Tools)> groups)
+    // Defaults every server in `groups` to enabled unless the test says otherwise, so existing
+    // callers don't need to know about the enabled/disabled concept.
+    private static JsonElement BuildAsJson(
+        IReadOnlyList<(string ServerName, IReadOnlyList<AIFunction> Tools)> groups,
+        IReadOnlySet<string>? enabledServerNames = null)
     {
-        var json = JsonSerializer.Serialize(AgentGraphProjector.Build(groups));
+        var enabled = enabledServerNames ?? groups.Select(g => g.ServerName).ToHashSet();
+        var json = JsonSerializer.Serialize(AgentGraphProjector.Build(groups, enabled));
         return JsonDocument.Parse(json).RootElement;
     }
 
@@ -102,5 +107,26 @@ public class AgentGraphProjectorTests
         var parameters = toolNode.GetProperty("parameters").EnumerateArray().Select(p => p.GetString()).ToList();
 
         parameters.Should().Contain("tailNumber");
+    }
+
+    [Fact]
+    public void Build_DisabledServer_MarksItsServerAndToolNodesAndEdgesDisabled()
+    {
+        var groups = new List<(string ServerName, IReadOnlyList<AIFunction> Tools)>
+        {
+            ("moav", [FakeTool("ListFleet", "x")]),
+            ("simulator", [FakeTool("ListSimulatorLessons", "x")])
+        };
+
+        var root = BuildAsJson(groups, enabledServerNames: new HashSet<string> { "moav" });
+        var nodes = root.GetProperty("nodes").EnumerateArray().ToList();
+        var edges = root.GetProperty("edges").EnumerateArray().ToList();
+
+        nodes.Single(n => n.GetProperty("id").GetString() == "server::moav").GetProperty("disabled").GetBoolean().Should().BeFalse();
+        nodes.Single(n => n.GetProperty("id").GetString() == "server::simulator").GetProperty("disabled").GetBoolean().Should().BeTrue();
+        nodes.Single(n => n.GetProperty("id").GetString() == "server::simulator::ListSimulatorLessons").GetProperty("disabled").GetBoolean().Should().BeTrue();
+
+        edges.Single(e => e.GetProperty("to").GetString() == "server::simulator").GetProperty("disabled").GetBoolean().Should().BeTrue();
+        edges.Single(e => e.GetProperty("to").GetString() == "server::moav").GetProperty("disabled").GetBoolean().Should().BeFalse();
     }
 }

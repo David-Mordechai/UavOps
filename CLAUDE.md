@@ -62,8 +62,10 @@ below) — there is no offline/fake fallback for embeddings.
 **Chat model**: `Ollama:DefaultModel` (`appsettings.json`) is the app-wide default; `AgentModels`
 overrides BrainAgent specifically to point at any OpenAI-compatible endpoint instead (e.g. a vLLM
 server) — set `AgentModels:Provider` to `"OpenAI"` and `AgentModels:Model`/`OpenAI:Endpoint`
-accordingly, plus an API key via `dotnet user-secrets set "OpenAI:ApiKey" "..." --project
-src/UavOps.Agent` (`AgentConfigValidator` fails fast at startup if this is missing).
+accordingly. `OpenAI:ApiKey` is optional: a self-hosted OpenAI-compatible server (vLLM,
+llama.cpp) doesn't check it at all, so it's left unset for those and a placeholder value is used
+internally (`Program.cs`); only a genuine OpenAI/OpenRouter-style endpoint needs a real key set via
+`dotnet user-secrets set "OpenAI:ApiKey" "..." --project src/UavOps.Agent`.
 
 **Tool retrieval embeddings** (`Embedding` section, required, no fallback): a real
 `Qwen/Qwen3-Embedding-8B`-class model served on an OpenAI-compatible `/v1/embeddings` endpoint
@@ -196,6 +198,32 @@ design is what BrainAgent itself sees or calls).
   (`Options/EmbeddingOptions.cs`, see "Running it" above) — a hash-based fake was found, in the
   standalone lab, to rank tools uncorrelated with meaning, which is actively dangerous once ranking
   quality is load-bearing for correctness rather than a nice-to-have.
+- **`Retrieval:MaxScoreGapFromBest`** (default 0.25) stops `RankCandidates` from padding an
+  otherwise-empty top-K slot with a weak candidate just because the real match got hidden — a real,
+  live-reproduced incident: with the Simulator MCP server disabled, "list the simulator lessons"
+  still filled top-K from Moav/Watchdog (best available: 0.50), even though the real match
+  (`ListSimulatorLessons`, hidden by the disable) scored 0.87 — a gap the model couldn't see, that
+  led it to speculatively call an unrelated tool. Dangerous specifically because every real
+  Moav/Watchdog/Simulator mutation in this app's `ToolsConfig.yaml` files is configured
+  `destructive: false` (only `RunSimulatorLesson` isn't), so a speculative pick executes for real
+  with zero operator confirmation — confirmed live (`SetSpeed` executed instantly with no prompt).
+  A candidate scoring more than this gap below the best score across the FULL catalog (every
+  connected server, regardless of enabled state) is dropped rather than offered, which can
+  legitimately return fewer than `TopK` tools, including zero, when nothing enabled is a strong
+  match — the model then answers in plain text instead, same as any turn with no matching tool,
+  since `tool_choice` is never forced. An earlier design gated the *call* behind an extra
+  confirmation round-trip instead of excluding it from what's offered, keyed off an absolute
+  confidence score — rejected after live measurement (`eval/tool-retrieval-lab`) showed true-positive
+  and false-positive score distributions overlap too much for a global absolute cutoff to work
+  (false-positive max 0.87 exceeded true-positive max 0.82 on the measured scenario set); a
+  within-offered-set relevance margin was tried next and also rejected — proven, by directly
+  re-ranking the real incident's query against the full catalog, to be blind to exactly this failure
+  mode (the visible top candidate always has zero margin to itself, even when everything visible is
+  a bad match). Comparing visible-best to full-catalog-best is what actually detects "the real
+  answer got filtered out." 0.25 is validated against `eval/tool-retrieval-lab`'s own scenario set
+  at a realistic (non-distractor-inflated) tool count — tight enough to exclude a genuinely
+  irrelevant substitute, loose enough to keep a legitimate secondary tool in a multi-part request
+  (e.g. `EnsureSimulatorVmRunning` scoring 0.22 below that turn's own top match is still offered).
 - **`tool_choice` is left at its default, "auto" — never forced**, and there is no verified-retry
   loop. An earlier version of this flat design forced `tool_choice: "required"` on a turn's first
   completion plus a 3-attempt retry that rolled back BrainAgent's own history whenever a completion
