@@ -35,7 +35,7 @@ public class BuildToolsForTurnLiveTests(ITestOutputHelper output)
 
         foreach (var (text, expectedTool) in cases)
         {
-            var tools = await factory.BuildToolsForTurn($"diag-{Guid.NewGuid():N}", text, CancellationToken.None);
+            var tools = await factory.BuildToolsForTurn($"diag-{Guid.NewGuid():N}", text, text, CancellationToken.None);
             var names = tools.OfType<AIFunction>().Select(t => t.Name).ToList();
 
             output.WriteLine($"=== \"{text}\" ===");

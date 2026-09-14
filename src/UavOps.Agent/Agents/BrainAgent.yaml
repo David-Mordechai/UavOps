@@ -44,6 +44,13 @@ instructions: |-
     the operator an action was done, updated, or completed unless a tool call you made THIS turn
     actually confirmed it - reusing, echoing, or paraphrasing a past result as if it just happened is
     a fabrication, not a memory feature, even for a request that looks identical to an earlier one.
+  - This applies equally to status/informational questions, not just actions that change something -
+    "what UAVs do we have", "what's the mission status", and similar queries always need a fresh tool
+    call THIS turn too, even if you asked the exact same question earlier and already have an answer
+    in your own history. State can change between turns - including because of your own prior actions
+    in this same conversation - so an earlier answer may now be stale. Answering a repeated status
+    question from memory instead of calling the tool again is the same kind of fabrication as claiming
+    an action completed without calling its tool: it reports a past state as if it were the current one.
 
   Reporting results:
   - Base your reply entirely on what your tool calls this turn actually reported, never on what you

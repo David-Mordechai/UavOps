@@ -157,18 +157,49 @@ public sealed class AgentFactory(
     /// mutation in this app is configured not to need one). When nothing enabled is a strong enough
     /// match, this can legitimately return fewer than <see cref="RetrievalOptions.TopK"/> tools —
     /// including zero — and the model answers in plain text instead, which it already does fine
-    /// since <c>tool_choice</c> is never forced.</summary>
-    public async Task<List<AITool>> BuildToolsForTurn(string correlationId, string operatorText, CancellationToken cancellationToken)
+    /// since <c>tool_choice</c> is never forced.
+    ///
+    /// <paramref name="retrievalQueryText"/> (built by <see cref="MainAgentOrchestrator"/> from real
+    /// conversation history plus the current turn's text) is ranked SEPARATELY from
+    /// <paramref name="operatorText"/> (this turn's bare text alone), and the two top-K candidate
+    /// sets are unioned — not one embedding of the two texts merged together. Ranking against
+    /// <paramref name="operatorText"/> alone exists for the case that motivated adding history in
+    /// the first place: an ambiguous follow-up turn like a bare "999" answering "which UAV?" has no
+    /// semantic content of its own, so ranking the full catalog against it alone is close to random,
+    /// and can silently exclude a tool (e.g. <c>SetSpeed</c>) an earlier part of the same exchange
+    /// actually needed - <paramref name="retrievalQueryText"/>'s history fixes that. But a real,
+    /// live-reproduced regression showed why the two can't just be concatenated into one query
+    /// instead: for a turn whose own text is ALREADY rich enough on its own (e.g. "fly all of them
+    /// to target alpha... point all payloads there"), prepending unrelated earlier turns diluted the
+    /// embedding enough to push a tool that turn's own text clearly needed (<c>PointPayload</c>) out
+    /// of the top-K, letting a similar-but-wrong tool (<c>ResetPayload</c>) take its place instead -
+    /// confirmed via a direct A/B control run (0/5 failures on the bare-query baseline, 5/5 on one
+    /// merged query, same scenario). Ranking each query independently and unioning the results means
+    /// a rich turn's own strong signal is never diluted by irrelevant history, while a weak turn
+    /// still gains whatever the history-aware query contributes. <paramref name="operatorText"/>
+    /// otherwise keeps its existing, narrower meaning for every other caller (tail-number guess
+    /// checks, etc.) - only ADDED to retrieval here, not replaced by it.</summary>
+    public async Task<List<AITool>> BuildToolsForTurn(string correlationId, string operatorText, string retrievalQueryText, CancellationToken cancellationToken)
     {
         var allTools = BuildAllTools(correlationId, operatorText);
         var nameToTool = allTools.ToDictionary(t => ((AIFunction)t).Name, StringComparer.Ordinal);
 
         var enabledServers = McpServerSelection.GetEnabledServerNames(configuration, config.McpServers.Select(s => s.Name));
 
-        var query = await RetrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
-        var candidates = RetrievalIndex.RankCandidates(query, retrievalOptions.TopK, enabledServers, retrievalOptions.MaxScoreGapFromBest);
+        var turnOnlyQuery = await RetrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
+        var turnOnlyCandidates = RetrievalIndex.RankCandidates(turnOnlyQuery, retrievalOptions.TopK, enabledServers, retrievalOptions.MaxScoreGapFromBest);
 
-        return candidates.Select(c => nameToTool[c.Name]).ToList();
+        // Skip the second embed/rank entirely when there's no history yet (first turn of a
+        // session) - the two queries are identical, so it would just re-rank the same text twice.
+        var candidateNames = turnOnlyCandidates.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
+        if (!string.Equals(operatorText, retrievalQueryText, StringComparison.Ordinal))
+        {
+            var contextualQuery = await RetrievalIndex.EmbedQueryAsync(retrievalQueryText, cancellationToken);
+            var contextualCandidates = RetrievalIndex.RankCandidates(contextualQuery, retrievalOptions.TopK, enabledServers, retrievalOptions.MaxScoreGapFromBest);
+            candidateNames.UnionWith(contextualCandidates.Select(c => c.Name));
+        }
+
+        return candidateNames.Select(name => nameToTool[name]).ToList();
     }
 
     /// <summary>Builds one agent standalone, with no tools at all — used for a background job's

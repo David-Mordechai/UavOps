@@ -49,8 +49,26 @@ public sealed class MainAgentOrchestrator(AgentFactory agentFactory, ToolInvocat
     {
         var sw = Stopwatch.StartNew();
 
-        var (brainAgent, session, _) = await agentFactory.GetOrCreatePersistentBrainAgentAsync(cancellationToken);
-        var tools = await agentFactory.BuildToolsForTurn(correlationId, text, cancellationToken);
+        var (brainAgent, session, historyProvider) = await agentFactory.GetOrCreatePersistentBrainAgentAsync(cancellationToken);
+
+        // Tool retrieval needs to see this exchange's real context, not just this turn's bare
+        // text - a real, live-reproduced bug: an ambiguous follow-up ("999" answering "which UAV?")
+        // has no semantic content of its own, so embedding it alone ranks the whole tool catalog as
+        // near-random noise, silently excluding a tool (e.g. SetSpeed) the earlier part of the same
+        // exchange actually needed. History is read here (BEFORE this turn's message joins it) and
+        // combined with the current text, so retrieval sees the same conversation BrainAgent itself
+        // does - not a separately-invented "last N messages" window, but the same bounded history
+        // ToolCallAwareChatReducer already keeps for the model. Skips System/Tool-role entries and
+        // pure tool-call/tool-result messages (ChatMessage.Text is empty for those) - their content
+        // is either the system prompt (irrelevant to, and would dilute, retrieval) or already
+        // reflected in the plain-language turns around them.
+        var history = historyProvider.GetMessages(session);
+        var historyText = history
+            .Where(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrWhiteSpace(m.Text))
+            .Select(m => m.Text);
+        var retrievalQueryText = string.Join("\n", historyText.Append(text));
+
+        var tools = await agentFactory.BuildToolsForTurn(correlationId, text, retrievalQueryText, cancellationToken);
         var runOptions = new ChatClientAgentRunOptions(new ChatOptions { Tools = tools, AllowMultipleToolCalls = true });
 
         var response = await brainAgent.RunAsync(text, session, runOptions, cancellationToken: cancellationToken);

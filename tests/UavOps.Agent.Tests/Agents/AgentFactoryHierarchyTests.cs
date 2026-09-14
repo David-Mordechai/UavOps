@@ -105,7 +105,7 @@ public class AgentFactoryHierarchyTests
         sut.McpTools = [FakeMcpTool("RunSimulatorLesson")];
         sut.RetrievalIndex = await BuildFixedIndexAsync(sut.BuildTemplateTools());
 
-        var tools = await sut.BuildToolsForTurn("corr1", "hi there", CancellationToken.None);
+        var tools = await sut.BuildToolsForTurn("corr1", "hi there", "hi there", CancellationToken.None);
 
         tools.Should().BeEmpty();
     }
@@ -118,7 +118,7 @@ public class AgentFactoryHierarchyTests
         sut.McpTools = [FakeMcpTool("EnsureVmwareHostRunning"), FakeMcpTool("RunSimulatorLesson")];
         sut.RetrievalIndex = await BuildFixedIndexAsync(sut.BuildTemplateTools());
 
-        var tools = await sut.BuildToolsForTurn("corr1", "anything", CancellationToken.None);
+        var tools = await sut.BuildToolsForTurn("corr1", "anything", "anything", CancellationToken.None);
 
         tools.Should().HaveCount(1);
     }
