@@ -136,12 +136,12 @@ public class ConfirmationGateTests
         await sut.RequireConfirmationAsync(
             "corr1", "GdtControlAgent", "SetAntennaTrackingMode",
             "Set the ground data terminal antenna's tracking mode for a UAV.",
-            new { tailNumber = "UAV-1", mode = "Manual" },
+            new { tailNumber = "997", mode = "Manual" },
             CancellationToken.None);
 
         promptText.Should().NotBeNull();
         promptText.Should().Contain("Set the ground data terminal antenna's tracking mode for a UAV");
-        promptText.Should().Contain("tailNumber: UAV-1");
+        promptText.Should().Contain("tailNumber: 997");
         promptText.Should().Contain("mode: Manual");
         promptText.Should().NotContain("SetAntennaTrackingMode");
         promptText.Should().NotContain("{"); // not raw JSON — quotes are fine, used stylistically around yes/no

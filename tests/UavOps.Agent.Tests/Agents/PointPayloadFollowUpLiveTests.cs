@@ -34,7 +34,7 @@ public class PointPayloadFollowUpLiveTests(ITestOutputHelper output)
     public async Task PointPayloadFollowUp_AfterSeparateFlightCommand_StillCallsRealTool()
     {
         var repeats = LiveTestSupport.RepeatCount;
-        var tailNumbers = new[] { "UAV-1", "UAV-2", "UAV-3" };
+        var tailNumbers = new[] { "997", "998", "999" };
         var successes = 0;
 
         for (var i = 0; i < repeats; i++)

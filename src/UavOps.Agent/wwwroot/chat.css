@@ -47,6 +47,18 @@ main:has(.thread .message)::before {
   color: color-mix(in srgb, var(--accent-text) 75%, transparent);
 }
 
+/* Shown only for a voice-originated message where grammar-fix actually changed the transcript
+   (see chat.js's renderOperatorMessage) - makes a silent correction visible instead of just
+   trusting it happened. */
+.message-heard {
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid color-mix(in srgb, var(--accent-text) 25%, transparent);
+  font-size: 0.78rem;
+  font-style: italic;
+  color: color-mix(in srgb, var(--accent-text) 70%, transparent);
+}
+
 /* ---- Agent message — flat full-width row with an avatar, no card boundary ------------------ */
 .message-agent {
   align-self: stretch;
@@ -274,3 +286,47 @@ main:has(.thread .message)::before {
 
 #composer button[type="submit"]:hover { filter: brightness(1.08); }
 #composer button[type="submit"]:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* Mirrors button[type="submit"]'s pill shape but neutral (not accent) until actively
+   recording/transcribing — see chat.js's micState handling for when each class applies. */
+#micButton {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+#micButton:hover { background: var(--bg-subtle); color: var(--text); }
+#micButton svg { width: 16px; height: 16px; }
+
+#micButton .icon-mic-busy { display: none; }
+
+/* Recording: solid red pulse so it's unmistakable audio is being captured. */
+#micButton.is-recording {
+  color: var(--danger);
+  background: var(--danger-bg);
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+#micButton.is-recording .icon-mic-idle { display: none; }
+#micButton.is-recording .icon-mic-busy { display: inline; }
+
+/* Transcribing: same busy glyph, no pulse (nothing left for the operator to do but wait). */
+#micButton.is-transcribing {
+  color: var(--text-muted);
+  cursor: wait;
+}
+#micButton.is-transcribing .icon-mic-idle { display: none; }
+#micButton.is-transcribing .icon-mic-busy { display: inline; }
+
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}

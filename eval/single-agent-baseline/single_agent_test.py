@@ -65,9 +65,9 @@ sys.stdout.reconfigure(encoding="utf-8")
 # real state, not just read back as text.
 # ---------------------------------------------------------------------------
 FLEET = {
-    "UAV-1": {"lat": 31.801447, "lng": 34.643497, "speedKts": 105, "altitudeFt": 4000, "mode": "Orbiting", "payloadLockedOn": None},
-    "UAV-2": {"lat": 31.798000, "lng": 34.639000, "speedKts": 105, "altitudeFt": 4000, "mode": "Orbiting", "payloadLockedOn": None},
-    "UAV-3": {"lat": 31.805000, "lng": 34.648000, "speedKts": 105, "altitudeFt": 4000, "mode": "Orbiting", "payloadLockedOn": None},
+    "997": {"lat": 31.801447, "lng": 34.643497, "speedKts": 105, "altitudeFt": 4000, "mode": "Orbiting", "payloadLockedOn": None},
+    "998": {"lat": 31.798000, "lng": 34.639000, "speedKts": 105, "altitudeFt": 4000, "mode": "Orbiting", "payloadLockedOn": None},
+    "999": {"lat": 31.805000, "lng": 34.648000, "speedKts": 105, "altitudeFt": 4000, "mode": "Orbiting", "payloadLockedOn": None},
 }
 
 KNOWN_POINTS = {"alpha": (31.81, 34.66), "bravo": (31.79, 34.62), "home": (31.80, 34.64)}
@@ -141,14 +141,14 @@ TOOLS = [
         "name": "GetTelemetry",
         "description": "Get a UAV's current position, speed, altitude, and mode.",
         "parameters": {"type": "object", "properties": {
-            "tailNumber": {"type": "string", "description": "The tail number of the UAV to query, e.g. 'UAV-1'. Must be one of the known UAVs."}
+            "tailNumber": {"type": "string", "description": "The tail number of the UAV to query, e.g. '997'. Must be one of the known UAVs."}
         }, "required": ["tailNumber"]}
     }},
     {"type": "function", "function": {
         "name": "Navigate",
         "description": "Send a UAV to a named location.",
         "parameters": {"type": "object", "properties": {
-            "tailNumber": {"type": "string", "description": "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs."},
+            "tailNumber": {"type": "string", "description": "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs."},
             "location": {"type": "string", "description": "Name of a known point, e.g. 'home', 'alpha', 'bravo'."}
         }, "required": ["tailNumber", "location"]}
     }},
@@ -156,7 +156,7 @@ TOOLS = [
         "name": "SetSpeed",
         "description": "Change a UAV's target cruise speed.",
         "parameters": {"type": "object", "properties": {
-            "tailNumber": {"type": "string", "description": "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs."},
+            "tailNumber": {"type": "string", "description": "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs."},
             "speedKts": {"type": "integer", "description": "Target speed in knots."}
         }, "required": ["tailNumber", "speedKts"]}
     }},
@@ -164,7 +164,7 @@ TOOLS = [
         "name": "SetAltitude",
         "description": "Change a UAV's target altitude.",
         "parameters": {"type": "object", "properties": {
-            "tailNumber": {"type": "string", "description": "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs."},
+            "tailNumber": {"type": "string", "description": "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs."},
             "altitudeFt": {"type": "integer", "description": "Target altitude in feet."}
         }, "required": ["tailNumber", "altitudeFt"]}
     }},
@@ -172,7 +172,7 @@ TOOLS = [
         "name": "PointPayload",
         "description": "Point a UAV's sensor/gimbal at a named location.",
         "parameters": {"type": "object", "properties": {
-            "tailNumber": {"type": "string", "description": "The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs."},
+            "tailNumber": {"type": "string", "description": "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs."},
             "location": {"type": "string", "description": "Name of a known point to look at, e.g. 'home', 'alpha', 'bravo'."}
         }, "required": ["tailNumber", "location"]}
     }},

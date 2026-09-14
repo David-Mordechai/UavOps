@@ -17,10 +17,10 @@ namespace UavOps.Agent.Tooling;
 /// same task rather than opening a second <c>OperatorPromptGate</c> round-trip.
 ///
 /// This was previously a single, un-keyed slot shared by every ambiguous call in the turn
-/// regardless of what it guessed - live-reproduced as a real safety bug: "bring UAV-2 and UAV-3
+/// regardless of what it guessed - live-reproduced as a real safety bug: "bring 998 and 999
 /// home" (two <c>ReturnToLaunch</c> calls, two genuinely different guessed tail numbers, neither
-/// literally present in the operator's own phrasing) asked once, got "UAV-1", and then silently
-/// applied that single answer to *both* calls - UAV-2 and UAV-3 never got commanded at all, and the
+/// literally present in the operator's own phrasing) asked once, got "997", and then silently
+/// applied that single answer to *both* calls - 998 and 999 never got commanded at all, and the
 /// model itself could see something was wrong (identical results for calls it made with different
 /// arguments) without knowing why. Keying by the guessed value fixes this: two different guesses
 /// are two different UAVs as far as this scope is concerned, so each gets its own independent

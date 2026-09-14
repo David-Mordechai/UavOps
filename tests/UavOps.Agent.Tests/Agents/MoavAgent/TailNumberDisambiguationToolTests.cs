@@ -36,9 +36,9 @@ public class TailNumberDisambiguationToolTests
 
     private static List<UavSummary> ThreeUavFleet() =>
     [
-        new UavSummary("UAV-1", "Orbiting", 0, 0),
-        new UavSummary("UAV-2", "Orbiting", 0, 0),
-        new UavSummary("UAV-3", "Orbiting", 0, 0)
+        new UavSummary("997", "Orbiting", 0, 0),
+        new UavSummary("998", "Orbiting", 0, 0),
+        new UavSummary("999", "Orbiting", 0, 0)
     ];
 
     /// <summary>Builds a real TailNumberDisambiguationTool wired to a hub mock that reacts to the
@@ -91,8 +91,8 @@ public class TailNumberDisambiguationToolTests
             new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "ALL" }), CancellationToken.None);
 
         await proxy.DidNotReceive().SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
-        result!.ToString().Should().Contain("UAV-1:").And.Contain("UAV-2:").And.Contain("UAV-3:");
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "998", "999"]);
+        result!.ToString().Should().Contain("997:").And.Contain("998:").And.Contain("999:");
     }
 
     [Fact]
@@ -103,7 +103,7 @@ public class TailNumberDisambiguationToolTests
         await tool.InvokeAsync(
             new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "all" }), CancellationToken.None);
 
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "998", "999"]);
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public class TailNumberDisambiguationToolTests
         await tool.InvokeAsync(args, CancellationToken.None);
         await tool.InvokeAsync(args, CancellationToken.None);
 
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "998", "999"]);
     }
 
     [Fact]
@@ -137,18 +137,18 @@ public class TailNumberDisambiguationToolTests
             tool.InvokeAsync(args, CancellationToken.None).AsTask(),
             tool.InvokeAsync(args, CancellationToken.None).AsTask());
 
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "998", "999"]);
     }
 
     [Fact]
     public async Task InvokeCoreAsync_AllSentinel_FleetHasExactlyOneUav_ResolvesDirectly_NeverSendsLiteralAll()
     {
-        var (tool, inner, _, _) = CreateSut([new UavSummary("UAV-1", "Orbiting", 0, 0)], chatReply: null);
+        var (tool, inner, _, _) = CreateSut([new UavSummary("997", "Orbiting", 0, 0)], chatReply: null);
 
         await tool.InvokeAsync(
             new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "ALL" }), CancellationToken.None);
 
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["997"]);
     }
 
     [Fact]
@@ -168,12 +168,12 @@ public class TailNumberDisambiguationToolTests
     {
         // Regression guard for requirement 3: an explicitly-named tail number must still be
         // trusted directly, with no ask and no "ALL" handling involved at all.
-        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "UAV-2 set speed to 250");
+        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "998 set speed to 250");
 
         await tool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998" }), CancellationToken.None);
 
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["998"]);
         await proxy.DidNotReceive().SendCoreAsync("ReceiveChatMessage", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
     }
 
@@ -185,25 +185,25 @@ public class TailNumberDisambiguationToolTests
         proxy.When(p => p.SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>()))
             .Do(callInfo => offeredChoices = ((IReadOnlyList<string>)callInfo.ArgAt<object?[]>(1)[1]!).ToList());
 
-        // Model guessed "UAV-1" even though the operator never named a UAV - ungrounded.
+        // Model guessed "997" even though the operator never named a UAV - ungrounded.
         var result = await tool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None);
 
-        offeredChoices.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3", "ALL"]);
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
-        result!.ToString().Should().Contain("UAV-1:").And.Contain("UAV-2:").And.Contain("UAV-3:");
+        offeredChoices.Should().BeEquivalentTo(["997", "998", "999", "ALL"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "998", "999"]);
+        result!.ToString().Should().Contain("997:").And.Contain("998:").And.Contain("999:");
     }
 
     [Fact]
     public async Task InvokeCoreAsync_UngroundedGuess_OperatorSelectsSpecificUav_ConfirmsTargetInResult()
     {
-        var (tool, inner, _, _) = CreateSut(ThreeUavFleet(), chatReply: "UAV-3", operatorText: "set speed to 250");
+        var (tool, inner, _, _) = CreateSut(ThreeUavFleet(), chatReply: "999", operatorText: "set speed to 250");
 
         var result = await tool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None);
 
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-3"]);
-        result!.ToString().Should().Contain("UAV-3").And.Contain("ONLY UAV-3");
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["999"]);
+        result!.ToString().Should().Contain("999").And.Contain("ONLY 999");
     }
 
     [Fact]
@@ -216,7 +216,7 @@ public class TailNumberDisambiguationToolTests
         var (firstTool, firstInner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "ALL", operatorText: "set speed to 250", scope: scope);
 
         await firstTool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None);
 
         // Second tool instance - a genuinely different operation (SetAltitude, not SetSpeed) -
         // sharing the same scope. Reusing the fresh proxy/promptGate wiring isn't possible via
@@ -233,10 +233,10 @@ public class TailNumberDisambiguationToolTests
             secondInner, secondListFleet, secondPromptGate, scope, "FlightControlAgent", "corr1", "set speed to 250");
 
         await secondTool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None);
 
-        firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
-        secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-2", "UAV-3"]);
+        firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "998", "999"]);
+        secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "998", "999"]);
     }
 
     [Fact]
@@ -244,16 +244,16 @@ public class TailNumberDisambiguationToolTests
     {
         // Direct regression test for a live-reported bug: operator says "bring the other two home"
         // (no tail number literally in the text) and the model issues two ReturnToLaunch calls in
-        // the same turn, guessing UAV-2 then UAV-3 - two genuinely different intended targets, not
+        // the same turn, guessing 998 then 999 - two genuinely different intended targets, not
         // one ambiguous UAV asked about twice. The old un-keyed TailNumberResolutionScope answered
         // only the FIRST ask and silently applied that same answer to the second call too, so both
         // UAVs ended up commanded against whatever was asked about first instead of their own real,
         // different targets - exactly the transcript the operator reported (four ReturnToLaunch
-        // calls, all executed against UAV-1). Keying the scope by the model's own guessed value
+        // calls, all executed against 997). Keying the scope by the model's own guessed value
         // fixes this: two different guesses must each get their own independent prompt.
         var scope = new TailNumberResolutionScope();
         var fleet = ThreeUavFleet();
-        var replies = new Queue<string>(["UAV-2", "UAV-3"]);
+        var replies = new Queue<string>(["998", "999"]);
         OperatorPromptGate? promptGate = null;
         var proxy = Substitute.For<IClientProxy>();
         proxy.SendCoreAsync("ReceiveChatMessage", Arg.Any<object?[]>(), Arg.Any<CancellationToken>())
@@ -284,11 +284,11 @@ public class TailNumberDisambiguationToolTests
             inner, ListFleet, promptGate, scope, "FlightControlAgent", "corr1", "bring the other two home");
 
         await tool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998" }), CancellationToken.None);
         await tool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-3" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "999" }), CancellationToken.None);
 
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["998", "999"]);
     }
 
     [Fact]
@@ -303,11 +303,11 @@ public class TailNumberDisambiguationToolTests
         var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "bring the rest UAVs home");
 
         var result = await tool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2,UAV-3" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998,999" }), CancellationToken.None);
 
         await proxy.DidNotReceive().SendCoreAsync("ReceiveChatMessage", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
-        result!.ToString().Should().Contain("UAV-2:").And.Contain("UAV-3:").And.NotContain("UAV-1:");
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["998", "999"]);
+        result!.ToString().Should().Contain("998:").And.Contain("999:").And.NotContain("997:");
     }
 
     [Fact]
@@ -316,9 +316,9 @@ public class TailNumberDisambiguationToolTests
         var (tool, inner, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "bring the rest UAVs home");
 
         await tool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2,UAV-9,UAV-3" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998,77777,999" }), CancellationToken.None);
 
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["998", "999"]);
     }
 
     [Fact]
@@ -328,12 +328,12 @@ public class TailNumberDisambiguationToolTests
         // paths, extended to an explicit subset - a repeat of the identical subset this turn must
         // not re-execute.
         var (tool, inner, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "bring the rest UAVs home");
-        var args = new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2,UAV-3" });
+        var args = new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998,999" });
 
         await tool.InvokeAsync(args, CancellationToken.None);
         await tool.InvokeAsync(args, CancellationToken.None);
 
-        inner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["998", "999"]);
     }
 
     [Fact]
@@ -342,7 +342,7 @@ public class TailNumberDisambiguationToolTests
         var scope = new TailNumberResolutionScope();
         var (firstTool, firstInner, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "bring the rest home", scope: scope);
         await firstTool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-2,UAV-3" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998,999" }), CancellationToken.None);
 
         var secondInner = new FakeInnerTool("SetSpeed");
         Task<OperationResult> secondListFleet(CancellationToken cancellationToken) => Task.FromResult(OperationResult.Ok(ThreeUavFleet()));
@@ -351,9 +351,9 @@ public class TailNumberDisambiguationToolTests
         var secondTool = new TailNumberDisambiguationTool(
             secondInner, secondListFleet, secondPromptGate, scope, "FlightControlAgent", "corr1", "set the rest to 250");
         await secondTool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1,UAV-3" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997,999" }), CancellationToken.None);
 
-        firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-2", "UAV-3"]);
-        secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["UAV-1", "UAV-3"]);
+        firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["998", "999"]);
+        secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "999"]);
     }
 }

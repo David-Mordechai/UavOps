@@ -44,7 +44,7 @@ public class GreetingLiveTests(ITestOutputHelper output)
 
             responseText.Should().NotBeNullOrWhiteSpace();
 
-            var snapshot = await getTelemetry("UAV-1", CancellationToken.None);
+            var snapshot = await getTelemetry("997", CancellationToken.None);
             snapshot.SpeedKts.Should().Be(105);
             snapshot.AltitudeFt.Should().Be(4000);
             snapshot.Mode.Should().Be("Orbiting");

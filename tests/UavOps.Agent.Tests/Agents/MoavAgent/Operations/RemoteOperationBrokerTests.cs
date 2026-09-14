@@ -33,7 +33,7 @@ public class RemoteOperationBrokerTests
         var (broker, _) = CreateSut(TimeSpan.FromSeconds(30));
 
         var sw = Stopwatch.StartNew();
-        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "UAV-1", "target alpha"), CancellationToken.None);
+        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "997", "target alpha"), CancellationToken.None);
         sw.Stop();
 
         result.Success.Should().BeFalse();
@@ -54,7 +54,7 @@ public class RemoteOperationBrokerTests
                 return Task.CompletedTask;
             });
 
-        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "UAV-1", "target alpha"), CancellationToken.None);
+        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "997", "target alpha"), CancellationToken.None);
 
         result.Success.Should().BeTrue();
         result.Value.Should().Be("navigated");
@@ -73,7 +73,7 @@ public class RemoteOperationBrokerTests
                 return Task.CompletedTask;
             });
 
-        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "UAV-1", "target alpha"), CancellationToken.None);
+        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "997", "target alpha"), CancellationToken.None);
 
         result.Success.Should().BeFalse();
         result.Error.Should().Be(OperationError.ClientReportedError);
@@ -87,7 +87,7 @@ public class RemoteOperationBrokerTests
         broker.RegisterConnection("conn1");
         proxy.Navigate(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(Task.CompletedTask);
 
-        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "UAV-1", "target alpha"), CancellationToken.None);
+        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "997", "target alpha"), CancellationToken.None);
 
         result.Success.Should().BeFalse();
         result.Error.Should().Be(OperationError.Timeout);
@@ -106,8 +106,8 @@ public class RemoteOperationBrokerTests
         proxy.SetSpeed(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<int>())
             .Returns(callInfo => { setSpeedCorrelationId = callInfo.ArgAt<string>(0); return Task.CompletedTask; });
 
-        var navigateTask = broker.SendAsync<string>((p, cid) => p.Navigate(cid, "UAV-1", "target alpha"), CancellationToken.None);
-        var setSpeedTask = broker.SendAsync<string>((p, cid) => p.SetSpeed(cid, "UAV-2", 200), CancellationToken.None);
+        var navigateTask = broker.SendAsync<string>((p, cid) => p.Navigate(cid, "997", "target alpha"), CancellationToken.None);
+        var setSpeedTask = broker.SendAsync<string>((p, cid) => p.SetSpeed(cid, "998", 200), CancellationToken.None);
 
         navigateCorrelationId.Should().NotBeNullOrEmpty();
         setSpeedCorrelationId.Should().NotBeNullOrEmpty();
@@ -141,7 +141,7 @@ public class RemoteOperationBrokerTests
                 return Task.CompletedTask;
             });
 
-        await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "UAV-1", "x"), CancellationToken.None);
+        await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "997", "x"), CancellationToken.None);
 
         clients.Received(1).Client("conn2");
         clients.DidNotReceive().Client("conn1");
@@ -154,7 +154,7 @@ public class RemoteOperationBrokerTests
         broker.RegisterConnection("conn1");
         proxy.Navigate(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()).Returns(Task.CompletedTask); // never replies
 
-        var task = broker.SendAsync<string>((p, cid) => p.Navigate(cid, "UAV-1", "x"), CancellationToken.None);
+        var task = broker.SendAsync<string>((p, cid) => p.Navigate(cid, "997", "x"), CancellationToken.None);
 
         var sw = Stopwatch.StartNew();
         broker.UnregisterConnection("conn1");
@@ -181,7 +181,7 @@ public class RemoteOperationBrokerTests
                 return Task.CompletedTask;
             });
 
-        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "UAV-1", "x"), CancellationToken.None);
+        var result = await broker.SendAsync<string>((p, cid) => p.Navigate(cid, "997", "x"), CancellationToken.None);
 
         result.Success.Should().BeTrue("conn2 is still tracked as connected — the stale conn1 disconnect must not clear it");
     }

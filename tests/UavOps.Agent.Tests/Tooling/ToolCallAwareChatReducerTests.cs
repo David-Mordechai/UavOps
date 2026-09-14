@@ -46,7 +46,7 @@ public class ToolCallAwareChatReducerTests
         // regardless of the target count - see ToolCallAwareChatReducer's own doc comment. A kept turn
         // must carry its tool call and tool result through untouched.
         var reducer = new ToolCallAwareChatReducer(targetMessageCount: 100);
-        var messages = OneFullTurn("fly UAV-1 to alpha", "call-1", "Navigate", "Done, UAV-1 is en route.");
+        var messages = OneFullTurn("fly 997 to alpha", "call-1", "Navigate", "Done, 997 is en route.");
 
         var result = (await reducer.ReduceAsync(messages, CancellationToken.None)).ToList();
 

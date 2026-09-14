@@ -47,7 +47,7 @@ public class ChatHubRelayTests
             .Returns(Task.FromResult(OperationResult.Ok(snapshot)));
         var (sut, _) = CreateSut(broker);
 
-        var result = await sut.RelayGetTelemetry("UAV-1");
+        var result = await sut.RelayGetTelemetry("997");
 
         result.Should().Contain("\"speedKts\":120").And.Contain("\"mode\":\"Orbiting\"");
     }
@@ -60,7 +60,7 @@ public class ChatHubRelayTests
             .Returns(Task.FromResult(OperationResult.Fail(OperationError.NoClientConnected, "No Moav command client is connected.")));
         var (sut, _) = CreateSut(broker);
 
-        var result = await sut.RelayGetTelemetry("UAV-1");
+        var result = await sut.RelayGetTelemetry("997");
 
         result.Should().Be("Error: No Moav command client is connected.");
     }
@@ -80,25 +80,25 @@ public class ChatHubRelayTests
             .Returns(Task.FromResult(OperationResult.Ok(new TelemetrySnapshot(0, 0, 0, 0, "Transiting", null))));
         var (sut, _) = CreateSut(broker);
 
-        await sut.RelayNavigate("UAV-1", "target alpha");
+        await sut.RelayNavigate("997", "target alpha");
 
         capturedInvoke.Should().NotBeNull();
         _ = capturedInvoke!(proxy, "corr1");
-        _ = proxy.Received(1).Navigate("corr1", "UAV-1", "target alpha");
+        _ = proxy.Received(1).Navigate("corr1", "997", "target alpha");
     }
 
     [Fact]
     public async Task RelayListFleet_BrokerSucceeds_ReturnsValue()
     {
         var broker = Substitute.For<IRemoteOperationBroker>();
-        var summaries = new List<UavSummary> { new("UAV-1", "Orbiting", 31.8, 34.6) };
+        var summaries = new List<UavSummary> { new("997", "Orbiting", 31.8, 34.6) };
         broker.SendAsync<List<UavSummary>>(Arg.Any<Func<IOperationClientProxy, string, Task>>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult(OperationResult.Ok(summaries)));
         var (sut, _) = CreateSut(broker);
 
         var result = await sut.RelayListFleet();
 
-        result.Should().Contain("\"tailNumber\":\"UAV-1\"");
+        result.Should().Contain("\"tailNumber\":\"997\"");
     }
 
     [Fact]
@@ -109,7 +109,7 @@ public class ChatHubRelayTests
             .Returns(Task.FromResult(OperationResult.Ok(3)));
         var (sut, _) = CreateSut(broker);
 
-        var result = await sut.RelayUploadWaypoints("UAV-1", [new Waypoint(1, 2, 100)]);
+        var result = await sut.RelayUploadWaypoints("997", [new Waypoint(1, 2, 100)]);
 
         result.Should().Be("3");
     }
@@ -122,7 +122,7 @@ public class ChatHubRelayTests
             .Returns(Task.FromResult(OperationResult.Fail(OperationError.Timeout, "Moav command client did not respond in time.")));
         var (sut, _) = CreateSut(broker);
 
-        var result = await sut.RelaySetTrackingMode("UAV-1", "Manual");
+        var result = await sut.RelaySetTrackingMode("997", "Manual");
 
         result.Should().Be("Error: Moav command client did not respond in time.");
     }

@@ -305,3 +305,11 @@ header {
 #themeToggle .icon-moon { display: none; }
 #themeToggle.is-light .icon-sun { display: none; }
 #themeToggle.is-light .icon-moon { display: inline; }
+
+/* chat.js toggles this class on #speakToggle when spoken replies are enabled — same
+   class-on-the-button pattern as #themeToggle above. Default (not active) shows the muted
+   glyph; enabling shows the speaker-on glyph. */
+#speakToggle .icon-speak-on { display: none; }
+#speakToggle.is-active .icon-speak-on { display: inline; }
+#speakToggle.is-active .icon-speak-off { display: none; }
+#speakToggle.is-active { color: var(--accent); }

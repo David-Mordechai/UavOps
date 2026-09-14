@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A local-LLM agent layer for natural-language UAV command and control (.NET 8). A chat UI turns
-operator text (e.g. "fly UAV-1 to target alpha and set speed to 200") into fleet, simulator, and
+operator text (e.g. "fly 997 to target alpha and set speed to 200") into fleet, simulator, and
 watchdog commands, via a single flat agent (`BrainAgent`) backed by an OpenAI-compatible chat
 endpoint (Ollama locally by default, or a real OpenAI-compatible server such as vLLM — see
 `AgentModels` in `appsettings.json`).
@@ -460,8 +460,8 @@ tail number plus the literal sentinel `ALL`.
 - **`GetOrAskAsync` is keyed by the model's own guessed tail-number value**, not a single shared
   slot — fixed after a real, live-reported safety bug: with a single un-keyed slot, *any*
   ambiguous tail-number call in a turn reused the *first* call's answer regardless of what it
-  actually guessed. Reported live: "bring the rest UAVs home" with UAV-1 already returned home
-  issued two `ReturnToLaunch` calls (one intended for UAV-2, one for UAV-3); the first asked and
+  actually guessed. Reported live: "bring the rest UAVs home" with 997 already returned home
+  issued two `ReturnToLaunch` calls (one intended for 998, one for 999); the first asked and
   resolved to whatever the operator answered, and the *second call silently inherited that same
   answer* instead of asking about its own, genuinely different guess — every subsequent
   `ReturnToLaunch` that turn executed against the same single UAV, and the model itself could see
@@ -472,7 +472,7 @@ tail number plus the literal sentinel `ALL`.
   immediately followed by `SetAltitude`, both defaulting to the same ungrounded guess for one
   truly ambiguous UAV) still correctly dedupe.
 - **An explicit multi-target subset is a single comma-separated `tailNumber` value** (e.g.
-  `"UAV-2,UAV-3"`), resolved deterministically against the real fleet and fanned out to *exactly*
+  `"998,999"`), resolved deterministically against the real fleet and fanned out to *exactly*
   that set — added after live testing showed the model was unreliable at completing a
   multi-target request by issuing one separate tool call per remaining UAV (the "bring the rest
   home" scenario above: even with the keying fix, the model correctly resolved and executed the
@@ -742,9 +742,77 @@ works end to end.
 `src/UavOps.Agent.McpMoav/appsettings.json`, run `UavOps.Agent`, then separately run
 `src/UavOps.MockFleetClient/bin/Debug/net47/UavOps.MockFleetClient.exe
 http://localhost:5262/uavCommandHub`. Open http://localhost:5262 and type a command (e.g. "set
-UAV-1 speed to 200"); confirm the mock's console logs the received command and the chat response
+997 speed to 200"); confirm the mock's console logs the received command and the chat response
 reflects its placeholder `TelemetrySnapshot`. Stop the mock and retry the same command to confirm
 it fails fast (near-instant `"No fleet command client is connected."`, not a 10s hang).
+
+## Voice STT/TTS evaluation — OPEN ISSUE, not yet merged into the app
+
+Not part of `UavOps.Agent` yet — this is standalone research/eval work, tracked here because it's
+an active, unresolved thread the operator (David) wants picked back up in a future session, not
+because any of it has been wired into the real app.
+
+**Goal**: replace/augment text chat with voice input/output, offline-only (no cloud STT/TTS),
+running on the existing self-hosted GX10 (ASUS Ascent, GB10 Grace Blackwell, ARM64) alongside the
+chat/embedding vLLM containers already documented in "Running it" above. Motivated by a prior,
+separate project's experience that offline Whisper.net quality was noticeably worse than
+Google's cloud Speech-to-Text — the bar for this work is "as good as that", not just "works".
+
+**What exists today**:
+- `eval/voice-test-harness/` — a standalone browser page (not an UavOps.sln project, no build
+  step) that closed-loop tests STT/TTS: it plays a ground-truth sentence through real physical
+  speakers, simultaneously records via a real physical microphone, uploads the recording to an STT
+  endpoint, and scores word-level WER against the original text. Two swappable providers: the
+  browser's own Web Speech API (Chrome's built-in TTS + cloud STT, the "as good as Google"
+  baseline) and a generic custom-HTTP-endpoint provider (JSON `{"input": "..."}` → WAV for TTS,
+  multipart WAV upload → `{"text": "..."}` for STT — OpenAI-Whisper/TTS-shaped on purpose, see
+  below). Driven via the `claude-in-chrome` browser extension so an agent can run it end to end
+  without a human speaking — real mic/speaker hardware, no synthetic audio files.
+- Two always-on Docker services on the GX10 (`~/playground/voice-eval/` on that machine, **not**
+  in this repo — see that directory's own `README.md`/`SUMMARY.md` for full detail, connection
+  info, and the real ARM64/NeMo/torchaudio build friction that went into getting them running at
+  all): **Parakeet-TDT-0.6B-v3** (NVIDIA, STT, `:8002`) and **Chatterbox-Turbo** (Resemble AI, TTS,
+  `:8003`) — both OpenAI-Whisper/TTS-API-shaped, both CORS-enabled (`allow_origins=["*"]`, added
+  2026-09-10 specifically so a browser-based harness on another PC can call them cross-origin —
+  they had **no** CORS support originally, confirmed via a 405 on the OPTIONS preflight, not
+  guessed). Chatterbox-Turbo, not the originally-planned CosyVoice2 — CosyVoice2 wasn't gotten
+  working; Chatterbox was the brief's own named fallback.
+
+**Real, measured result (2026-09-10, quiet room, confirmed-clean run)**: 10 UAV-operator-style
+sentences (e.g. "Set UAV-1 speed to 200 knots", "Return to launch") through the full closed
+acoustic loop scored **avg WER 11.8%, 6/10 exact matches**. Every single nonzero-WER case was a
+UAV-N tail-number callsign, and every one of those was a **formatting** miss ("U8v1"/"UAV3"/"UAV1"
+instead of the hyphenated "UAV-1"/"UAV-3"), never a wrong-content miss — every plain-language
+command transcribed perfectly. Full results table and methodology notes in
+`~/playground/voice-eval/SUMMARY.md` on the GX10. Recorded verbatim under the fleet's naming
+scheme **as it stood on 2026-09-10** — real tail numbers are plain numeric strings (100-99999) as
+of the 2026-09-14 rename below, so a future voice-eval run will show numeric-string callsigns
+(e.g. "997"), not "UAV-1"; this specific historical result is left as originally measured rather
+than rewritten to match, since it quotes actual STT output.
+
+**One methodology finding worth remembering if this gets picked up again**: an earlier run the
+same day scored much worse (avg WER 23.1%) with several fluent-but-completely-unrelated
+transcripts (e.g. "Mm-hmm.", "The court uh") — root cause was someone talking in the room during
+that run, not a model quality problem. The harness's mic capture has to run with Chrome's
+echo-cancellation explicitly **disabled** (`echoCancellation: false` in `providers.js`) for the
+acoustic loopback to work at all — AEC correctly identifies the TTS played through the same PC's
+own speakers as system echo and cancels it, which is required here, but with AEC off, anything
+else in the room (a person talking) is captured uncancelled right alongside the intended TTS
+audio. This is an artifact of same-machine loopback testing specifically — a real operator
+speaking into a mic has no such echo/AEC tradeoff — but it means any future run of this harness
+needs a genuinely quiet room to produce a trustworthy number, and a "bad" result should be
+double-checked against "was someone talking" before being read as a model-quality finding.
+
+**Why this stays open**: David is not satisfied with the callsign-formatting gap yet — real for an
+app whose whole purpose is fleet commands addressed to specific tail numbers. Untried next steps
+(see `SUMMARY.md` for the full list): whether NeMo's `ASRModel` exposes any hotword/biasing
+mechanism for the callsign format, whether regex-normalizing STT output before it reaches the
+agent is a reasonable stopgap (`TailNumberDisambiguationTool` already exists specifically to not
+blindly trust a raw guessed tail number, so this would slot into an already-skeptical pipeline),
+and whether the error is actually coming from Chatterbox's *pronunciation* of the callsign in the
+generated TTS audio rather than Parakeet's transcription of it — never isolated/checked. **Do not
+treat the numbers above as a final verdict or start wiring voice into `UavOps.Agent` without
+picking this thread back up first.**
 
 ## Ports (local dev)
 

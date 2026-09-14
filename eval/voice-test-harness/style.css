@@ -1,0 +1,31 @@
+body {
+  font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+  max-width: 960px;
+  margin: 24px auto;
+  padding: 0 16px;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+h1 { font-size: 1.4rem; margin-bottom: 4px; }
+.subtitle { color: #555; margin-top: 0; margin-bottom: 20px; }
+section { margin-bottom: 28px; padding: 14px 16px; background: #fff; border: 1px solid #ddd; border-radius: 6px; }
+h2 { font-size: 1.05rem; margin-top: 0; }
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
+tr.pass { background: #eaf7ea; }
+tr.warn { background: #fff7e0; }
+tr.fail { background: #fbeaea; }
+button { cursor: pointer; padding: 4px 10px; margin-right: 6px; border: 1px solid #bbb; border-radius: 4px; background: #f5f5f5; }
+button:hover { background: #eee; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+#log-panel {
+  height: 160px; overflow-y: auto; background: #111; color: #ddd; font-family: Consolas, monospace;
+  font-size: 0.82rem; padding: 8px; border-radius: 4px; white-space: pre-wrap;
+}
+#live-transcript { font-family: Consolas, monospace; min-height: 1.4em; padding: 6px; background: #f0f4ff; border-radius: 4px; }
+#export-output { white-space: pre-wrap; background: #f5f5f5; padding: 8px; border-radius: 4px; max-height: 240px; overflow-y: auto; font-size: 0.8rem; }
+.row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+label { font-size: 0.85rem; color: #444; }
+input[type=text] { padding: 4px 6px; min-width: 260px; }
+#status-indicator { font-weight: 600; }
+#mic-status { color: #555; }

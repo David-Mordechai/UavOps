@@ -78,7 +78,7 @@ public class LocationCanonicalizationToolTests
         var tool = new LocationCanonicalizationTool(inner);
 
         var result = await tool.InvokeAsync(
-            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "UAV-1" }), CancellationToken.None);
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None);
 
         result!.ToString().Should().Be("ok");
         inner.LastArguments!.ContainsKey("location").Should().BeFalse();

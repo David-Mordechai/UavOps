@@ -48,9 +48,9 @@ public sealed class SimulatedUavOperationService : IOperationService
     {
         _fleet = new Dictionary<string, VehicleState>(StringComparer.OrdinalIgnoreCase)
         {
-            ["UAV-1"] = new VehicleState(31.801447, 34.643497),
-            ["UAV-2"] = new VehicleState(31.798000, 34.639000),
-            ["UAV-3"] = new VehicleState(31.805000, 34.648000),
+            ["997"] = new VehicleState(31.801447, 34.643497),
+            ["998"] = new VehicleState(31.798000, 34.639000),
+            ["999"] = new VehicleState(31.805000, 34.648000),
         };
     }
 

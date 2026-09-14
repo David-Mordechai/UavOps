@@ -33,10 +33,10 @@ public class KnownPointsTests
         KnownPoints.TryResolve("nowhere", out _, out _).Should().BeFalse();
 
     [Theory]
-    [InlineData("UAV-1 is now flying to target alpha.", "UAV-1 is now flying to alpha.")]
-    [InlineData("UAV-1 is now flying to Target Alpha and Target Bravo.", "UAV-1 is now flying to Alpha and Bravo.")]
-    [InlineData("Payload pointed at target bravo for UAV-2.", "Payload pointed at bravo for UAV-2.")]
-    [InlineData("UAV-1 is now flying to alpha.", "UAV-1 is now flying to alpha.")]
+    [InlineData("997 is now flying to target alpha.", "997 is now flying to alpha.")]
+    [InlineData("997 is now flying to Target Alpha and Target Bravo.", "997 is now flying to Alpha and Bravo.")]
+    [InlineData("Payload pointed at target bravo for 998.", "Payload pointed at bravo for 998.")]
+    [InlineData("997 is now flying to alpha.", "997 is now flying to alpha.")]
     [InlineData("no location mentioned here", "no location mentioned here")]
     public void CanonicalizeText_StripsTargetPrefixWhereverItAppearsInFreeText(string given, string expected) =>
         KnownPoints.CanonicalizeText(given).Should().Be(expected);

@@ -36,7 +36,7 @@ namespace UavOps.MockFleetClient
             Log("ListFleet", "");
             return CommandResult<List<UavSummary>>.Ok(new List<UavSummary>
             {
-                new UavSummary { TailNumber = "UAV-1", Mode = "Orbiting", Lat = 31.801447, Lng = 34.643497 }
+                new UavSummary { TailNumber = "997", Mode = "Orbiting", Lat = 31.801447, Lng = 34.643497 }
             });
         }
 

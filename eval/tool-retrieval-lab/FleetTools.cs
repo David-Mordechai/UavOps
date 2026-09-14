@@ -25,9 +25,9 @@ static class Fleet
 {
     public static Dictionary<string, UavState> CreateDefault() => new()
     {
-        ["UAV-1"] = new UavState { Lat = 31.801447, Lng = 34.643497 },
-        ["UAV-2"] = new UavState { Lat = 31.798000, Lng = 34.639000 },
-        ["UAV-3"] = new UavState { Lat = 31.805000, Lng = 34.648000 },
+        ["997"] = new UavState { Lat = 31.801447, Lng = 34.643497 },
+        ["998"] = new UavState { Lat = 31.798000, Lng = 34.639000 },
+        ["999"] = new UavState { Lat = 31.805000, Lng = 34.648000 },
     };
 }
 
@@ -69,7 +69,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Get a UAV's current position, speed, altitude, and mode.")]
     public object GetTelemetry(
-        [Description("The tail number of the UAV to query, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber)
+        [Description("The tail number of the UAV to query, e.g. '997'. Must be one of the known UAVs.")] string tailNumber)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))
         {
@@ -83,7 +83,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Send a UAV to a named location.")]
     public object Navigate(
-        [Description("The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber,
+        [Description("The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs.")] string tailNumber,
         [Description("Name of a known point, e.g. 'home', 'alpha', 'bravo'.")] string location)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))
@@ -111,7 +111,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Change a UAV's target cruise speed.")]
     public object SetSpeed(
-        [Description("The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber,
+        [Description("The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs.")] string tailNumber,
         [Description("Target speed in knots.")] int speedKts)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))
@@ -127,7 +127,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Change a UAV's target altitude.")]
     public object SetAltitude(
-        [Description("The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber,
+        [Description("The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs.")] string tailNumber,
         [Description("Target altitude in feet.")] int altitudeFt)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))
@@ -143,7 +143,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Point a UAV's sensor/gimbal at a named location.")]
     public object PointPayload(
-        [Description("The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber,
+        [Description("The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs.")] string tailNumber,
         [Description("Name of a known point to look at, e.g. 'home', 'alpha', 'bravo'.")] string location)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))

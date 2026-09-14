@@ -120,7 +120,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
         }
 
         // A genuinely different, specific SUBSET of the fleet - not "ALL", not one UAV - e.g. "the
-        // rest", "the other two", "UAV-2 and UAV-3" once UAV-1 was already handled separately. This
+        // rest", "the other two", "998 and 999" once 997 was already handled separately. This
         // is expressed as a single comma-separated list of real tail numbers computed by the model
         // itself (which has the full conversation history to work out which ones those are), rather
         // than one ambiguous single-UAV guess per tool call. Live-reproduced why this matters: asked
@@ -204,8 +204,8 @@ public sealed class TailNumberDisambiguationTool : AIFunction
             // guessed (arguments, above) - the substitution to the operator's real answer happened
             // entirely behind it. Without this, its own later summary sentence has no way to know
             // the corrected tail number and just repeats its stale original guess instead - a real
-            // production case: it silently substituted UAV-1 -> UAV-2 (correctly, per the operator's
-            // answer) yet still told the operator "UAV-1" was updated. Stating the confirmed target
+            // production case: it silently substituted 997 -> 998 (correctly, per the operator's
+            // answer) yet still told the operator "997" was updated. Stating the confirmed target
             // explicitly in the result text - not asking the model to infer or remember it - is what
             // makes the summary reliably correct.
             return BuildConfirmedTargetNote(chosen) + result;

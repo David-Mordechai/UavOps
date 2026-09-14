@@ -4,47 +4,47 @@
 # pair rather than a bare number, so e.g. an expected 200 can't accidentally match inside 32000.
 
 - name: navigate
-  utterance: "Fly UAV-1 to target alpha"
+  utterance: "Fly 997 to target alpha"
   expectedTools:
     - agent: FlightControlAgent
       tool: Navigate
       argsContain:
-        tailNumber: '"tailNumber":"UAV-1"'
+        tailNumber: '"tailNumber":"997"'
         location: '"location":"target alpha"'
 
 - name: set-speed
-  utterance: "Set UAV-1 speed to 220 knots"
+  utterance: "Set 997 speed to 220 knots"
   expectedTools:
     - agent: FlightControlAgent
       tool: SetSpeed
       argsContain:
-        tailNumber: '"tailNumber":"UAV-1"'
+        tailNumber: '"tailNumber":"997"'
         speedKts: '"speedKts":220'
 
 - name: set-altitude
-  utterance: "Set UAV-1 altitude to 3000 feet"
+  utterance: "Set 997 altitude to 3000 feet"
   expectedTools:
     - agent: FlightControlAgent
       tool: SetAltitude
       argsContain:
-        tailNumber: '"tailNumber":"UAV-1"'
+        tailNumber: '"tailNumber":"997"'
         altitudeFt: '"altitudeFt":3000'
 
 - name: return-to-launch
-  utterance: "Return UAV-2 to launch"
+  utterance: "Return 998 to launch"
   expectedTools:
     - agent: FlightControlAgent
       tool: ReturnToLaunch
       argsContain:
-        tailNumber: '"tailNumber":"UAV-2"'
+        tailNumber: '"tailNumber":"998"'
 
 - name: get-telemetry
-  utterance: "What is the current telemetry for UAV-1?"
+  utterance: "What is the current telemetry for 997?"
   expectedTools:
     - agent: FlightControlAgent
       tool: GetTelemetry
       argsContain:
-        tailNumber: '"tailNumber":"UAV-1"'
+        tailNumber: '"tailNumber":"997"'
 
 - name: list-uavs
   utterance: "List all the UAVs in the fleet"
@@ -54,49 +54,49 @@
       argsContain: {}
 
 - name: point-payload
-  utterance: "Point UAV-1's camera at target bravo"
+  utterance: "Point 997's camera at target bravo"
   expectedTools:
     - agent: PayloadControlAgent
       tool: PointPayload
       argsContain:
-        tailNumber: '"tailNumber":"UAV-1"'
+        tailNumber: '"tailNumber":"997"'
         location: '"location":"target bravo"'
 
 - name: reset-payload
-  utterance: "Reset UAV-1's payload to its default position"
+  utterance: "Reset 997's payload to its default position"
   expectedTools:
     - agent: PayloadControlAgent
       tool: ResetPayload
       argsContain:
-        tailNumber: '"tailNumber":"UAV-1"'
+        tailNumber: '"tailNumber":"997"'
 
 - name: mission-status
-  utterance: "What is the mission status for UAV-1?"
+  utterance: "What is the mission status for 997?"
   expectedTools:
     - agent: MissionAgent
       tool: GetMissionStatus
       argsContain:
-        tailNumber: '"tailNumber":"UAV-1"'
+        tailNumber: '"tailNumber":"997"'
 
 - name: gdt-link-status
-  utterance: "What's the link status for UAV-3?"
+  utterance: "What's the link status for 999?"
   expectedTools:
     - agent: GdtControlAgent
       tool: GetLinkStatus
       argsContain:
-        tailNumber: '"tailNumber":"UAV-3"'
+        tailNumber: '"tailNumber":"999"'
 
 - name: gdt-tracking-mode
-  utterance: "Set UAV-1's antenna tracking mode to manual"
+  utterance: "Set 997's antenna tracking mode to manual"
   expectedTools:
     - agent: GdtControlAgent
       tool: SetTrackingMode
       argsContain:
-        tailNumber: '"tailNumber":"UAV-1"'
+        tailNumber: '"tailNumber":"997"'
         mode: '"mode":"Manual"'
 
 - name: compound-flight-and-payload
-  utterance: "fly UAV-1 to target alpha, set speed to 200 and altitude to 3000 and point the camera there"
+  utterance: "fly 997 to target alpha, set speed to 200 and altitude to 3000 and point the camera there"
   expectedTools:
     - agent: FlightControlAgent
       tool: Navigate
@@ -120,7 +120,7 @@
   expectNoToolCalls: true
 
 - name: unit-conversion-resistance
-  utterance: "set UAV-1 altitude to 3000"
+  utterance: "set 997 altitude to 3000"
   expectedTools:
     - agent: FlightControlAgent
       tool: SetAltitude

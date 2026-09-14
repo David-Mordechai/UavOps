@@ -33,7 +33,7 @@ public class FlyAllFleetWideLiveTests(ITestOutputHelper output)
     public async Task FlyAllFleetWideCommand_NeverClaimsSuccessWithoutRealMutation()
     {
         var repeats = LiveTestSupport.RepeatCount;
-        var tailNumbers = new[] { "UAV-1", "UAV-2", "UAV-3" };
+        var tailNumbers = new[] { "997", "998", "999" };
         var verifiedSuccesses = 0;
         var honestFailures = 0;
 

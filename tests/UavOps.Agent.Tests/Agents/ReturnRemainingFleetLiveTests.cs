@@ -13,9 +13,9 @@ namespace UavOps.Agent.Tests.Agents;
 /// you mean?" prompts (one per genuinely different guessed tail number - see
 /// <see cref="TailNumberResolutionScope"/>'s own doc comment for why a single turn can now
 /// legitimately need more than one), which this test answers with two distinct real tail numbers -
-/// unlike the real incident, where the operator answered the first prompt with "UAV-1" (the UAV
+/// unlike the real incident, where the operator answered the first prompt with "997" (the UAV
 /// already sent home) and let the second time out, after which the model fell into a confused
-/// retry loop repeatedly re-guessing "UAV-1" instead of trying a genuinely different tail number.
+/// retry loop repeatedly re-guessing "997" instead of trying a genuinely different tail number.
 /// This test isolates the scope-keying mechanism from that separate, model-behavior-level
 /// confusion by always supplying real, distinct, valid answers - proving the underlying resolution
 /// mechanism itself correctly routes each ambiguous call to a different UAV rather than clobbering
@@ -44,31 +44,31 @@ public class ReturnRemainingFleetLiveTests(ITestOutputHelper output)
             await orchestrator.HandleAsync("What UAVs do we have?", $"{correlationPrefix}-2", CancellationToken.None);
             await orchestrator.HandleAsync("send them to target alpha at speed 250 and altitude 3000", $"{correlationPrefix}-3", CancellationToken.None);
             await orchestrator.HandleAsync("point their payloads there", $"{correlationPrefix}-4", CancellationToken.None);
-            await orchestrator.HandleAsync("bring uav-1 home", $"{correlationPrefix}-5", CancellationToken.None);
+            await orchestrator.HandleAsync("bring 997 home", $"{correlationPrefix}-5", CancellationToken.None);
 
             LiveTestSupport.LiveLog(output, $"[ReturnRemainingFleet] repeat {i + 1}/{repeats}: the ambiguous 'rest' turn...");
-            // The real incident's own turn: "bring the rest UAVs home" - UAV-1 already went home, so
-            // the only correct real outcome is UAV-2 AND UAV-3 both ending up ReturningToLaunch.
-            // Unlike the real operator (who answered the first prompt "UAV-1" by mistake), always
+            // The real incident's own turn: "bring the rest UAVs home" - 997 already went home, so
+            // the only correct real outcome is 998 AND 999 both ending up ReturningToLaunch.
+            // Unlike the real operator (who answered the first prompt "997" by mistake), always
             // answer with the two genuinely different remaining tail numbers, in order - this test's
             // job is to prove the resolution mechanism itself keeps them independent, not to
             // reproduce the operator's own input mistake.
             var handleTask = orchestrator.HandleAsync("bring the rest UAVs home", $"{correlationPrefix}-6", CancellationToken.None);
-            await LiveTestSupport.AnswerOperatorPromptsAsync(promptGate, handleTask, "UAV-2", "UAV-3");
+            await LiveTestSupport.AnswerOperatorPromptsAsync(promptGate, handleTask, "998", "999");
             var (summary, duration) = await handleTask;
             LiveTestSupport.LiveLog(output, $"[ReturnRemainingFleet] repeat {i + 1}/{repeats} responded (duration={duration}s)");
             output.WriteLine(summary);
 
-            var uav1 = await getTelemetry("UAV-1", CancellationToken.None);
-            var uav2 = await getTelemetry("UAV-2", CancellationToken.None);
-            var uav3 = await getTelemetry("UAV-3", CancellationToken.None);
-            output.WriteLine($"UAV-1: mode={uav1.Mode}");
-            output.WriteLine($"UAV-2: mode={uav2.Mode}");
-            output.WriteLine($"UAV-3: mode={uav3.Mode}");
+            var uav1 = await getTelemetry("997", CancellationToken.None);
+            var uav2 = await getTelemetry("998", CancellationToken.None);
+            var uav3 = await getTelemetry("999", CancellationToken.None);
+            output.WriteLine($"997: mode={uav1.Mode}");
+            output.WriteLine($"998: mode={uav2.Mode}");
+            output.WriteLine($"999: mode={uav3.Mode}");
 
-            // The real ground-truth check this bug broke: UAV-2 and UAV-3 must BOTH actually be
+            // The real ground-truth check this bug broke: 998 and 999 must BOTH actually be
             // returning home, not just whichever one the (buggy) shared cache happened to answer
-            // first. UAV-1's own state was already verified true by the earlier explicit turn.
+            // first. 997's own state was already verified true by the earlier explicit turn.
             var bothRemainingReturned =
                 "ReturningToLaunch".Equals(uav2.Mode, StringComparison.OrdinalIgnoreCase) &&
                 "ReturningToLaunch".Equals(uav3.Mode, StringComparison.OrdinalIgnoreCase);
@@ -76,11 +76,11 @@ public class ReturnRemainingFleetLiveTests(ITestOutputHelper output)
             if (bothRemainingReturned)
             {
                 successes++;
-                LiveTestSupport.LiveLog(output, "  => VERIFIED SUCCESS (UAV-2 and UAV-3 both actually returned home)");
+                LiveTestSupport.LiveLog(output, "  => VERIFIED SUCCESS (998 and 999 both actually returned home)");
             }
             else
             {
-                LiveTestSupport.LiveLog(output, $"  => MISMATCH (UAV-2 mode={uav2.Mode}, UAV-3 mode={uav3.Mode} - at least one never actually returned)");
+                LiveTestSupport.LiveLog(output, $"  => MISMATCH (998 mode={uav2.Mode}, 999 mode={uav3.Mode} - at least one never actually returned)");
             }
         }
 

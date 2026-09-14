@@ -182,7 +182,7 @@ Tail numbers:
 Multi-part requests:
 - Count how many distinct actions the operator asked for, across however many UAVs or areas are
   involved, and call every matching tool for every one of them, not just the first you notice - e.g.
-  "fly UAV-1 to target alpha, set speed to 200, and point the camera there" is THREE actions
+  "fly 997 to target alpha, set speed to 200, and point the camera there" is THREE actions
   (Navigate, SetSpeed, PointPayload) - all three must be called, in the same turn where possible.
 - You may call multiple tools in the same turn.
 
@@ -229,9 +229,9 @@ Resolving references from history:
 - You do see the earlier turns of this conversation as real message history, not just the latest
   message. When the operator's request refers to something established earlier - a pronoun ('it',
   'that one', 'there'), or a request to repeat a prior action for a new target ('do the same for
-  UAV-2', 'now do that for the other one') - resolve the reference yourself from your own history
+  998', 'now do that for the other one') - resolve the reference yourself from your own history
   before deciding which tool/parameters to use, fully and explicitly (e.g. call Navigate for
-  'UAV-2', never leave a pronoun unresolved in your own reasoning).
+  '998', never leave a pronoun unresolved in your own reasoning).
 - If the reference is genuinely ambiguous, or you can't confidently resolve it from history, ask the
   operator to clarify instead of guessing - same as for any other unnamed UAV.
 - When the operator asks you to recall, summarize, or refer back to anything said or done earlier
@@ -280,9 +280,9 @@ static class Fleet
 {
     public static Dictionary<string, UavState> CreateDefault() => new()
     {
-        ["UAV-1"] = new UavState { Lat = 31.801447, Lng = 34.643497 },
-        ["UAV-2"] = new UavState { Lat = 31.798000, Lng = 34.639000 },
-        ["UAV-3"] = new UavState { Lat = 31.805000, Lng = 34.648000 },
+        ["997"] = new UavState { Lat = 31.801447, Lng = 34.643497 },
+        ["998"] = new UavState { Lat = 31.798000, Lng = 34.639000 },
+        ["999"] = new UavState { Lat = 31.805000, Lng = 34.648000 },
     };
 }
 
@@ -324,7 +324,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Get a UAV's current position, speed, altitude, and mode.")]
     public object GetTelemetry(
-        [Description("The tail number of the UAV to query, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber)
+        [Description("The tail number of the UAV to query, e.g. '997'. Must be one of the known UAVs.")] string tailNumber)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))
         {
@@ -338,7 +338,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Send a UAV to a named location.")]
     public object Navigate(
-        [Description("The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber,
+        [Description("The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs.")] string tailNumber,
         [Description("Name of a known point, e.g. 'home', 'alpha', 'bravo'.")] string location)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))
@@ -366,7 +366,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Change a UAV's target cruise speed.")]
     public object SetSpeed(
-        [Description("The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber,
+        [Description("The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs.")] string tailNumber,
         [Description("Target speed in knots.")] int speedKts)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))
@@ -382,7 +382,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Change a UAV's target altitude.")]
     public object SetAltitude(
-        [Description("The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber,
+        [Description("The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs.")] string tailNumber,
         [Description("Target altitude in feet.")] int altitudeFt)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))
@@ -398,7 +398,7 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
 
     [Description("Point a UAV's sensor/gimbal at a named location.")]
     public object PointPayload(
-        [Description("The tail number of the UAV to command, e.g. 'UAV-1'. Must be one of the known UAVs.")] string tailNumber,
+        [Description("The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs.")] string tailNumber,
         [Description("Name of a known point to look at, e.g. 'home', 'alpha', 'bravo'.")] string location)
     {
         if (!fleet.TryGetValue(tailNumber, out var state))

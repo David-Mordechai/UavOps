@@ -32,13 +32,13 @@ static class Scenarios
                 Greeting,
                 ListUavs,
                 new ScenarioTurn(
-                    "fly UAV-1 to target alpha and set its speed to 250",
+                    "fly 997 to target alpha and set its speed to 250",
                     ["Navigate", "SetSpeed"]),
             ],
             state =>
-                state.Fleet["UAV-1"].SpeedKts == 250 && state.Fleet["UAV-1"].Mode == "Transiting" &&
-                state.Fleet["UAV-2"].SpeedKts == 105 && state.Fleet["UAV-2"].Mode == "Orbiting" &&
-                state.Fleet["UAV-3"].SpeedKts == 105 && state.Fleet["UAV-3"].Mode == "Orbiting"),
+                state.Fleet["997"].SpeedKts == 250 && state.Fleet["997"].Mode == "Transiting" &&
+                state.Fleet["998"].SpeedKts == 105 && state.Fleet["998"].Mode == "Orbiting" &&
+                state.Fleet["999"].SpeedKts == 105 && state.Fleet["999"].Mode == "Orbiting"),
 
         new Scenario(
             "synonym-phrasing",

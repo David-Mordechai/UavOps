@@ -10,6 +10,7 @@ using UavOps.Agent.Agents;
 using UavOps.Agent.Hubs;
 using UavOps.Agent.Options;
 using UavOps.Agent.Tooling;
+using UavOps.Agent.Voice;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +41,9 @@ var openAiOptions = builder.Configuration.GetSection(OpenAiOptions.SectionName).
 
 var embeddingOptions = builder.Configuration.GetSection(EmbeddingOptions.SectionName).Get<EmbeddingOptions>()
     ?? throw new InvalidOperationException($"Missing '{EmbeddingOptions.SectionName}' configuration section.");
+
+var voiceOptions = builder.Configuration.GetSection(VoiceOptions.SectionName).Get<VoiceOptions>()
+    ?? throw new InvalidOperationException($"Missing '{VoiceOptions.SectionName}' configuration section.");
 
 var agentConfig = AgentConfigLoader.Load(Path.Combine(builder.Environment.ContentRootPath, "Agents", "BrainAgent.yaml"));
 
@@ -105,6 +109,7 @@ var memoryOptions = builder.Configuration.GetSection(MemoryOptions.SectionName).
 builder.Services.AddSingleton(ollamaOptions);
 builder.Services.AddSingleton(openAiOptions);
 builder.Services.AddSingleton(embeddingOptions);
+builder.Services.AddSingleton(voiceOptions);
 builder.Services.AddSingleton(retrievalOptions);
 builder.Services.AddSingleton(memoryOptions);
 builder.Services.AddSingleton(remoteOperationOptions);
@@ -160,6 +165,15 @@ builder.Services.AddSingleton<Func<string, string?, IChatClient>>(sp => (modelNa
     return new FunctionInvokingChatClient(inner) { AllowConcurrentInvocation = true };
 });
 
+// Voice gateway: GX10 runs only bare AI-model inference (two whisper-server instances for STT,
+// one per language, plus the slimmed Chatterbox-Turbo TTS container) - everything else (wire
+// adaptation, language routing, the grammar-fix pass) lives in VoiceGatewayService instead of the
+// Python business logic GX10 used to run. Named clients + explicit timeouts, same pattern already
+// proven in UavOps.Agent.McpWatchdog/Program.cs.
+builder.Services.AddHttpClient("SttInference", c => c.Timeout = TimeSpan.FromSeconds(voiceOptions.HttpTimeoutSeconds));
+builder.Services.AddHttpClient("TtsInference", c => c.Timeout = TimeSpan.FromSeconds(voiceOptions.HttpTimeoutSeconds));
+builder.Services.AddSingleton<VoiceGatewayService>();
+
 builder.Services.AddSingleton<AgentFactory>(sp =>
     new AgentFactory(
         sp.GetRequiredService<Func<string, string?, IChatClient>>(),
@@ -185,6 +199,8 @@ app.UseStaticFiles();
 // URL changes by mapping both here.
 app.MapHub<ChatHub>("/chatHub");
 app.MapHub<ChatHub>("/uavCommandHub");
+
+app.MapVoiceEndpoints();
 
 app.MapGet("/healthz", () =>
 {

@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UavOps Voice Test Harness</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<h1>UavOps Voice Test Harness</h1>
+<p class="subtitle">
+  Standalone STT/TTS test tool — plays each scenario through the speakers, listens on the
+  microphone, and scores the transcript against ground truth. Not part of UavOps.Agent.
+</p>
+
+<section>
+  <h2>1. Setup</h2>
+  <div class="row">
+    <button id="enable-mic-btn">Enable Microphone</button>
+    <span id="mic-status">Microphone: not yet granted</span>
+  </div>
+  <div class="row">
+    <label for="provider-select">Provider:</label>
+    <select id="provider-select">
+      <option value="browser" selected>Browser (Web Speech API)</option>
+      <option value="custom">Custom HTTP endpoint (e.g. GX10 Parakeet/CosyVoice2)</option>
+    </select>
+  </div>
+  <div class="row" id="custom-provider-config" hidden>
+    <label for="custom-tts-url">TTS URL (POST {text} → audio blob):</label>
+    <input type="text" id="custom-tts-url" placeholder="http://10.10.77.57:PORT/tts">
+    <label for="custom-stt-url">STT URL (POST multipart audio → {text}):</label>
+    <input type="text" id="custom-stt-url" placeholder="http://10.10.77.57:PORT/stt">
+    <button id="apply-custom-provider-btn">Apply</button>
+  </div>
+  <div class="row">
+    <label for="scenario-set-select">Scenario set:</label>
+    <select id="scenario-set-select">
+      <option value="en" selected>English (live TTS)</option>
+      <option value="he">Hebrew (real FLEURS human speech — no Hebrew TTS voice available locally)</option>
+    </select>
+  </div>
+</section>
+
+<section>
+  <h2>2. Scenarios</h2>
+  <div class="row">
+    <button id="run-all-btn">Run All (closed-loop)</button>
+    <span id="status-indicator">Idle</span>
+  </div>
+  <p>Live transcript (during a run):</p>
+  <div id="live-transcript"></div>
+  <table>
+    <thead><tr><th>ID</th><th>Sentence</th><th>Actions</th></tr></thead>
+    <tbody id="scenarios-body"></tbody>
+  </table>
+</section>
+
+<section>
+  <h2>3. Results</h2>
+  <div class="row">
+    <button id="reset-results-btn">Reset results</button>
+    <button id="export-results-btn">Export as JSON</button>
+  </div>
+  <p id="results-summary"></p>
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Ground truth</th><th>Transcript</th><th>WER</th><th>TTS ms</th><th>STT ms</th><th>Provider</th></tr>
+    </thead>
+    <tbody id="results-body"></tbody>
+  </table>
+  <pre id="export-output"></pre>
+</section>
+
+<section>
+  <h2>4. Log</h2>
+  <div id="log-panel"></div>
+</section>
+
+<script src="scenarios.js"></script>
+<script src="scenarios-he.js"></script>
+<script src="wer.js"></script>
+<script src="providers.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

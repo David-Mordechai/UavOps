@@ -32,6 +32,18 @@
     </nav>
     <div class="header-actions">
       <span id="connectionStatus" class="status status-connecting">connecting…</span>
+      <button id="speakToggle" class="icon-btn" type="button" aria-label="Toggle spoken replies" aria-pressed="false" title="Read agent replies aloud">
+        <svg class="icon-speak-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="4 9 8 9 12 5 12 19 8 15 4 15 4 9" />
+          <path d="M16 8a5 5 0 0 1 0 8" />
+          <path d="M18.5 5.5a9 9 0 0 1 0 13" />
+        </svg>
+        <svg class="icon-speak-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="4 9 8 9 12 5 12 19 8 15 4 15 4 9" />
+          <line x1="16" y1="9" x2="21" y2="14" />
+          <line x1="21" y1="9" x2="16" y2="14" />
+        </svg>
+      </button>
       <button id="settingsToggle" class="icon-btn" type="button" aria-label="Open settings">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3" />
@@ -61,6 +73,17 @@
     <form id="composer">
       <div id="composer-inner">
         <input id="messageInput" type="text" autocomplete="off" placeholder="Type a command, e.g. &quot;set speed to 120 and point the camera at target alpha&quot;" />
+        <button type="button" id="micButton" aria-label="Speak a command" title="Speak a command">
+          <svg class="icon-mic-idle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+            <line x1="12" y1="19" x2="12" y2="23" />
+            <line x1="8" y1="23" x2="16" y2="23" />
+          </svg>
+          <svg class="icon-mic-busy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5" />
+          </svg>
+        </button>
         <button type="submit" aria-label="Send message">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="12" y1="19" x2="12" y2="5" />
