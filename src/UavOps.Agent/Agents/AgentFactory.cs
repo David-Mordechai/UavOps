@@ -130,6 +130,18 @@ public sealed class AgentFactory(
         }
     }
 
+    /// <summary>Snapshots BrainAgent's own real, persistent conversation history (see
+    /// <see cref="GetOrCreatePersistentBrainAgentAsync"/>) — used by <see cref="Voice.VoiceGatewayService"/>'s
+    /// grammar-fix pass so it can disambiguate a mishearing (e.g. "separator" vs. "operator") using
+    /// the same conversation the operator is actually having, rather than correcting one transcript
+    /// line in isolation. Creates the persistent session on first call if nothing has chatted yet
+    /// (harmless — same lazy, idempotent creation any chat turn would trigger).</summary>
+    public async Task<IReadOnlyList<ChatMessage>> GetRecentBrainAgentMessagesAsync(CancellationToken cancellationToken)
+    {
+        var (_, session, historyProvider) = await GetOrCreatePersistentBrainAgentAsync(cancellationToken);
+        return historyProvider.GetMessages(session);
+    }
+
     /// <summary>Builds a template tool list once at startup — real per-tool wrapping (so names/
     /// descriptions match exactly what a real turn would build) under a placeholder correlationId
     /// that's never actually invoked, purely to give <see cref="ToolRetrievalIndex.BuildAsync"/>

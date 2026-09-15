@@ -15,6 +15,7 @@ using UavOps.Agent.Contracts;
 using UavOps.Agent.Hubs;
 using UavOps.Agent.Options;
 using UavOps.Agent.Tooling;
+using UavOps.Agent.Voice;
 using Xunit.Abstractions;
 
 namespace UavOps.Agent.Tests.Agents;
@@ -114,15 +115,18 @@ internal static class LiveTestSupport
     }
 
     /// <summary>
-    /// Builds an <see cref="AgentFactory"/> against whatever backend the real app is actually
-    /// configured to use — reading <c>src/UavOps.Agent/appsettings.json</c> (plus user secrets, for
-    /// <see cref="OpenAiOptions.ApiKey"/>) and applying the <c>AgentModels</c> overrides exactly like
-    /// <c>Program.cs</c> does. This matters: these tests used to hardcode Ollama + granite4.1:3b,
-    /// which is NOT what production actually talks to whenever <c>AgentModels</c> points agents at
-    /// an OpenAI-compatible endpoint instead (as it does at the time of writing) - a fix validated
-    /// against the wrong model proves nothing about the deployed behavior.
+    /// Loads the same config <c>Program.cs</c> does (<c>src/UavOps.Agent/appsettings.json</c> plus
+    /// user secrets, with the <c>AgentModels</c> override applied to a freshly loaded
+    /// <c>BrainAgent.yaml</c>) and builds the same chat-client-factory delegate, WITHOUT the
+    /// MCP-server/session/retrieval wiring <see cref="BuildLiveOrchestrator"/> also does - split out
+    /// so a test that only needs "the real model BrainAgent talks to" (e.g. a voice grammar-fix
+    /// test, which shares this exact chat client but has nothing to do with tools/MCP) doesn't have
+    /// to spin up child MCP processes just to get it. Returns a fresh <see cref="AgentConfig"/>
+    /// instance each call - fine for this purpose since only its Model/Provider are used outside
+    /// <see cref="BuildLiveOrchestrator"/>'s own MCP-specific mutations (server Args, folded-in
+    /// domain instructions).
     /// </summary>
-    public static async Task<(MainAgentOrchestrator Orchestrator, ToolInvocationLogger ToolLogger, Func<string, CancellationToken, Task<TelemetrySnapshot>> GetTelemetry, AgentFactory Factory, McpClientGroup McpClients, ConfirmationGate ConfirmationGate, OperatorPromptGate PromptGate)> BuildLiveOrchestrator()
+    public static (Func<string, string?, IChatClient> ChatClientFactory, AgentConfig AgentConfig, RetrievalOptions RetrievalOptions, EmbeddingOptions EmbeddingOptions, string DefaultModel) BuildChatClientFactoryAndAgentConfig()
     {
         var currentDir = AppContext.BaseDirectory;
         var srcAgentDir = Path.GetFullPath(Path.Combine(currentDir, "..", "..", "..", "..", "..", "src", "UavOps.Agent"));
@@ -140,20 +144,6 @@ internal static class LiveTestSupport
             ?? throw new InvalidOperationException("Missing Embedding configuration.");
 
         var agentConfig = AgentConfigLoader.Load(Path.Combine(srcAgentDir, "Agents", "BrainAgent.yaml"));
-
-        // Same "{configuration}" placeholder substitution UavOps.Agent's own Program.cs does - see
-        // its own doc comment. This test project is always built (and run via `dotnet test`) in
-        // whatever configuration this exact #if resolves to, matching the same-solution Mcp*
-        // projects built alongside it via `dotnet build UavOps.sln` beforehand.
-#if DEBUG
-        const string buildConfiguration = "Debug";
-#else
-        const string buildConfiguration = "Release";
-#endif
-        foreach (var serverConfig in agentConfig.McpServers)
-        {
-            serverConfig.Args = serverConfig.Args.Select(a => a.Replace("{configuration}", buildConfiguration)).ToList();
-        }
 
         // Same "apply AgentModels onto the loaded YAML" step Program.cs does, before anything else
         // touches agentConfig.
@@ -183,6 +173,59 @@ internal static class LiveTestSupport
             return new FunctionInvokingChatClient(inner) { AllowConcurrentInvocation = true };
         };
 
+        return (chatClientFactory, agentConfig, retrievalOptions, embeddingOptions, ollamaOptions.DefaultModel);
+    }
+
+    /// <summary>
+    /// Builds a real <see cref="VoiceGatewayService"/> sharing the same chat-client-factory/
+    /// AgentConfig every voice grammar-fix live test needs (see <see cref="BuildChatClientFactoryAndAgentConfig"/>),
+    /// wired to <paramref name="factory"/> so <c>FixGrammarAsync</c> can read that factory's real
+    /// conversation history for disambiguation context. VoiceOptions/IHttpClientFactory are never
+    /// touched by <c>FixGrammarAsync</c> (they only matter for the real STT/TTS wire hops these
+    /// tests deliberately bypass), so a substitute/empty instance is fine here.
+    /// </summary>
+    public static VoiceGatewayService BuildVoiceGatewayService(AgentFactory factory)
+    {
+        var (chatClientFactory, agentConfig, _, _, _) = BuildChatClientFactoryAndAgentConfig();
+        return new VoiceGatewayService(
+            Substitute.For<IHttpClientFactory>(),
+            new VoiceOptions { SttEnglishEndpoint = "", SttHebrewEndpoint = "", TtsEndpoint = "" },
+            chatClientFactory,
+            agentConfig,
+            factory,
+            NullLogger<VoiceGatewayService>.Instance);
+    }
+
+    /// <summary>
+    /// Builds an <see cref="AgentFactory"/> against whatever backend the real app is actually
+    /// configured to use — reading <c>src/UavOps.Agent/appsettings.json</c> (plus user secrets, for
+    /// <see cref="OpenAiOptions.ApiKey"/>) and applying the <c>AgentModels</c> overrides exactly like
+    /// <c>Program.cs</c> does. This matters: these tests used to hardcode Ollama + granite4.1:3b,
+    /// which is NOT what production actually talks to whenever <c>AgentModels</c> points agents at
+    /// an OpenAI-compatible endpoint instead (as it does at the time of writing) - a fix validated
+    /// against the wrong model proves nothing about the deployed behavior.
+    /// </summary>
+    public static async Task<(MainAgentOrchestrator Orchestrator, ToolInvocationLogger ToolLogger, Func<string, CancellationToken, Task<TelemetrySnapshot>> GetTelemetry, AgentFactory Factory, McpClientGroup McpClients, ConfirmationGate ConfirmationGate, OperatorPromptGate PromptGate)> BuildLiveOrchestrator()
+    {
+        var currentDir = AppContext.BaseDirectory;
+        var srcAgentDir = Path.GetFullPath(Path.Combine(currentDir, "..", "..", "..", "..", "..", "src", "UavOps.Agent"));
+
+        var (chatClientFactory, agentConfig, retrievalOptions, embeddingOptions, defaultModel) = BuildChatClientFactoryAndAgentConfig();
+
+        // Same "{configuration}" placeholder substitution UavOps.Agent's own Program.cs does - see
+        // its own doc comment. This test project is always built (and run via `dotnet test`) in
+        // whatever configuration this exact #if resolves to, matching the same-solution Mcp*
+        // projects built alongside it via `dotnet build UavOps.sln` beforehand.
+#if DEBUG
+        const string buildConfiguration = "Debug";
+#else
+        const string buildConfiguration = "Release";
+#endif
+        foreach (var serverConfig in agentConfig.McpServers)
+        {
+            serverConfig.Args = serverConfig.Args.Select(a => a.Replace("{configuration}", buildConfiguration)).ToList();
+        }
+
         var mockHubContext = Substitute.For<IHubContext<ChatHub>>();
         var mockConfig = Substitute.For<IConfiguration>();
         var toolLogger = new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, mockHubContext);
@@ -205,7 +248,7 @@ internal static class LiveTestSupport
 
         var factory = new AgentFactory(
             chatClientFactory,
-            ollamaOptions.DefaultModel,
+            defaultModel,
             agentConfig,
             retrievalOptions,
             new MemoryOptions(),
