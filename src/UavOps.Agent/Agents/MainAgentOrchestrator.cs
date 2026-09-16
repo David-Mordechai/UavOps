@@ -42,6 +42,13 @@ namespace UavOps.Agent.Agents;
 /// sign-off before a consequential action, <c>TailNumberDisambiguationTool</c>'s grounding of every
 /// tail number against the real fleet - are untouched; those were never compensating for
 /// unreliability, they're an intentional safety boundary.
+///
+/// One narrow addition since the above: <see cref="RepeatQuestionReminder"/> - a separate, real,
+/// live-reproduced bug where the model answered a status question fabricated from memory instead
+/// of calling its tool again, specifically when the operator repeated the exact same question
+/// (measured ~1-in-5 even with an explicit "always call this fresh" instruction already in
+/// BrainAgent.yaml). Deliberately not a reintroduction of the forcing/retry mechanism above - see
+/// that class's own doc comment for why this is safe against the same regression.
 /// </summary>
 public sealed class MainAgentOrchestrator(AgentFactory agentFactory, ToolInvocationLogger toolLogger)
 {
@@ -69,9 +76,25 @@ public sealed class MainAgentOrchestrator(AgentFactory agentFactory, ToolInvocat
         var retrievalQueryText = string.Join("\n", historyText.Append(text));
 
         var tools = await agentFactory.BuildToolsForTurn(correlationId, text, retrievalQueryText, cancellationToken);
-        var runOptions = new ChatClientAgentRunOptions(new ChatOptions { Tools = tools, AllowMultipleToolCalls = true });
+        var chatOptions = new ChatOptions { Tools = tools, AllowMultipleToolCalls = true };
 
-        var response = await brainAgent.RunAsync(text, session, runOptions, cancellationToken: cancellationToken);
+        // See RepeatQuestionReminder's own doc comment for the real, live-reproduced bug this
+        // closes, and why forcing one specific, already-proven tool name here is safe against the
+        // regression that made forcing ANY tool on every turn get reverted before (see this class's
+        // own doc comment above) - the guard on toolName actually being in this turn's own offered
+        // tools list is defensive: retrieval offered it every time this was live-tested, but forcing
+        // a tool name the model was never even given would be a hard error, not just a bad guess.
+        var isRepeat = RepeatQuestionReminder.TryFindRepeatedToolName(text, history, out var repeatedToolName)
+            && tools.Any(t => ((AIFunction)t).Name == repeatedToolName);
+        if (isRepeat)
+        {
+            chatOptions.ToolMode = ChatToolMode.RequireSpecific(repeatedToolName!);
+        }
+
+        var runOptions = new ChatClientAgentRunOptions(chatOptions);
+        var response = isRepeat
+            ? await brainAgent.RunAsync(RepeatQuestionReminder.BuildTurnMessages(text), session, runOptions, cancellationToken: cancellationToken)
+            : await brainAgent.RunAsync(text, session, runOptions, cancellationToken: cancellationToken);
 
         sw.Stop();
         toolLogger.ClearInvocationTracking(correlationId);

@@ -12,6 +12,18 @@ namespace UavOps.Agent.Watchdog.Fake;
 /// </summary>
 public sealed class FakeWatchdogService : IWatchdogService
 {
+    // The one name StartService/StopService/RestartService ever call this with - WatchdogTools's
+    // own real methods take no model-visible service-name parameter and always hardcode this exact
+    // literal (see that class's own WatchdogServiceName constant; duplicated here rather than
+    // referenced, since this Fake project deliberately doesn't reference UavOps.Agent.McpWatchdog -
+    // see this project's own ServiceCollectionExtensions doc comment for why). Genuinely distinct
+    // from FakeServices below: those are the child services the watchdog reports health for, not
+    // the watchdog process itself, which is the only thing Start/Stop/Restart ever target - live-
+    // reproduced this session: every Start/Stop/RestartService call failed "service not found"
+    // under WatchdogBackend: Fake before this existed, because none of FakeServices' names matched
+    // what WatchdogTools actually calls with.
+    private const string WatchdogServiceName = "Moav.Watchdog.Service";
+
     private static readonly (string Name, string Status, string? Description)[] FakeServices =
     [
         ("telemetry-relay", "Healthy", null),
@@ -57,10 +69,12 @@ public sealed class FakeWatchdogService : IWatchdogService
 
     private Task<OperationResult> SetRunning(string serviceName, bool running)
     {
-        if (FakeServices.All(s => !string.Equals(s.Name, serviceName, StringComparison.OrdinalIgnoreCase)))
+        var isKnown = string.Equals(serviceName, WatchdogServiceName, StringComparison.OrdinalIgnoreCase)
+            || FakeServices.Any(s => string.Equals(s.Name, serviceName, StringComparison.OrdinalIgnoreCase));
+        if (!isKnown)
         {
             return Task.FromResult(OperationResult.Invalid(
-                $"Unknown service '{serviceName}' (fake backend only knows: {string.Join(", ", FakeServices.Select(s => s.Name))})."));
+                $"Unknown service '{serviceName}' (fake backend only knows: {WatchdogServiceName}, {string.Join(", ", FakeServices.Select(s => s.Name))})."));
         }
 
         _running[serviceName] = running;

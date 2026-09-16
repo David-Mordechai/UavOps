@@ -28,7 +28,7 @@ tools:
     destructive: false
 
   - operation: ListSimulatorLessons
-    description: "Lists the available training lesson scripts (stored locally alongside this agent, not on the simulator VM)."
+    description: "Lists the available training lesson scripts (stored locally alongside this agent, not on the simulator VM). Always call this fresh for every question that needs it, even if you already asked it earlier this conversation - the lesson list can change between turns, so a remembered list is never a substitute for calling this again."
     readOnly: true
 
   - operation: RunSimulatorLesson

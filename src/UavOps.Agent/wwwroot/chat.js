@@ -174,7 +174,7 @@ connection.on("ReceiveChatMessage", (user, text, duration, correlationId) => {
     scrollToBottom();
 
     if (speakEnabled) {
-      speakText(text);
+      queueSpeak(text);
     }
   }
 });
@@ -450,4 +450,17 @@ async function speakText(text) {
       console.error("speak error", err, "chunk:", chunk);
     }
   }
+}
+
+// Every ReceiveChatMessage handler call below fires speech independently and was never awaited
+// by its caller (a SignalR event handler can't block the connection on how long TTS playback
+// takes) - real, live-observed this session: two BrainAgent messages arriving close together
+// (e.g. a confirmation prompt immediately followed by its own resolution) each started their own
+// speakText() call with no coordination between them, so their audio played concurrently and
+// overlapped instead of one after another. This single shared promise chain serializes every
+// queued reply's speech across ALL messages, not just chunks within one message - each new call
+// waits for everything already queued to finish first.
+let speechQueue = Promise.resolve();
+function queueSpeak(text) {
+  speechQueue = speechQueue.then(() => speakText(text)).catch(err => console.error("speak queue error", err));
 }

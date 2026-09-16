@@ -46,4 +46,21 @@ public class FakeWatchdogServiceTests
 
         result.Success.Should().BeTrue();
     }
+
+    // Real, live-reproduced bug this guards against: WatchdogTools's own Start/Stop/RestartService
+    // methods take no model-visible service-name parameter and always hardcode this exact literal
+    // ("Moav.Watchdog.Service") - before this fix, none of FakeWatchdogService's known names
+    // matched it, so every real Start/Stop/RestartService call failed "service not found" under
+    // WatchdogBackend: Fake.
+    [Theory]
+    [InlineData("Moav.Watchdog.Service")]
+    [InlineData("moav.watchdog.service")]
+    public async Task StartStopRestartService_TheWatchdogServiceItself_Succeeds(string watchdogServiceName)
+    {
+        var sut = new FakeWatchdogService();
+
+        (await sut.StartService(watchdogServiceName, CancellationToken.None)).Success.Should().BeTrue();
+        (await sut.StopService(watchdogServiceName, CancellationToken.None)).Success.Should().BeTrue();
+        (await sut.RestartService(watchdogServiceName, CancellationToken.None)).Success.Should().BeTrue();
+    }
 }

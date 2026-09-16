@@ -113,7 +113,15 @@ public sealed class AgentFactory(
                     // ToolCallAwareChatReducer's own doc comment for the live-reproduced,
                     // source-verified fabrication bug that type causes once this session runs long
                     // enough to trigger even one reduction pass.
-                    ChatReducer = new ToolCallAwareChatReducer(memoryOptions.MaxHistoryMessages)
+                    ChatReducer = new ToolCallAwareChatReducer(memoryOptions.MaxHistoryMessages),
+
+                    // Excludes MainAgentOrchestrator's one-off "this repeats an earlier question"
+                    // reminder (marked via ChatMessage.AdditionalProperties[RepeatQuestionReminder.
+                    // TransientMarkerKey] — see that class's own doc comment) from what gets
+                    // permanently stored, so the model sees it for THIS completion only and it never
+                    // pollutes the persisted conversation the operator/future turns actually see.
+                    StorageInputRequestMessageFilter = messages =>
+                        messages.Where(m => !(m.AdditionalProperties?.ContainsKey(RepeatQuestionReminder.TransientMarkerKey) ?? false))
                 });
 #pragma warning restore MEAI001
                 var agent = BuildAgent(tools: [], historyProvider);

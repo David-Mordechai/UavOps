@@ -29,7 +29,7 @@ serverInstructions: |
     UpdateConfiguredService, null always means 'leave this field unchanged', never 'clear it'.
 tools:
   - operation: GetServicesHealth
-    description: "Returns the health status of the watchdog and every child service it supervises, plus an overall status, from the most recently polled state - this is cached state refreshed automatically every few seconds in the background, not a live check made right now."
+    description: "Returns the health status of the watchdog and every child service it supervises, plus an overall status, from the most recently polled state - this is cached state refreshed automatically every few seconds in the background, not a live check made right now. Still always call this fresh for every question that needs it, even if you already asked it moments ago in this conversation - the background poll may have refreshed since then, so a remembered answer is never a substitute for calling this again."
     readOnly: true
 
   - operation: StartService
@@ -45,11 +45,11 @@ tools:
     destructive: false
 
   - operation: ListConfigurations
-    description: "Lists the names of every watchdog configuration that exists (e.g. 'Flight', 'Simulator')."
+    description: "Lists the names of every watchdog configuration that exists (e.g. 'Flight', 'Simulator'). Always call this fresh for every question that needs it, even if you already asked it earlier this conversation - configurations can be added or removed between turns, so a remembered list is never a substitute for calling this again."
     readOnly: true
 
   - operation: ListConfiguredServices
-    description: "Lists every service defined in one named configuration, with its executable path and other settings."
+    description: "Lists every service defined in one named configuration, with its executable path and other settings. Always call this fresh for every question that needs it, even if you already asked it earlier this conversation for the exact same configuration - it can change between turns, so a remembered list is never a substitute for calling this again."
     readOnly: true
     parameters:
       configurationName: "The exact configuration name, as returned by ListConfigurations - never invent or guess one."
