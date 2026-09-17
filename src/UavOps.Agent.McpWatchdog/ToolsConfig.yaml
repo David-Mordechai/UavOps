@@ -13,6 +13,14 @@ serverInstructions: |
     have no way to do that.
 
   Watchdog configuration rules:
+  - 'Flight' and 'Simulator' are just this watchdog's own stored configuration names for which
+    services to launch - they are unrelated to actually commanding a UAV's flight (a separate
+    Moav-domain request) or to whether the training-simulator VM itself is up (a separate
+    McpSimulator-domain request, e.g. 'is the simulator running'/'start the simulator'). Only
+    treat a request as watchdog-configuration work when the operator is explicitly asking about a
+    stored configuration or its configured services - anything about actually flying a UAV, or
+    about the training-simulator machine being on/off, belongs to one of those other domains
+    instead, even though it uses the same word.
   - Configuration names (e.g. 'Flight', 'Simulator') are matched case-insensitively - don't ask for
     clarification just over casing. Only ask when the operator's wording could plausibly mean a
     genuinely different configuration name - call ListConfigurations first to see the real list
@@ -29,65 +37,150 @@ serverInstructions: |
     UpdateConfiguredService, null always means 'leave this field unchanged', never 'clear it'.
 tools:
   - operation: GetServicesHealth
-    description: "Returns the health status of the watchdog and every child service it supervises, plus an overall status, from the most recently polled state - this is cached state refreshed automatically every few seconds in the background, not a live check made right now. Still always call this fresh for every question that needs it, even if you already asked it moments ago in this conversation - the background poll may have refreshed since then, so a remembered answer is never a substitute for calling this again."
+    description: >-
+      Returns the health status of the watchdog and every child service it supervises, plus an
+      overall status, from the most recently polled state - this is cached state refreshed
+      automatically every few seconds in the background, not a live check made right now. Still
+      always call this fresh for every question that needs it, even if you already asked it
+      moments ago in this conversation - the background poll may have refreshed since then, so a
+      remembered answer is never a substitute for calling this again.
     readOnly: true
 
   - operation: StartService
-    description: "Starts the watchdog service itself. Does not ask for confirmation before running. Always targets the watchdog process itself - there is no service name to ask about or choose, and this does not support starting a child service by name (not supported yet)."
+    description: >-
+      Starts the watchdog service itself. Does not ask for confirmation before running. Always
+      targets the watchdog process itself - there is no service name to ask about or choose, and
+      this does not support starting a child service by name (not supported yet).
     destructive: false
 
   - operation: StopService
-    description: "Stops the watchdog service itself. Does not ask for confirmation before running. Always targets the watchdog process itself - there is no service name to ask about or choose, and this does not support stopping a child service by name (not supported yet)."
+    description: >-
+      Stops the watchdog service itself. Does not ask for confirmation before running. Always
+      targets the watchdog process itself - there is no service name to ask about or choose, and
+      this does not support stopping a child service by name (not supported yet).
     destructive: false
 
   - operation: RestartService
-    description: "Restarts the watchdog service itself (stops it, then starts it again). Does not ask for confirmation before running. Always targets the watchdog process itself - there is no service name to ask about or choose, and this does not support restarting a child service by name (not supported yet)."
+    description: >-
+      Restarts the watchdog service itself (stops it, then starts it again). Does not ask for
+      confirmation before running. Always targets the watchdog process itself - there is no
+      service name to ask about or choose, and this does not support restarting a child service
+      by name (not supported yet).
     destructive: false
 
   - operation: ListConfigurations
-    description: "Lists the names of every watchdog configuration that exists (e.g. 'Flight', 'Simulator'). Always call this fresh for every question that needs it, even if you already asked it earlier this conversation - configurations can be added or removed between turns, so a remembered list is never a substitute for calling this again."
+    # No example config names here (e.g. 'Flight'/'Simulator') - unlike serverInstructions above,
+    # this description feeds the semantic tool-retrieval embedding index (see CLAUDE.md's own
+    # "Live semantic tool retrieval" section), so a literal example value here can pull this tool
+    # into an unrelated turn's offered set purely by word overlap. 'Simulator' is also this app's
+    # entire separate training-simulator domain name (McpSimulator) - naming it here risked
+    # exactly the kind of cross-tool collision this skill exists to catch (see the real
+    # Navigate/'home' incident). The real example names still live once in serverInstructions
+    # above, where they only affect the model's reasoning once a tool is already offered, not
+    # which tools get offered in the first place.
+    description: >-
+      Lists the names of every watchdog configuration that exists. Always call this fresh for
+      every question that needs it, even if you already asked it earlier this conversation -
+      configurations can be added or removed between turns, so a remembered list is never a
+      substitute for calling this again.
     readOnly: true
 
   - operation: ListConfiguredServices
-    description: "Lists every service defined in one named configuration, with its executable path and other settings. Always call this fresh for every question that needs it, even if you already asked it earlier this conversation for the exact same configuration - it can change between turns, so a remembered list is never a substitute for calling this again."
+    # "Always call this fresh" deleted - unlike ListConfigurations above (whose own list of
+    # configuration names has no exposed mutation path to test against), this tool's list DOES
+    # change via AddConfiguredService/UpdateConfiguredService/RemoveConfiguredService, and
+    # RemainingFreshnessReinforcementLiveTests directly tests that exact "ask, add a service, ask
+    # again" scenario - verified 8/8 with the sentence gone.
+    description: >-
+      Lists every service defined in one named configuration, with its executable path and other
+      settings.
     readOnly: true
     parameters:
-      configurationName: "The exact configuration name, as returned by ListConfigurations - never invent or guess one."
+      configurationName: >-
+        The exact configuration name, as returned by ListConfigurations - never invent or guess
+        one.
 
   - operation: AddConfiguredService
     description: "Adds a new service to a named configuration."
     destructive: false
     parameters:
-      configurationName: "The exact configuration name, as returned by ListConfigurations - never invent or guess one."
-      description: "The new service's unique name within this configuration, as the operator described it."
-      executable: "The full executable path, only if the operator specifically stated one - otherwise pass null and the system looks for a matching service folder under the products path (or infers a path from the configuration's other services if no folder matches)."
-      args: "Command-line arguments for the service, only if the operator specifically gave any - otherwise pass null."
-      id: "An id for future referral, only if the operator specifically gave one - otherwise pass null."
-      disabled: "Whether the service starts disabled - false to enable it, true to disable it. Only if the operator specifically asked for that - otherwise pass null."
-      retries: "Number of retries on failure, only if the operator specifically gave one - otherwise pass null."
-      isManaged: "Whether this service is managed, only if the operator specifically said so - otherwise pass null."
-      healthEndPoint: "The service's own health-check URL, only if the operator specifically gave one - otherwise pass null."
-      group: "The service's group/category, only if the operator specifically gave one - otherwise pass null."
+      configurationName: >-
+        The exact configuration name, as returned by ListConfigurations - never invent or guess
+        one.
+      description: >-
+        The new service's unique name within this configuration, as the operator described it.
+      executable: >-
+        The full executable path, only if the operator specifically stated one - otherwise pass
+        null and the system looks for a matching service folder under the products path (or
+        infers a path from the configuration's other services if no folder matches).
+      args: >-
+        Command-line arguments for the service, only if the operator specifically gave any -
+        otherwise pass null.
+      id: >-
+        An id for future referral, only if the operator specifically gave one - otherwise pass
+        null.
+      disabled: >-
+        Whether the service starts disabled - false to enable it, true to disable it. Only if the
+        operator specifically asked for that - otherwise pass null.
+      retries: >-
+        Number of retries on failure, only if the operator specifically gave one - otherwise pass
+        null.
+      isManaged: >-
+        Whether this service is managed, only if the operator specifically said so - otherwise
+        pass null.
+      healthEndPoint: >-
+        The service's own health-check URL, only if the operator specifically gave one -
+        otherwise pass null.
+      group: >-
+        The service's group/category, only if the operator specifically gave one - otherwise pass
+        null.
 
   - operation: UpdateConfiguredService
     description: "Changes one or more fields of an existing service in a named configuration."
     destructive: false
     parameters:
-      configurationName: "The exact configuration name, as returned by ListConfigurations - never invent or guess one."
-      description: "The exact current name of the service to update, as returned by ListConfiguredServices - never invent or guess one."
-      newDescription: "A new name for the service, only if the operator asked to rename it - otherwise pass null to leave the name unchanged."
-      executable: "A new executable path, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
-      args: "New command-line arguments, only if the operator specifically asked to change them - otherwise pass null to leave them unchanged."
-      id: "A new id, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
-      disabled: "Whether the service is disabled - false to enable it, true to disable it. Pass this whenever the operator asks to enable or disable the service; otherwise pass null to leave it unchanged."
-      retries: "A new retries value, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
-      isManaged: "A new isManaged value, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
-      healthEndPoint: "A new health-check URL, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
-      group: "A new group/category, only if the operator specifically asked to change it - otherwise pass null to leave it unchanged."
+      configurationName: >-
+        The exact configuration name, as returned by ListConfigurations - never invent or guess
+        one.
+      description: >-
+        The exact current name of the service to update, as returned by ListConfiguredServices -
+        never invent or guess one.
+      newDescription: >-
+        A new name for the service, only if the operator asked to rename it - otherwise pass null
+        to leave the name unchanged.
+      executable: >-
+        A new executable path, only if the operator specifically asked to change it - otherwise
+        pass null to leave it unchanged.
+      args: >-
+        New command-line arguments, only if the operator specifically asked to change them -
+        otherwise pass null to leave them unchanged.
+      id: >-
+        A new id, only if the operator specifically asked to change it - otherwise pass null to
+        leave it unchanged.
+      disabled: >-
+        Whether the service is disabled - false to enable it, true to disable it. Pass this
+        whenever the operator asks to enable or disable the service; otherwise pass null to leave
+        it unchanged.
+      retries: >-
+        A new retries value, only if the operator specifically asked to change it - otherwise
+        pass null to leave it unchanged.
+      isManaged: >-
+        A new isManaged value, only if the operator specifically asked to change it - otherwise
+        pass null to leave it unchanged.
+      healthEndPoint: >-
+        A new health-check URL, only if the operator specifically asked to change it - otherwise
+        pass null to leave it unchanged.
+      group: >-
+        A new group/category, only if the operator specifically asked to change it - otherwise
+        pass null to leave it unchanged.
 
   - operation: RemoveConfiguredService
     description: "Removes an existing service from a named configuration."
     destructive: false
     parameters:
-      configurationName: "The exact configuration name, as returned by ListConfigurations - never invent or guess one."
-      description: "The exact name of the service to remove, as returned by ListConfiguredServices - never invent or guess one."
+      configurationName: >-
+        The exact configuration name, as returned by ListConfigurations - never invent or guess
+        one.
+      description: >-
+        The exact name of the service to remove, as returned by ListConfiguredServices - never
+        invent or guess one.

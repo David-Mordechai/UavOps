@@ -45,10 +45,30 @@ namespace UavOps.Agent.Agents;
 ///
 /// One narrow addition since the above: <see cref="RepeatQuestionReminder"/> - a separate, real,
 /// live-reproduced bug where the model answered a status question fabricated from memory instead
-/// of calling its tool again, specifically when the operator repeated the exact same question
-/// (measured ~1-in-5 even with an explicit "always call this fresh" instruction already in
-/// BrainAgent.yaml). Deliberately not a reintroduction of the forcing/retry mechanism above - see
-/// that class's own doc comment for why this is safe against the same regression.
+/// of calling its tool again, specifically when the operator repeated the exact same question.
+/// Deliberately not a reintroduction of the forcing/retry mechanism above - see that class's own
+/// doc comment for why this is safe against the same regression. This is the ONE exception to
+/// "domain-agnostic" this file makes, and only because it genuinely is domain-agnostic itself - it
+/// never references a specific tool name, parameter name, or domain vocabulary; the exact same
+/// mechanism would work unmodified for a Watchdog or Simulator repeat-question bug.
+///
+/// Two further, Moav-specific bugs were found this same session and deliberately do NOT get a
+/// host-side fix, even a "generic-looking" one: (1) a fleet-wide command in one turn followed by a
+/// bare-plural-pronoun follow-up in a later turn ("point their payloads there") often failing to
+/// resolve to every UAV, and (2) a single compound turn ("fly them to alpha at speed 250 and
+/// altitude 3000") occasionally calling its first tool (Navigate) for real, then fabricating a
+/// false excuse for skipping the rest. Host-level fixes for both were built, live-tested clean, and
+/// then reverted anyway - not because they didn't work, but because both are genuinely,
+/// structurally Moav-specific problems (only Moav has "many addressable UAVs" a plural pronoun can
+/// refer back to, and only Moav has this specific compound-tool-call shape), and dressing that up
+/// in domain-agnostic-sounding regex/keyword checks in THIS file still means the host's own
+/// behavior is shaped by one domain's needs - exactly what "Split BrainAgent's 3 domains into
+/// separate MCP servers" (see CLAUDE.md) exists to prevent. The MCP protocol gives a domain exactly
+/// two channels to influence the model: its own tools' schemas, and its own `serverInstructions`
+/// block (folded into the system prompt once at startup) - there is no MCP hook for "inject a
+/// per-turn reminder message," so a real per-domain behavioral fix has to be YAML content in that
+/// domain's own ToolsConfig.yaml, not C# here, however that constrains the shape the fix can take.
+/// Both bugs are fixed this way now - see McpMoav/ToolsConfig.yaml's own serverInstructions.
 /// </summary>
 public sealed class MainAgentOrchestrator(AgentFactory agentFactory, ToolInvocationLogger toolLogger)
 {
@@ -79,17 +99,24 @@ public sealed class MainAgentOrchestrator(AgentFactory agentFactory, ToolInvocat
         var chatOptions = new ChatOptions { Tools = tools, AllowMultipleToolCalls = true };
 
         // See RepeatQuestionReminder's own doc comment for the real, live-reproduced bug this
-        // closes, and why forcing one specific, already-proven tool name here is safe against the
-        // regression that made forcing ANY tool on every turn get reverted before (see this class's
-        // own doc comment above) - the guard on toolName actually being in this turn's own offered
-        // tools list is defensive: retrieval offered it every time this was live-tested, but forcing
-        // a tool name the model was never even given would be a hard error, not just a bad guess.
+        // closes. `ChatToolMode.RequireSpecific` forcing here is DISABLED as of this session -
+        // live-reproduced repeatedly (browser + unit tests, same day) that forcing tool_choice to
+        // one specific function on THIS model/vLLM/parser combination (nvfp4-quantized MoE,
+        // qwen3_coder tool-call parser, temperature forced to 0 server-side - see
+        // src/UavOps.Agent.McpMoav/appsettings or the vLLM container's own startup flags) can make
+        // a single completion take 100-900+ seconds: grammar-constrained decoding for a forced
+        // function call, combined with greedy (temp=0) sampling, occasionally needs a very large
+        // number of low-confidence steps to find a token sequence satisfying both the schema
+        // constraint and the argmax path. Every slow/hanging response measured this session -
+        // 101s/301s durations in RepeatedFleetQueryLiveTests, a live 901s browser hang - traced
+        // back to this exact forced-tool_choice code path; no other turn type (auto tool_choice,
+        // including fleet-wide multi-tool turns) ever exhibited it. The injected reminder message
+        // (BuildTurnMessages) still runs either way - only the forcing is removed here, to test
+        // whether the reminder text alone reliably gets a real tool call without the pathological
+        // decoding slowdown. Re-verify with RepeatedFleetQueryLiveTests/PointPayloadFollowUpLiveTests
+        // at full repeat count before considering this closed either way.
         var isRepeat = RepeatQuestionReminder.TryFindRepeatedToolName(text, history, out var repeatedToolName)
             && tools.Any(t => ((AIFunction)t).Name == repeatedToolName);
-        if (isRepeat)
-        {
-            chatOptions.ToolMode = ChatToolMode.RequireSpecific(repeatedToolName!);
-        }
 
         var runOptions = new ChatClientAgentRunOptions(chatOptions);
         var response = isRepeat

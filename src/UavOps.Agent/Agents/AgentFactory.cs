@@ -88,6 +88,12 @@ public sealed class AgentFactory(
     private AgentSession? _brainAgentSession;
     private InMemoryChatHistoryProvider? _brainAgentHistoryProvider;
 
+    // Session-scoped (this factory's own lifetime, i.e. the app's whole running lifetime) - unlike
+    // TailNumberResolutionScope below, which is deliberately fresh per turn. See
+    // FleetGroupMemory's own doc comment for the real, live-reproduced cross-turn bug this exists
+    // to close.
+    private readonly FleetGroupMemory _fleetGroupMemory = new();
+
     /// <summary>Returns the single, long-lived BrainAgent instance, its reused conversation
     /// session, and the history provider backing that session (so a caller can snapshot/restore
     /// its message list — see <see cref="MainAgentOrchestrator"/>'s verified-retry logic), creating
@@ -254,7 +260,7 @@ public sealed class AgentFactory(
             // instead of asking - see TailNumberDisambiguationTool's own doc comment.
             if (SchemaHasProperty(mcpTool, "tailNumber"))
             {
-                wrappedTool = new TailNumberDisambiguationTool((AIFunction)wrappedTool, ListRealMoavFleetAsync, operatorPromptGate, tailNumberScope, RootAgentName, correlationId, operatorText);
+                wrappedTool = new TailNumberDisambiguationTool((AIFunction)wrappedTool, ListRealMoavFleetAsync, operatorPromptGate, tailNumberScope, _fleetGroupMemory, RootAgentName, correlationId, operatorText);
             }
 
             tools.Add(wrappedTool);

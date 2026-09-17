@@ -21,6 +21,23 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- xUnit v2 reads this from next to the test assembly at runtime, not from the source tree -
+         must be copied to the output directory the same way appsettings.json/ToolsConfig.yaml
+         already are for the Mcp* projects. Caps how many test collections (effectively: how many
+         Category=Live classes) run concurrently - see the file's own placement in this session's
+         GX10 investigation for why: this app's live tests share ONE physical GPU (via the GX10's
+         two vLLM engines) with nothing else running interactively, and real vLLM engine logs
+         showed genuine request queueing (Waiting up to 8) and heavy batching (Running up to 10-11)
+         specifically when every live test class ran fully unbounded in parallel - individual
+         completions that normally take 1-8s stretched past the OpenAI SDK's 100-second default
+         timeout under that load. Fully sequential (1 at a time) avoids contention but is too slow
+         for iterative use; this bounds concurrency to a middle ground instead of an all-or-nothing
+         choice. 4 is a starting point, not a proven-optimal number - tune it based on real GX10
+         load if timeouts/slow runs recur or if the suite still feels too slow. -->
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\UavOps.Agent\UavOps.Agent.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.Contracts\UavOps.Agent.Contracts.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.McpMoav\UavOps.Agent.McpMoav.csproj" />

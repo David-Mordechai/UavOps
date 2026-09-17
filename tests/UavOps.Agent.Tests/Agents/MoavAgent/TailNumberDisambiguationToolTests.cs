@@ -46,7 +46,7 @@ public class TailNumberDisambiguationToolTests
     /// OperationToolTests's CreateSutWithConfirmation, since this tool needs to exercise
     /// InvokeCoreAsync itself, including its own ask-and-wait round trip.</summary>
     private static (TailNumberDisambiguationTool Tool, FakeInnerTool Inner, Func<CancellationToken, Task<OperationResult>> ListFleet, IClientProxy Proxy) CreateSut(
-        List<UavSummary>? fleet, string? chatReply, string operatorText = "", TailNumberResolutionScope? scope = null)
+        List<UavSummary>? fleet, string? chatReply, string operatorText = "", TailNumberResolutionScope? scope = null, FleetGroupMemory? groupMemory = null, string toolName = "SetSpeed")
     {
         var replySent = false;
         OperatorPromptGate? promptGate = null;
@@ -70,9 +70,9 @@ public class TailNumberDisambiguationToolTests
         Task<OperationResult> ListFleet(CancellationToken cancellationToken) => Task.FromResult(
             fleet is not null ? OperationResult.Ok(fleet) : OperationResult.Invalid("fleet lookup failed"));
 
-        var inner = new FakeInnerTool();
+        var inner = new FakeInnerTool(toolName);
         var tool = new TailNumberDisambiguationTool(
-            inner, ListFleet, promptGate, scope ?? new TailNumberResolutionScope(),
+            inner, ListFleet, promptGate, scope ?? new TailNumberResolutionScope(), groupMemory ?? new FleetGroupMemory(),
             "FlightControlAgent", "corr1", operatorText);
 
         return (tool, inner, ListFleet, proxy);
@@ -213,7 +213,8 @@ public class TailNumberDisambiguationToolTests
         // FlightControlAgent turn (see AgentFactory.BuildAgentTools) - once the operator answers
         // "ALL" for the first tailNumber-taking call, a second one in the same turn must reuse it.
         var scope = new TailNumberResolutionScope();
-        var (firstTool, firstInner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "ALL", operatorText: "set speed to 250", scope: scope);
+        var groupMemory = new FleetGroupMemory();
+        var (firstTool, firstInner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "ALL", operatorText: "set speed to 250", scope: scope, groupMemory: groupMemory);
 
         await firstTool.InvokeAsync(
             new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None);
@@ -230,7 +231,7 @@ public class TailNumberDisambiguationToolTests
         var hub = Substitute.For<IHubContext<ChatHub>>();
         var secondPromptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromMilliseconds(200));
         var secondTool = new TailNumberDisambiguationTool(
-            secondInner, secondListFleet, secondPromptGate, scope, "FlightControlAgent", "corr1", "set speed to 250");
+            secondInner, secondListFleet, secondPromptGate, scope, groupMemory, "FlightControlAgent", "corr1", "set speed to 250");
 
         await secondTool.InvokeAsync(
             new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None);
@@ -281,7 +282,7 @@ public class TailNumberDisambiguationToolTests
 
         var inner = new FakeInnerTool("ReturnToLaunch");
         var tool = new TailNumberDisambiguationTool(
-            inner, ListFleet, promptGate, scope, "FlightControlAgent", "corr1", "bring the other two home");
+            inner, ListFleet, promptGate, scope, new FleetGroupMemory(), "FlightControlAgent", "corr1", "bring the other two home");
 
         await tool.InvokeAsync(
             new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998" }), CancellationToken.None);
@@ -337,6 +338,99 @@ public class TailNumberDisambiguationToolTests
     }
 
     [Fact]
+    public async Task InvokeCoreAsync_TwoDistinctRealGuessesSameToolOneTurn_BothTrustedDirectly_NoAsking()
+    {
+        // Structural multi-target detection: the model calling the same tool twice in one
+        // completion, each with a DIFFERENT real (fleet-verified) tail number, is unambiguous
+        // proof of multi-target intent on its own - no operator round trip needed, and no reliance
+        // on the model emitting 'ALL' or a comma-separated subset. Concurrent, mirroring how
+        // AllowConcurrentInvocation actually dispatches several tool calls from one completion in
+        // production - sequential awaits would see only themselves during the coordination window.
+        var scope = new TailNumberResolutionScope();
+        var groupMemory = new FleetGroupMemory();
+        var (firstTool, firstInner, _, firstProxy) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "point their payloads there", scope: scope, groupMemory: groupMemory, toolName: "PointPayload");
+        var secondInner = new FakeInnerTool("PointPayload");
+        Task<OperationResult> secondListFleet(CancellationToken cancellationToken) => Task.FromResult(OperationResult.Ok(ThreeUavFleet()));
+        var secondHub = Substitute.For<IHubContext<ChatHub>>();
+        var secondPromptGate = new OperatorPromptGate(secondHub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromMilliseconds(200));
+        var secondTool = new TailNumberDisambiguationTool(
+            secondInner, secondListFleet, secondPromptGate, scope, groupMemory, "FlightControlAgent", "corr1", "point their payloads there");
+
+        await Task.WhenAll(
+            firstTool.InvokeAsync(new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None).AsTask(),
+            secondTool.InvokeAsync(new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998" }), CancellationToken.None).AsTask());
+
+        await firstProxy.DidNotReceive().SendCoreAsync("ReceiveChatMessage", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+        firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["997"]);
+        secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["998"]);
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_PartialRepeatOfRememberedGroupWithPluralPronoun_AutoCompletesMissingMember()
+    {
+        // The actual live-reproduced bug this whole mechanism exists for: a fleet-wide action
+        // ("ALL") resolves and is remembered, then a LATER action only explicitly names PART of
+        // that same group ("998" here) - but the operator's own current-turn text uses a bare
+        // plural pronoun ("their"), so the missing member ("997", never explicitly called) gets
+        // completed too, with a ground-truth note covering it.
+        var groupMemory = new FleetGroupMemory();
+        var (firstTool, firstInner, _, _) = CreateSut(ThreeUavFleet(), chatReply: "ALL", operatorText: "fly them all to alpha", groupMemory: groupMemory);
+        await firstTool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None);
+        firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "998", "999"]);
+
+        var secondInner = new FakeInnerTool("PointPayload");
+        Task<OperationResult> secondListFleet(CancellationToken cancellationToken) => Task.FromResult(OperationResult.Ok(ThreeUavFleet()));
+        var secondHub = Substitute.For<IHubContext<ChatHub>>();
+        var secondPromptGate = new OperatorPromptGate(secondHub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromMilliseconds(200));
+        var secondTool = new TailNumberDisambiguationTool(
+            secondInner, secondListFleet, secondPromptGate, new TailNumberResolutionScope(), groupMemory,
+            "FlightControlAgent", "corr2", "point their payloads there");
+
+        // Only 998 explicitly named this turn - 997 and 999 are the missing members of the
+        // remembered {997,998,999} group.
+        var result = await secondTool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998" }), CancellationToken.None);
+
+        secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["998", "997", "999"]);
+        result!.ToString().Should().Contain("IMPORTANT").And.Contain("997:").And.Contain("999:");
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_PartialRepeatOfRememberedGroupNoPluralPronoun_StillAsks_DoesNotAutoComplete()
+    {
+        // Negative case protecting a genuinely-intended single/partial-target action: even though
+        // 998 is part of a remembered {997,998,999} group, the operator's own current-turn text has
+        // no plural pronoun at all ("also refuel that one") - nothing here says this should apply to
+        // the whole old group, so it must fall through to the normal ask flow, unchanged. Text
+        // deliberately never spells out "998" itself, so the existing text-grounding shortcut
+        // doesn't short-circuit before this scenario is even reached.
+        var groupMemory = new FleetGroupMemory();
+        groupMemory.RecordFullGroup(["997", "998", "999"]);
+        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "998", operatorText: "also refuel that one", groupMemory: groupMemory);
+
+        await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "998" }), CancellationToken.None);
+
+        await proxy.Received().SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["998"]);
+    }
+
+    [Fact]
+    public async Task InvokeCoreAsync_PluralPronounButNoRememberedGroup_StillAsks()
+    {
+        // A plural pronoun alone, with nothing ever resolved as a group yet this session, has
+        // nothing to complete against - must still ask, same as the original ungrounded-guess case.
+        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "998", operatorText: "point their payloads there");
+
+        await tool.InvokeAsync(
+            new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997" }), CancellationToken.None);
+
+        await proxy.Received().SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+        inner.InvokedTailNumbers.Should().BeEquivalentTo(["998"]);
+    }
+
+    [Fact]
     public async Task InvokeCoreAsync_DifferentCommaSeparatedSubsets_BothExecuteIndependently()
     {
         var scope = new TailNumberResolutionScope();
@@ -349,7 +443,7 @@ public class TailNumberDisambiguationToolTests
         var hub = Substitute.For<IHubContext<ChatHub>>();
         var secondPromptGate = new OperatorPromptGate(hub, NullLogger<OperatorPromptGate>.Instance, TimeSpan.FromMilliseconds(200));
         var secondTool = new TailNumberDisambiguationTool(
-            secondInner, secondListFleet, secondPromptGate, scope, "FlightControlAgent", "corr1", "set the rest to 250");
+            secondInner, secondListFleet, secondPromptGate, scope, new FleetGroupMemory(), "FlightControlAgent", "corr1", "set the rest to 250");
         await secondTool.InvokeAsync(
             new AIFunctionArguments(new Dictionary<string, object?> { ["tailNumber"] = "997,999" }), CancellationToken.None);
 

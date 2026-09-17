@@ -1,8 +1,10 @@
 using System.ClientModel;
+using System.ClientModel.Primitives;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
 using NSubstitute;
@@ -76,6 +78,13 @@ internal static class LiveTestSupport
 
             File.WriteAllText(ProgressLogPath,
                 $"=== live test run started {DateTime.Now:yyyy-MM-dd HH:mm:ss} (LIVE_TEST_REPEATS={RepeatCount}) ==={Environment.NewLine}");
+            File.WriteAllText(ToolCallTracePath,
+                $"=== live test run started {DateTime.Now:yyyy-MM-dd HH:mm:ss} (LIVE_TEST_REPEATS={RepeatCount}) ==={Environment.NewLine}");
+            if (RawCompletionLoggingEnabled)
+            {
+                File.WriteAllText(RawCompletionTracePath,
+                    $"=== live test run started {DateTime.Now:yyyy-MM-dd HH:mm:ss} (LIVE_TEST_REPEATS={RepeatCount}) ==={Environment.NewLine}");
+            }
             _cleared = true;
         }
     }
@@ -98,6 +107,66 @@ internal static class LiveTestSupport
             File.AppendAllText(ProgressLogPath, line + Environment.NewLine);
         }
         output.WriteLine(message);
+    }
+
+    /// <summary>Real, actual tool-call trace for live tests - same real-time-file reasoning as
+    /// <see cref="ProgressLogPath"/> above (VSTest buffers <see cref="ITestOutputHelper"/>/
+    /// <see cref="Console"/> output until a whole test case finishes, so neither is usable for
+    /// diagnosing a failure mid-run or after killing a hung run). <see cref="BuildLiveOrchestrator"/>
+    /// used to wire <see cref="ToolInvocationLogger"/> to <c>NullLogger</c>, meaning a live test
+    /// failure could show the wrong final state but never *why* - not which tools were actually
+    /// called, with which arguments, or whether any tool was called at all versus the model
+    /// fabricating a response with zero real tool calls. Added after exactly that gap blocked
+    /// diagnosing a real <c>MultiTurnFleetOpsLiveTests</c> mismatch.</summary>
+    public static readonly string ToolCallTracePath = Path.Combine(Path.GetTempPath(), "uavops-live-test-toolcalls.log");
+
+    private sealed class RealtimeToolCallLogger : ILogger<ToolInvocationLogger>
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            var line = $"[{DateTime.Now:HH:mm:ss.fff}] {formatter(state, exception)}";
+            lock (ProgressLogLock)
+            {
+                File.AppendAllText(ToolCallTracePath, line + Environment.NewLine);
+            }
+        }
+    }
+
+    /// <summary>Real-time raw request/response JSON trace for the chat client, same reasoning as
+    /// <see cref="RealtimeToolCallLogger"/> above - opt-in, TEMPORARY diagnostic wiring (see
+    /// <see cref="BuildChatClientFactoryAndAgentConfig"/>'s own use of
+    /// <see cref="RawCompletionLoggingEnabled"/>) for verifying an actual model-completion-level
+    /// mechanism (finish_reason, exact tool_calls emitted, token usage) instead of guessing from
+    /// duration or tool-call-trace absence alone - see this project's own established lesson that a
+    /// causal explanation needs the same direct verification the symptom itself got.</summary>
+    public static readonly string RawCompletionTracePath = Path.Combine(Path.GetTempPath(), "uavops-live-test-rawcompletions.log");
+
+    public static readonly bool RawCompletionLoggingEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("LIVE_TEST_RAW_COMPLETION_LOG"), "1", StringComparison.Ordinal);
+
+    private sealed class RealtimeRawLogger : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            var line = $"[{DateTime.Now:HH:mm:ss.fff}] {formatter(state, exception)}";
+            lock (ProgressLogLock)
+            {
+                File.AppendAllText(RawCompletionTracePath, line + Environment.NewLine);
+            }
+        }
+    }
+
+    private sealed class RealtimeRawLoggerFactory : ILoggerFactory
+    {
+        public ILogger CreateLogger(string categoryName) => new RealtimeRawLogger();
+        public void AddProvider(ILoggerProvider provider) { }
+        public void Dispose() { }
     }
 
     /// <summary>Disposing stops every child MCP server process in the group - lets every test's
@@ -162,8 +231,24 @@ internal static class LiveTestSupport
             IChatClient inner;
             if (string.Equals(provider, "OpenAI", StringComparison.OrdinalIgnoreCase))
             {
-                var chatClient = new ChatClient(modelName, new ApiKeyCredential(openAiOptions.ApiKey ?? ""),
-                    new OpenAIClientOptions { Endpoint = new Uri(openAiOptions.Endpoint) });
+                // NetworkTimeout raised same as Program.cs's own chat client construction - see
+                // that file's own comment. Live-reproduced repeatedly in this exact test project:
+                // a single completion against the shared self-hosted model can take well over the
+                // OpenAI SDK's 100-second default when the server is busy with other concurrent
+                // repeats/classes, which otherwise aborts and retries against the same busy
+                // server before throwing.
+                var clientOptions = new OpenAIClientOptions { Endpoint = new Uri(openAiOptions.Endpoint), NetworkTimeout = TimeSpan.FromMinutes(5) };
+                if (RawCompletionLoggingEnabled)
+                {
+                    clientOptions.ClientLoggingOptions = new ClientLoggingOptions
+                    {
+                        EnableLogging = true,
+                        EnableMessageContentLogging = true,
+                        MessageContentSizeLimit = 8000,
+                        LoggerFactory = new RealtimeRawLoggerFactory(),
+                    };
+                }
+                var chatClient = new ChatClient(modelName, new ApiKeyCredential(openAiOptions.ApiKey ?? ""), clientOptions);
                 inner = chatClient.AsIChatClient();
             }
             else
@@ -228,7 +313,7 @@ internal static class LiveTestSupport
 
         var mockHubContext = Substitute.For<IHubContext<ChatHub>>();
         var mockConfig = Substitute.For<IConfiguration>();
-        var toolLogger = new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, mockHubContext);
+        var toolLogger = new ToolInvocationLogger(new RealtimeToolCallLogger(), mockHubContext);
         // Short timeout (not the 60s production default) - tests that never approve the request
         // (e.g. Greeting_NeverTriggersASpuriousRealOperation, which never touches a confirmation-
         // gated tool at all) are unaffected, and tests that DO approve it do so almost immediately
@@ -307,8 +392,10 @@ internal static class LiveTestSupport
 
         // Real semantic embeddings - load-bearing for tool-call correctness now, same reasoning
         // Program.cs's own startup wiring documents (see ToolRetrievalIndex's own doc comment).
+        // NetworkTimeout raised same as the chat client above and Program.cs's own embedding
+        // client construction - see those comments.
         var embeddingClient = new EmbeddingClient(embeddingOptions.Model, new ApiKeyCredential("not-needed"),
-            new OpenAIClientOptions { Endpoint = new Uri(embeddingOptions.Endpoint) });
+            new OpenAIClientOptions { Endpoint = new Uri(embeddingOptions.Endpoint), NetworkTimeout = TimeSpan.FromMinutes(5) });
         var embeddingGenerator = embeddingClient.AsIEmbeddingGenerator();
         factory.RetrievalIndex = await ToolRetrievalIndex.BuildAsync(factory.BuildTemplateTools(), toolNameToServerName, embeddingGenerator, CancellationToken.None);
 

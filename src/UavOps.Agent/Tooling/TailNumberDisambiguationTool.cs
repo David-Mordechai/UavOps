@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.AI;
 using UavOps.Agent.Contracts;
 
@@ -55,26 +56,50 @@ namespace UavOps.Agent.Tooling;
 /// not directly to <see cref="InvokeForAllUavsAsync"/> - see that method's own doc comment for the
 /// live-reproduced duplicate-call bug this closes (the model issuing the same tool multiple times
 /// in one completion, each independently re-fanning-out across the whole fleet).
+///
+/// <see cref="_groupMemory"/> closes a THIRD, distinct real bug from the two above (structural
+/// multi-guess trust, and ALL/subset resolution): a small local model reliably calling this tool
+/// for N-1 of N previously-addressed UAVs and simply never generating the Nth call - honestly
+/// reporting the resulting partial state afterward, never fabricating, but incomplete all the same.
+/// Live-reproduced repeatedly (see McpMoav/ToolsConfig.yaml's own "Tail numbers" section for the
+/// prompt-wording attempts this survived) with no wording that reliably closed it - this is a
+/// deterministic completion instead: every time a genuine multi-target group resolves (fan-out,
+/// explicit subset, or several distinct real guesses in one turn), <see cref="FleetGroupMemory"/>
+/// remembers it, so a LATER action naming only part of that same group - the same turn or a
+/// separate one - gets the missing member(s) invoked too, with a clear note so the model's own
+/// summary doesn't quietly omit them. Two independent signals gate this, both domain-agnostic (no
+/// tool name, parameter name, or domain vocabulary - <see cref="PluralPronounPattern"/> is plain
+/// English grammar, applicable to any domain sharing this same tailNumber-shaped convention): (1)
+/// two or more distinct real guesses for the same tool this turn - already unambiguous multi-target
+/// evidence on its own, per <see cref="TailNumberResolutionScope.RegisterRealGuessAndGetSiblingsAsync"/>
+/// - or (2) exactly one real guess plus a bare plural pronoun in the operator's OWN current-turn
+/// text, when that guess is part of a remembered group with more members than were named. Neither
+/// signal fires the ask flow's genuine single-UAV protection: a lone guess with no plural pronoun,
+/// or with one but no matching remembered group, still falls through to asking, exactly as before.
 /// </summary>
 public sealed class TailNumberDisambiguationTool : AIFunction
 {
     private const string AllSentinel = "ALL";
 
+    private static readonly Regex PluralPronounPattern = new(@"\b(them|their|theirs|they)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private readonly AIFunction _inner;
     private readonly Func<CancellationToken, Task<OperationResult>> _listFleet;
     private readonly OperatorPromptGate _promptGate;
     private readonly TailNumberResolutionScope _scope;
+    private readonly FleetGroupMemory _groupMemory;
     private readonly string _agentName;
     private readonly string _correlationId;
     private readonly string _operatorText;
 
     public TailNumberDisambiguationTool(AIFunction inner, Func<CancellationToken, Task<OperationResult>> listFleet, OperatorPromptGate promptGate,
-        TailNumberResolutionScope scope, string agentName, string correlationId, string operatorText)
+        TailNumberResolutionScope scope, FleetGroupMemory groupMemory, string agentName, string correlationId, string operatorText)
     {
         _inner = inner;
         _listFleet = listFleet;
         _promptGate = promptGate;
         _scope = scope;
+        _groupMemory = groupMemory;
         _agentName = agentName;
         _correlationId = correlationId;
         _operatorText = operatorText;
@@ -111,7 +136,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
 
             if (string.Equals(resolved, AllSentinel, StringComparison.OrdinalIgnoreCase))
             {
-                return await _scope.GetOrFanOutAsync(Name, () => InvokeForAllUavsAsync(arguments, cancellationToken, knownTails: null));
+                return await InvokeForAllUavsAndRecordGroupAsync(arguments, cancellationToken, knownTails: null);
             }
 
             var confirmedSingle = new AIFunctionArguments(arguments) { ["tailNumber"] = resolved };
@@ -152,7 +177,9 @@ public sealed class TailNumberDisambiguationTool : AIFunction
                 if (validTails.Count > 0)
                 {
                     var subsetKey = string.Join(",", validTails.OrderBy(t => t, StringComparer.OrdinalIgnoreCase));
-                    return await _scope.GetOrFanOutAsync($"{Name}:{subsetKey}", () => InvokeForExplicitSubsetAsync(arguments, cancellationToken, validTails));
+                    var subsetResult = await _scope.GetOrFanOutAsync($"{Name}:{subsetKey}", () => InvokeForExplicitSubsetAsync(arguments, cancellationToken, validTails));
+                    _groupMemory.RecordFullGroup(validTails);
+                    return subsetResult;
                 }
             }
             // No known tail number could be matched out of the list - fall through to the normal
@@ -170,6 +197,42 @@ public sealed class TailNumberDisambiguationTool : AIFunction
         var fleet = await _listFleet(cancellationToken);
         if (fleet.Success && fleet.Value is List<UavSummary> { Count: > 1 } tails)
         {
+            // Structural multi-target detection plus cross-turn group completion, ahead of the ask
+            // flow below - see this class's own doc comment for both signals. Only reachable when
+            // the guess is itself a REAL, fleet-verified tail number (never for a hallucinated one,
+            // which still must go through the ask flow below).
+            if (tails.Any(t => string.Equals(t.TailNumber, guessed, StringComparison.OrdinalIgnoreCase)))
+            {
+                var siblingGuesses = await _scope.RegisterRealGuessAndGetSiblingsAsync(Name, guessed, cancellationToken);
+                var lastGroup = _groupMemory.GetLastFullGroup();
+                var missingFromGroup = lastGroup is { Count: > 1 } && lastGroup.IsSupersetOf(siblingGuesses)
+                    ? lastGroup.Where(t => !siblingGuesses.Contains(t)).ToList()
+                    : [];
+
+                // Signal 1: two or more distinct real guesses for this tool this turn is already
+                // unambiguous multi-target proof on its own, regardless of wording or group memory.
+                // Signal 2: exactly one real guess, but the operator's OWN current-turn text uses a
+                // bare plural pronoun AND that guess is part of a remembered group with more members
+                // than were named - a lone guess with neither signal still falls through to asking,
+                // preserving the original genuine single-UAV protection unchanged.
+                var structuralMultiGuess = siblingGuesses.Count >= 2;
+                var groupCompletionSignal = siblingGuesses.Count == 1 && missingFromGroup.Count > 0 && PluralPronounPattern.IsMatch(_operatorText);
+
+                if (structuralMultiGuess || groupCompletionSignal)
+                {
+                    if (missingFromGroup.Count > 0)
+                    {
+                        var completionNote = await _scope.GetOrFanOutAsync($"{Name}:autocomplete",
+                            () => CompleteMissingMembersAsync(arguments, missingFromGroup, cancellationToken));
+                        _groupMemory.RecordFullGroup(siblingGuesses.Concat(missingFromGroup).ToList());
+                        return completionNote + await _inner.InvokeAsync(arguments, cancellationToken);
+                    }
+
+                    _groupMemory.RecordFullGroup(siblingGuesses);
+                    return await _inner.InvokeAsync(arguments, cancellationToken);
+                }
+            }
+
             // Deduplicated via _scope, keyed by the model's own guessed value: only the first
             // tailNumber-taking call in this turn that guessed THIS SAME value actually opens an
             // OperatorPromptGate round-trip - a sibling call that guessed the same thing (SetAltitude
@@ -194,7 +257,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
 
             if (string.Equals(chosen, AllSentinel, StringComparison.OrdinalIgnoreCase))
             {
-                return await _scope.GetOrFanOutAsync(Name, () => InvokeForAllUavsAsync(arguments, cancellationToken, knownTails: tails));
+                return await InvokeForAllUavsAndRecordGroupAsync(arguments, cancellationToken, knownTails: tails);
             }
 
             var resolved = new AIFunctionArguments(arguments) { ["tailNumber"] = chosen };
@@ -281,6 +344,49 @@ public sealed class TailNumberDisambiguationTool : AIFunction
         return $"IMPORTANT - this action actually executed against all {tails.Count} known UAVs listed below, and ONLY those - " +
                "your summary must name exactly these, not any other UAV number (including whatever single UAV, if any, you originally " +
                "specified in this call's own arguments - that value was never used). " + string.Join("; ", results);
+    }
+
+    /// <summary>Thin wrapper around <see cref="InvokeForAllUavsAsync"/> (still deduplicated via
+    /// <see cref="TailNumberResolutionScope.GetOrFanOutAsync"/>, unchanged) that also records the
+    /// resolved fleet in <see cref="_groupMemory"/>, so a LATER partial reference to "them" can
+    /// complete against it - see this class's own doc comment.</summary>
+    private async Task<string> InvokeForAllUavsAndRecordGroupAsync(AIFunctionArguments arguments, CancellationToken cancellationToken, List<UavSummary>? knownTails)
+    {
+        var result = await _scope.GetOrFanOutAsync(Name, () => InvokeForAllUavsAsync(arguments, cancellationToken, knownTails));
+
+        List<UavSummary>? fleetForMemory = knownTails;
+        if (fleetForMemory is null)
+        {
+            var fleet = await _listFleet(cancellationToken);
+            fleetForMemory = fleet.Success && fleet.Value is List<UavSummary> t ? t : null;
+        }
+
+        if (fleetForMemory is not null)
+        {
+            _groupMemory.RecordFullGroup(fleetForMemory.Select(u => u.TailNumber).ToList());
+        }
+        return result;
+    }
+
+    /// <summary>Invokes this tool for every tail number in <paramref name="missingTailNumbers"/> -
+    /// the gap between what the model actually called this turn and <see cref="FleetGroupMemory"/>'s
+    /// remembered full group - and returns a ground-truth note the same forceful shape as
+    /// <see cref="BuildConfirmedTargetNote"/>/<see cref="InvokeForAllUavsAsync"/> use, so the model's
+    /// own summary includes UAVs it never explicitly called this turn but that genuinely were acted
+    /// on for real.</summary>
+    private async Task<string> CompleteMissingMembersAsync(AIFunctionArguments arguments, IReadOnlyList<string> missingTailNumbers, CancellationToken cancellationToken)
+    {
+        var results = new List<string>();
+        foreach (var tail in missingTailNumbers)
+        {
+            var perUav = new AIFunctionArguments(arguments) { ["tailNumber"] = tail };
+            var result = await _inner.InvokeAsync(perUav, cancellationToken);
+            results.Add($"{tail}: {result}");
+        }
+
+        return "IMPORTANT - you only explicitly named some of the UAVs from the same group you already addressed together earlier, " +
+               $"but this action was ALSO applied for real to the remaining {missingTailNumbers.Count} UAV(s) from that same group, listed " +
+               "below - your summary must include these too, not just the one(s) you explicitly named. " + string.Join("; ", results) + " ";
     }
 
     /// <summary>Resolves a model-computed, explicit comma-separated SUBSET of the fleet (e.g. "the

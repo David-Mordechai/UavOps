@@ -153,8 +153,17 @@ builder.Services.AddSingleton<Func<string, string?, IChatClient>>(sp => (modelNa
         // string regardless.
         var options = sp.GetRequiredService<OpenAiOptions>();
         var apiKey = string.IsNullOrWhiteSpace(options.ApiKey) ? "not-needed" : options.ApiKey;
+        // NetworkTimeout explicitly raised from the OpenAI .NET SDK's own default (100 seconds,
+        // System.ClientModel.Primitives.ClientPipelineOptions.NetworkTimeout) - live-reproduced
+        // repeatedly against this app's actual self-hosted model endpoint: a single chat
+        // completion can genuinely take well over 100 seconds when the shared inference server is
+        // busy with other concurrent requests (observed up to ~200s directly), which the SDK's
+        // default then aborts and retries 3 more times (still against the same busy server) before
+        // giving up with a TaskCanceledException/AggregateException - a real reliability gap, not
+        // a content/prompt issue. 5 minutes gives real headroom above the worst directly-observed
+        // duration without masking a genuinely hung server for an unreasonable amount of time.
         var chatClient = new ChatClient(modelName, new ApiKeyCredential(apiKey),
-            new OpenAIClientOptions { Endpoint = new Uri(options.Endpoint) });
+            new OpenAIClientOptions { Endpoint = new Uri(options.Endpoint), NetworkTimeout = TimeSpan.FromMinutes(5) });
         inner = chatClient.AsIChatClient();
     }
     else
@@ -348,8 +357,11 @@ agentConfig.Instructions = string.Join("\n\n", [agentConfig.Instructions, .. dom
 // be a constructor dependency.
 try
 {
+    // Same NetworkTimeout override and reasoning as the chat client above - this client is called
+    // on every single turn (ToolRetrievalIndex.EmbedQueryAsync), not just once at startup, so it's
+    // equally exposed to the shared embedding server being busy.
     var embeddingClient = new EmbeddingClient(embeddingOptions.Model, new ApiKeyCredential("not-needed"),
-        new OpenAIClientOptions { Endpoint = new Uri(embeddingOptions.Endpoint) });
+        new OpenAIClientOptions { Endpoint = new Uri(embeddingOptions.Endpoint), NetworkTimeout = TimeSpan.FromMinutes(5) });
     var embeddingGenerator = embeddingClient.AsIEmbeddingGenerator();
     var templateTools = agentFactory.BuildTemplateTools();
     agentFactory.RetrievalIndex = await ToolRetrievalIndex.BuildAsync(templateTools, toolNameToServerName, embeddingGenerator, CancellationToken.None);

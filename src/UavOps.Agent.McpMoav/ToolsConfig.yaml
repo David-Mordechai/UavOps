@@ -20,7 +20,27 @@ serverInstructions: |
     ('them', 'they', 'their') that refers back to the whole fleet from earlier in the conversation
     (e.g. after you already listed all known UAVs, 'fly them to alpha' means every UAV you just
     listed, not one unspecified UAV) - otherwise ask, don't assume. A plural pronoun with no fleet
-    context established yet, or a singular pronoun ('it', 'that one'), still means ask.
+    context established yet, or a singular pronoun ('it', 'that one'), still means ask. Once you've
+    recognized this as every UAV, call every implied tool for real, this same turn, with
+    tailNumber='ALL' - never respond with plain text saying it wasn't executed due to missing UAV
+    specification or a timing issue, and never ask the operator to confirm which UAVs are meant; you
+    already know, from the fleet you just listed.
+  - A bare plural pronoun ('them', 'their', 'theirs', 'they') in a SEPARATE LATER turn, following a
+    fleet-wide action you already took earlier in the conversation, still refers to every UAV that
+    earlier action covered - regardless of whether that EARLIER turn's own wording used 'all'/
+    'every' or was itself just a bare plural pronoun resolved from an already-listed fleet (e.g.
+    'fly them to alpha' with no 'all' still counts as the fleet-wide action a later 'point their
+    payloads there' refers back to - the earlier turn not saying 'all' does not make the later
+    pronoun any less fleet-wide). E.g. you already sent every known UAV somewhere, and a later message
+    says only 'point their payloads there' with no 'all'/'every' word of its own. It still needs a
+    real tool call this turn for every one of those UAVs - never skip the call, and never report it
+    done without calling it. For THIS specific case - a later turn, not the same turn the fleet-wide
+    action started in - pass the real tail numbers the earlier action targeted as ONE comma-separated
+    tailNumber value (e.g. '997,998,999', the same known values from that earlier action or from
+    ListFleet), never the word 'ALL', and never one call per UAV. Do this directly, in the same turn -
+    never respond with plain text asking the operator to confirm which UAVs are meant, or saying it
+    wasn't executed because the UAV wasn't specified; you already know which UAVs from the earlier
+    action, so there is nothing left to ask.
   - A request naming a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest',
     'the other two', 'the remaining ones', or naming several tail numbers directly) must be passed as
     ONE comma-separated tailNumber value (e.g. '998,999'), never as several separate tool calls -
@@ -34,79 +54,190 @@ serverInstructions: |
     anything). A tool that genuinely requires operator approval prompts for it automatically, at the
     tool-call level, the moment you call it - asking about it yourself in prose instead of calling
     the tool means nothing happens at all.
+  - A single request naming several distinct actions for the same UAV(s) (e.g. 'fly it to alpha at
+    speed 200 and altitude 3000', or additionally pointing its payload) needs a real tool call for
+    EVERY one of those actions this same turn - Navigate, SetSpeed, SetAltitude, and PointPayload
+    are each independent, none of them require operator confirmation, and there is never a genuine
+    reason to call only the first one and report the rest as skipped, pending, or blocked by
+    confirmation or non-response - if you did not call it, it did not happen, and claiming otherwise
+    is a fabrication regardless of how the excuse is phrased.
 tools:
   - operation: ListFleet
-    description: "List all known UAVs by tail number with a brief status summary for each. Use this to find out which UAVs exist, or to help resolve an ambiguous or unnamed UAV. Always call this fresh whenever the operator asks it, even if you already called it earlier this conversation and even if you were just asked the identical question one message ago - the fleet's real composition and state can change between turns, so a remembered answer is never a substitute for calling this again."
+    # The "always call this fresh" reinforcement below was DELETED, not just trimmed - unlike
+    # tailNumber, this exact rule (with worked examples, including this very tool) is already
+    # stated in full in BrainAgent.yaml's own "Resolving references from history" section, and
+    # RepeatedFleetQueryLiveTests directly tests the scenario this reinforcement existed for
+    # (asking "What UAVs do we have?" again after fleet state changed) - re-verified 8/8 with the
+    # sentence gone, so it was pure duplication here. GetTelemetry/GetLinkStatus/GetMissionStatus
+    # below, and the equivalent tools in McpWatchdog/McpSimulator, keep their own copy of this
+    # sentence for now - no dedicated live test exercises the same "ask twice, verify a fresh
+    # call happens" property for those specific tools, so per this skill's own rule (never trim
+    # without per-tool evidence), they're left alone until one exists.
+    description: >-
+      List all known UAVs by tail number with a brief status summary for each. Use this to find
+      out which UAVs exist, or to help resolve an ambiguous or unnamed UAV.
     readOnly: true
 
   - operation: GetTelemetry
-    description: "Get a UAV's current position, speed, altitude, and mode. Always call this fresh for every question that needs it, even if you already have an answer from earlier in this conversation for the exact same UAV - telemetry changes over time, so a remembered value is never a substitute for calling this again."
+    # "Always call this fresh" deleted, same evidence-based basis as ListFleet above - covered
+    # once in BrainAgent.yaml, and RemainingFreshnessReinforcementLiveTests directly tests this
+    # exact tool's "ask, mutate, ask again" scenario - verified 8/8 with the sentence gone.
+    description: >-
+      Get a UAV's current position, speed, altitude, and mode.
     readOnly: true
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
 
   - operation: Navigate
-    description: "Send a UAV to fly to a named location as an ordinary waypoint - it keeps flying/orbiting there, it does not land. Do NOT use this for a 'bring/send it home', 'return to base', or 'return to launch' request, even though 'home' is a valid location name for this tool - phrasing like that means the operator wants the UAV to land back at base, which is ReturnToLaunch, not a flight to the 'home' coordinate."
+    description: >-
+      Send a UAV to fly to a named location as an ordinary waypoint - it keeps flying/orbiting
+      there, it does not land. Do NOT use this for a 'bring/send it home', 'return to base', or
+      'return to launch' request, even though 'home' is a valid location name for this tool -
+      phrasing like that means the operator wants the UAV to land back at base, which is
+      ReturnToLaunch, not a flight to the 'home' coordinate.
     destructive: false
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
-      location: "Name of a known point, e.g. 'home', 'alpha', 'bravo'. If the operator says 'target alpha'/'target bravo', either that full phrase or just 'alpha'/'bravo' is fine - use whichever the operator's own wording makes natural. Note 'home' here is only for a genuine fly-to-that-point request - a 'bring/send it home' style request is ReturnToLaunch instead, not this tool with location='home'."
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
+      location: >-
+        Name of a known point, e.g. 'home', 'alpha', 'bravo'. If the operator says 'target
+        alpha'/'target bravo', either that full phrase or just 'alpha'/'bravo' is fine - use
+        whichever the operator's own wording makes natural. Note 'home' here is only for a
+        genuine fly-to-that-point request - a 'bring/send it home' style request is
+        ReturnToLaunch instead, not this tool with location='home'.
 
   - operation: SetSpeed
     description: "Change a UAV's target cruise speed."
     destructive: false
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
-      speedKts: "Target speed in knots. Integer, 1-500. This is always knots - never convert the number from or to mph, km/h, or m/s; use the number exactly as stated."
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
+      speedKts: >-
+        Target speed in knots. Integer, 1-500. This is always knots - never convert the number
+        from or to mph, km/h, or m/s; use the number exactly as stated.
 
   - operation: SetAltitude
     description: "Change a UAV's target altitude."
     destructive: false
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
-      altitudeFt: "Target altitude in feet above mean sea level (MSL). Integer, 0-60000. This is always feet - never convert the number from or to meters; use the number exactly as stated, even if surrounding text mentions another unit."
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
+      altitudeFt: >-
+        Target altitude in feet above mean sea level (MSL). Integer, 0-60000. This is always
+        feet - never convert the number from or to meters; use the number exactly as stated,
+        even if surrounding text mentions another unit.
 
   - operation: ReturnToLaunch
-    description: "Command a UAV to return to and land at its launch point (RTL) - this is what phrasing like 'bring it home', 'send it home', 'back to base', and 'return to launch' actually means, even when the operator's exact word is 'home' or 'base' rather than 'launch point'. Use this, not Navigate, for any of that phrasing - Navigate would only fly to the 'home' coordinate as an ordinary waypoint without landing, which is not what a 'bring it home' request means."
+    description: >-
+      Command a UAV to return to and land at its launch point (RTL) - this is what phrasing like
+      'bring it home', 'send it home', 'back to base', and 'return to launch' actually means,
+      even when the operator's exact word is 'home' or 'base' rather than 'launch point'. Use
+      this, not Navigate, for any of that phrasing - Navigate would only fly to the 'home'
+      coordinate as an ordinary waypoint without landing, which is not what a 'bring it home'
+      request means.
     destructive: false
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
+      # Only the subset-resolution sentence below is kept inline (not just in serverInstructions,
+      # like every other tool in this file) - the rest of the tailNumber logic (ALL, pronouns,
+      # unnamed UAV) is fully covered once in serverInstructions and deliberately NOT restated
+      # here, since duplicating it added tokens on every offered turn without adding reliability.
+      # This one sentence stays: CLAUDE.md documents a real production incident on this exact
+      # tool/phrasing ("bring the rest of the fleet home" - see ReturnRemainingFleetLiveTests),
+      # live-reproduced again this session - omitting it here (relying on serverInstructions
+      # alone) measurably dropped this tool to 7/8 while every other tool held 8/8, because the
+      # model needs this specific reinforcement physically next to the parameter it's filling in,
+      # not just present somewhere earlier in the system prompt. Don't remove without re-running
+      # ReturnRemainingFleetLiveTests/FullShiftScenarioLiveTests at full repeat count first.
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one. If the request refers to a SPECIFIC SUBSET of more than one UAV (e.g. 'the
+        rest', 'the other two', or naming several tail numbers), work out the real tail numbers
+        yourself (call ListFleet first if needed) and pass them together as one comma-separated
+        value, e.g. '998,999' - never split this into separate tool calls, one per UAV.
 
   - operation: PointPayload
     description: "Point a UAV's sensor/gimbal at a named location."
     destructive: false
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
-      location: "Name of a known point to look at, e.g. 'home', 'alpha', 'bravo'. If the operator says 'target alpha'/'target bravo', either that full phrase or just 'alpha'/'bravo' is fine - use whichever the operator's own wording makes natural."
+      # KNOWN OPEN ISSUE, deliberately not patched via prompt text (tracked out-of-band, not
+      # fixed here): PointPayloadFollowUpLiveTests/MultiTurnFleetOpsLiveTests reproduce a
+      # cross-turn fabrication bug - a fleet-wide command ("fly them all to alpha") followed, in
+      # a SEPARATE later turn, by a pronoun-only follow-up ("point their payloads there") often
+      # fails to resolve to every UAV. Adding inline ALL/pronoun reinforcement here measurably
+      # improved that (verified), but also measurably destabilized the unrelated same-turn
+      # FlyAllFleetWideLiveTests compound-command scenario (Navigate+SetSpeed+SetAltitude+
+      # PointPayload together), causing a real partial-fleet-mutation case that scenario never
+      # produced before. Every prompt-text variant tried traded one scenario's reliability for
+      # the other's - this looks like a genuine model-capacity limit, not a wording problem, and
+      # is left as bare identity (this file's established working baseline) rather than risk a
+      # regression on the safety-critical compound-command path. Do not "fix" this again with
+      # more parameter text without re-running BOTH PointPayloadFollowUpLiveTests AND
+      # FlyAllFleetWideLiveTests at full repeat count and confirming neither regresses.
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
+      location: >-
+        Name of a known point to look at, e.g. 'home', 'alpha', 'bravo'. If the operator says
+        'target alpha'/'target bravo', either that full phrase or just 'alpha'/'bravo' is fine -
+        use whichever the operator's own wording makes natural.
 
   - operation: ResetPayload
     description: "Reset a UAV's payload/gimbal to its default forward-facing position."
     destructive: false
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
 
   - operation: GetLinkStatus
-    description: "Get the ground data terminal's link status for a UAV: signal strength, link state, and antenna tracking mode. Always call this fresh for every question that needs it, even if you already asked it one message ago for the exact same UAV and predicting the answer feels safe - link status can change between turns, so a remembered value is never a substitute for calling this again."
+    # "Always call this fresh" deleted, same evidence-based basis as GetTelemetry above -
+    # RemainingFreshnessReinforcementLiveTests directly tests this tool's own "ask, mutate, ask
+    # again" scenario - verified 8/8 with the sentence gone.
+    description: >-
+      Get the ground data terminal's link status for a UAV: signal strength, link state, and
+      antenna tracking mode.
     readOnly: true
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
 
   - operation: SetTrackingMode
     description: "Set the ground data terminal antenna's tracking mode for a UAV."
     destructive: false
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
-      mode: "Either 'Auto' (antenna automatically tracks the UAV) or 'Manual' (antenna position is fixed/manually controlled). Use the operator's exact intent - do not default to one or the other."
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
+      mode: >-
+        Either 'Auto' (antenna automatically tracks the UAV) or 'Manual' (antenna position is
+        fixed/manually controlled). Use the operator's exact intent - do not default to one or
+        the other.
 
   - operation: UploadWaypoints
     description: "Upload a list of mission waypoints for a UAV to fly in order."
     destructive: false
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
-      waypoints: "Array of waypoints to fly in order, each with lat (decimal degrees), lng (decimal degrees), and altitudeFt (feet MSL)."
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
+      waypoints: >-
+        Array of waypoints to fly in order, each with lat (decimal degrees), lng (decimal
+        degrees), and altitudeFt (feet MSL).
 
   - operation: GetMissionStatus
-    description: "Get a UAV's current mission execution status and remaining waypoint count. Always call this fresh for every question that needs it, even if you already have an answer from earlier in this conversation for the exact same UAV - mission status changes over time, so a remembered value is never a substitute for calling this again."
+    # "Always call this fresh" deleted, same evidence-based basis as GetTelemetry above -
+    # RemainingFreshnessReinforcementLiveTests directly tests this tool's own "ask, mutate, ask
+    # again" scenario - verified 8/8 with the sentence gone.
+    description: >-
+      Get a UAV's current mission execution status and remaining waypoint count.
     readOnly: true
     parameters:
-      tailNumber: "The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never guess one. Pass the literal value 'ALL' when the request explicitly says every UAV is meant ('all', 'every', 'each', 'both', 'the fleet') or uses a plural pronoun ('them', 'they', 'their') referring back to the whole fleet established earlier in the conversation (e.g. right after listing all known UAVs); simply not naming a UAV, or a singular pronoun ('it', 'that one'), is NOT the same as meaning every UAV, so in that case leave it unresolved rather than guessing a tail number or assuming 'ALL'. If the request refers to a SPECIFIC SUBSET of more than one UAV that is NOT every UAV (e.g. 'the rest', 'the other two', 'the remaining ones', or naming several tail numbers at once), work out exactly which real tail numbers those are (call ListFleet first if you need to) and pass them together as one comma-separated value, e.g. '998,999' - never make several separate tool calls hoping each covers a different UAV, since you have been unreliable at remembering to make every follow-up call needed to finish a multi-UAV request that way."
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.

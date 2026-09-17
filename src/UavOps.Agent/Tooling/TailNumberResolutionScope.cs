@@ -36,12 +36,43 @@ namespace UavOps.Agent.Tooling;
 /// multi-action turn - e.g. <c>Navigate</c> + <c>SetSpeed</c> + <c>SetAltitude</c> - still needs its
 /// own independent fan-out per distinct action; only a *repeat* of the same action this turn is the
 /// bug this closes.
+///
+/// <see cref="RegisterRealGuessAndGetSiblingsAsync"/>: closes a real, live-reproduced gap distinct
+/// from both above - a model asked to act on a whole fleet it already addressed earlier (same turn
+/// or an entirely separate later turn) sometimes doesn't recognize this as a single "every UAV"
+/// action and doesn't emit the <c>"ALL"</c> sentinel (see <see cref="TailNumberDisambiguationTool"/>'s
+/// own doc comment) or a comma-separated subset at all - instead it issues several SEPARATE calls to
+/// the same tool, each with a genuinely different, genuinely real, individually-guessed tail number.
+/// No prompt wording reliably controls which of these equivalent-in-substance shapes a small local
+/// model picks turn to turn - live-reproduced repeatedly, several different wordings each measurably
+/// helped one scenario while regressing another, never reaching full reliability on either. Rather
+/// than keep tuning wording, this recognizes the shape directly: several distinct, each individually
+/// real (fleet-verified) tailNumber guesses for the *same* tool in the *same* turn is unambiguous
+/// structural proof of multi-target intent regardless of phrasing, so those calls are trusted and
+/// executed directly with no <see cref="OperatorPromptGate"/> round trip at all (which would
+/// otherwise time out unanswered, exactly the failure this closes). A single real-but-ungrounded
+/// guess for a tool - the case this must NOT change - still falls through to the existing ask flow;
+/// this only fires once a *second*, *different*, *also real* guess for the same tool actually
+/// arrives. Concurrent tool calls from one completion (<c>AllowConcurrentInvocation</c>) all start
+/// within microseconds of each other on the thread pool, so every caller registers its own guess
+/// then waits <see cref="SiblingCoordinationWindow"/> - long enough for every true sibling from the
+/// same completion to have registered, vanishingly short next to the 120s <c>OperatorPromptGate</c>
+/// timeout this replaces - before deciding; whichever guess arrives last still sees every earlier
+/// one already registered, so decisions agree regardless of arrival order.
 /// </summary>
 public sealed class TailNumberResolutionScope
 {
+    /// <summary>How long a real-but-ungrounded guess waits for a sibling call (same tool, same
+    /// turn, different real tail number) to register before falling back to the ask flow. Real
+    /// sibling registrations land within microseconds of each other (same completion, same
+    /// <c>Task.WhenAll</c>-style dispatch) - this is generous headroom against thread-pool
+    /// scheduling jitter, not a real wait for slow work.</summary>
+    private static readonly TimeSpan SiblingCoordinationWindow = TimeSpan.FromMilliseconds(300);
+
     private readonly object _lock = new();
     private readonly Dictionary<string, Task<string?>> _askResults = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Task<string>> _fanOutResults = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, HashSet<string>> _realGuessesByTool = new(StringComparer.Ordinal);
 
     public Task<string?> GetOrAskAsync(string guessedTailNumber, Func<Task<string?>> ask)
     {
@@ -66,6 +97,32 @@ public sealed class TailNumberResolutionScope
                 _fanOutResults[toolName] = task;
             }
             return task;
+        }
+    }
+
+    /// <summary>Registers a real (fleet-verified), but not text-grounded, tailNumber guess for
+    /// <paramref name="toolName"/> this turn, then returns every distinct real guess for the same
+    /// tool seen so far (including this one) once the coordination window has passed - two or more
+    /// distinct entries is unambiguous proof of multi-target intent worth trusting without asking
+    /// (see this class's own doc comment), and the full set also lets a caller compare against
+    /// <see cref="FleetGroupMemory"/> to detect a partially-completed repeat of an earlier group.</summary>
+    public async Task<IReadOnlySet<string>> RegisterRealGuessAndGetSiblingsAsync(string toolName, string guessedTailNumber, CancellationToken cancellationToken)
+    {
+        lock (_lock)
+        {
+            if (!_realGuessesByTool.TryGetValue(toolName, out var set))
+            {
+                set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                _realGuessesByTool[toolName] = set;
+            }
+            set.Add(guessedTailNumber);
+        }
+
+        await Task.Delay(SiblingCoordinationWindow, cancellationToken);
+
+        lock (_lock)
+        {
+            return new HashSet<string>(_realGuessesByTool[toolName], StringComparer.OrdinalIgnoreCase);
         }
     }
 }
