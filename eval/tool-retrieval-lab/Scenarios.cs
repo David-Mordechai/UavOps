@@ -72,6 +72,20 @@ static class Scenarios
             ],
             state => state.Watchdog.HealthChecked),
 
+        // Operator-reported retrieval miss (999 named directly in the first turn, since this lab
+        // has no "which UAV?" prompt to answer - the rest is verbatim): the summary half of the last turn
+        // pushed ReturnToLaunch out of top-K, so the model was never offered it and brought
+        // nothing home. Run with --split-clauses to rank each clause separately (the fix ported
+        // from UavOps.Agent's RetrievalClauseSplitter).
+        new Scenario(
+            "return-home-with-summary",
+            [
+                new ScenarioTurn("fly uav 999 to target alpha at speed 70 and altitude 3000", ["Navigate", "SetSpeed", "SetAltitude"]),
+                new ScenarioTurn("send the other UAVs there with the same speed and altitude", ["Navigate", "SetSpeed", "SetAltitude"]),
+                new ScenarioTurn("bring them all home and give me full summary of today session", ["ReturnToLaunch"]),
+            ],
+            state => state.Fleet.Values.All(s => s.Mode == "ReturningToLaunch")),
+
         new Scenario(
             "watchdog-restart",
             [

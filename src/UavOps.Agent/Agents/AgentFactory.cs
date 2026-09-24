@@ -212,20 +212,44 @@ public sealed class AgentFactory(
 
         var enabledServers = McpServerSelection.GetEnabledServerNames(configuration, config.McpServers.Select(s => s.Name));
 
-        var turnOnlyQuery = await RetrievalIndex.EmbedQueryAsync(operatorText, cancellationToken);
-        var turnOnlyCandidates = RetrievalIndex.RankCandidates(turnOnlyQuery, retrievalOptions.TopK, enabledServers, retrievalOptions.MaxScoreGapFromBest);
-
-        // Skip the second embed/rank entirely when there's no history yet (first turn of a
-        // session) - the two queries are identical, so it would just re-rank the same text twice.
-        var candidateNames = turnOnlyCandidates.Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
+        // Every query this turn ranks, unioned: the turn's own text; each of its clauses when it's a
+        // compound request (see RetrievalClauseSplitter for the live-reproduced incident - a second
+        // ask pushing the first ask's tool out of top-K); and the turn plus conversation history,
+        // skipped when there's no history yet since it would just re-rank the same text. All
+        // embedded in one request.
+        var queries = new List<(string Label, string Text, int TopK)> { ("turn", operatorText, retrievalOptions.TopK) };
+        foreach (var clause in RetrievalClauseSplitter.Split(operatorText))
+        {
+            queries.Add(($"clause \"{clause}\"", clause, retrievalOptions.ClauseTopK));
+        }
         if (!string.Equals(operatorText, retrievalQueryText, StringComparison.Ordinal))
         {
-            var contextualQuery = await RetrievalIndex.EmbedQueryAsync(retrievalQueryText, cancellationToken);
-            var contextualCandidates = RetrievalIndex.RankCandidates(contextualQuery, retrievalOptions.TopK, enabledServers, retrievalOptions.MaxScoreGapFromBest);
-            candidateNames.UnionWith(contextualCandidates.Select(c => c.Name));
+            queries.Add(("turn+history", retrievalQueryText, retrievalOptions.TopK));
         }
 
-        return candidateNames.Select(name => nameToTool[name]).ToList();
+        var embeddings = await RetrievalIndex.EmbedQueriesAsync(queries.Select(q => q.Text).ToList(), cancellationToken);
+
+        // Name -> (best score, which query found it first), in the order found - only for the log.
+        var candidates = new Dictionary<string, (float Score, string FoundBy)>(StringComparer.Ordinal);
+        for (var i = 0; i < queries.Count; i++)
+        {
+            foreach (var (name, score) in RetrievalIndex.RankCandidates(embeddings[i], queries[i].TopK, enabledServers, retrievalOptions.MaxScoreGapFromBest))
+            {
+                if (!candidates.TryGetValue(name, out var existing))
+                {
+                    candidates[name] = (score, queries[i].Label);
+                }
+                else if (score > existing.Score)
+                {
+                    candidates[name] = (score, existing.FoundBy);
+                }
+            }
+        }
+
+        toolLogger.LogRetrievalCandidates(correlationId, queries.Select(q => q.Label).ToList(),
+            candidates.Select(c => (c.Key, c.Value.Score, c.Value.FoundBy)).ToList());
+
+        return candidates.Keys.Select(name => nameToTool[name]).ToList();
     }
 
     /// <summary>Builds one agent standalone, with no tools at all — used for a background job's

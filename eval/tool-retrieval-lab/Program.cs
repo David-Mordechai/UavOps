@@ -27,10 +27,14 @@ var seed = int.TryParse(GetOption(args, "--seed"), out var sd) ? sd : 42;
 var retrievalEnabled = args.Contains("--retrieval");
 var onlyScenario = GetOption(args, "--scenario");
 var maxScoreGapFromBest = float.TryParse(GetOption(args, "--max-gap"), out var mg) ? mg : (float?)null;
+// Also rank each clause of a compound turn separately and union the results (ported from
+// UavOps.Agent's RetrievalClauseSplitter - same separators, same one-word-fragment drop).
+var splitClauses = args.Contains("--split-clauses");
+var clauseTopK = int.TryParse(GetOption(args, "--clause-top-k"), out var ck) ? ck : 5;
 var disabledNames = (GetOption(args, "--disable") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToHashSet();
 
 var systemPrompt = GetSystemPrompt();
-const int RealToolCount = 6 + 4 + 3; // fleet + watchdog + simulator-infra
+const int RealToolCount = 7 + 4 + 3; // fleet + watchdog + simulator-infra
 var distractorCount = Math.Max(0, totalTools - RealToolCount);
 var distractors = SyntheticCatalog.Generate(distractorCount, seed);
 
@@ -123,6 +127,14 @@ foreach (var scenario in scenarios)
                 var enabledNames = disabledNames.Count > 0 ? nameToTool.Keys.Where(n => !disabledNames.Contains(n)).ToHashSet() : null;
                 var query = await retrievalIndex.EmbedQueryAsync(turn.Text);
                 var (_, ranked) = retrievalIndex.RankCandidates(query, topK, enabledNames, maxScoreGapFromBest);
+                if (splitClauses)
+                {
+                    foreach (var clause in SplitClauses(turn.Text))
+                    {
+                        var (_, clauseRanked) = retrievalIndex.RankCandidates(await retrievalIndex.EmbedQueryAsync(clause), clauseTopK, enabledNames, maxScoreGapFromBest);
+                        ranked.AddRange(clauseRanked.Where(c => ranked.All(r => r.Name != c.Name)));
+                    }
+                }
                 candidateNames = ranked.Select(x => x.Name).ToList();
                 candidateTools = candidateNames.Select(n => nameToTool[n]).ToList();
 
@@ -195,6 +207,16 @@ static float Percentile(List<float> values, double percentile)
     var sorted = values.OrderBy(v => v).ToList();
     var index = (int)Math.Clamp(Math.Round(percentile / 100.0 * (sorted.Count - 1)), 0, sorted.Count - 1);
     return sorted[index];
+}
+
+static List<string> SplitClauses(string text)
+{
+    var clauses = System.Text.RegularExpressions.Regex
+        .Split(text, @"\s*(?:[,;]|\b(?:and then|then|and also|also|and|plus)\b)\s*", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+        .Select(c => c.Trim())
+        .Where(c => c.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2)
+        .ToList();
+    return clauses.Count > 1 ? clauses : [];
 }
 
 static string? GetOption(string[] args, string name)

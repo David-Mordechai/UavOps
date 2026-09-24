@@ -31,6 +31,10 @@ public class BuildToolsForTurnLiveTests(ITestOutputHelper output)
             ("What UAVs do we have?", "ListFleet"),
             ("point their payloads there", "PointPayload"),
             ("fly them all to target alpha at speed 250 and altitude 3000", "Navigate"),
+            // Operator-reported: the summary half of this compound turn pushed ReturnToLaunch out
+            // of top-K before RetrievalClauseSplitter (see ReturnAllHomeWithSessionSummaryLiveTests
+            // for the full conversation, replayed end to end).
+            ("bring them all home and give me full summary of today session", "ReturnToLaunch"),
         };
 
         foreach (var (text, expectedTool) in cases)

@@ -163,6 +163,24 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
         return state;
     }
 
+    // Added for the "return-home-with-summary" scenario (an operator-reported retrieval miss - see
+    // Scenarios.cs). Description copied from UavOps.Agent.McpMoav/ToolsConfig.yaml so this tool
+    // ranks the way production's does.
+    [Description("Command a UAV to return to and land at its launch point (RTL) - this is what phrasing like 'bring it home', 'send it home', 'back to base', and 'return to launch' actually means, even when the operator's exact word is 'home' or 'base' rather than 'launch point'. Use this, not Navigate, for any of that phrasing - Navigate would only fly to the 'home' coordinate as an ordinary waypoint without landing, which is not what a 'bring it home' request means.")]
+    public object ReturnToLaunch(
+        [Description("The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs.")] string tailNumber)
+    {
+        if (!fleet.TryGetValue(tailNumber, out var state))
+        {
+            var err = new { error = $"Unknown UAV '{tailNumber}'." };
+            Log(nameof(ReturnToLaunch), new { tailNumber }, err);
+            return err;
+        }
+        lock (state) { state.Mode = "ReturningToLaunch"; }
+        Log(nameof(ReturnToLaunch), new { tailNumber }, state);
+        return state;
+    }
+
     public AITool[] AsTools() =>
     [
         AIFunctionFactory.Create(ListFleet),
@@ -171,5 +189,6 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
         AIFunctionFactory.Create(SetSpeed),
         AIFunctionFactory.Create(SetAltitude),
         AIFunctionFactory.Create(PointPayload),
+        AIFunctionFactory.Create(ReturnToLaunch),
     ];
 }

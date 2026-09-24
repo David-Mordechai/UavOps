@@ -34,6 +34,22 @@ public sealed class ToolInvocationLogger(ILogger<ToolInvocationLogger> logger, I
     public int GetAgentInvocationCount(string correlationId, string agentName) =>
         _agentInvocationCounts.TryGetValue((correlationId, agentName), out var count) ? count : 0;
 
+    /// <summary>One line per turn: every tool retrieval offered the model (best score, and which
+    /// query first found it - see <c>AgentFactory.BuildToolsForTurn</c>). Added after a real
+    /// incident ("bring them all home and give me full summary of today session" never offered
+    /// ReturnToLaunch) that could only be diagnosed by re-running the ranking by hand, because
+    /// nothing recorded what a turn was actually offered - a tool missing from this line is a
+    /// retrieval miss, not a model decision.</summary>
+    public void LogRetrievalCandidates(string correlationId, IReadOnlyList<string> queryLabels, IReadOnlyList<(string Name, float Score, string FoundBy)> candidates)
+    {
+        logger.LogInformation(
+            "[Retrieval] correlationId={CorrelationId} queries=[{Queries}] offered={Count} [{Candidates}]",
+            correlationId,
+            string.Join("; ", queryLabels),
+            candidates.Count,
+            string.Join(", ", candidates.Select(c => $"{c.Name} {c.Score:F2} ({c.FoundBy})")));
+    }
+
     public async Task<TResult> LogAsync<TResult>(
         string correlationId,
         string agentName,

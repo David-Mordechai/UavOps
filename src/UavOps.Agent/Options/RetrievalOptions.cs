@@ -22,4 +22,12 @@ public sealed class RetrievalOptions
     /// distributions via <c>eval/tool-retrieval-lab</c> (see that project's own `Program.cs` comment
     /// for the measured numbers behind this default) — not a guessed constant.</summary>
     public float MaxScoreGapFromBest { get; set; } = 0.25f;
+
+    /// <summary>How many tools each separate clause of a compound turn adds on top of the
+    /// whole-turn candidates (see <see cref="Tooling.RetrievalClauseSplitter"/>). Smaller than
+    /// <see cref="TopK"/> on purpose: a clause is one ask, so its real tool ranks at or near the
+    /// top - measured against the real tool catalog, 5 kept every required tool across the tested
+    /// compound phrasings while holding a compound turn to 10-13 tools offered, vs up to 17 at 10
+    /// per clause.</summary>
+    public int ClauseTopK { get; set; } = 5;
 }

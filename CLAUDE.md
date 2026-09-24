@@ -224,6 +224,29 @@ design is what BrainAgent itself sees or calls).
   at a realistic (non-distractor-inflated) tool count — tight enough to exclude a genuinely
   irrelevant substitute, loose enough to keep a legitimate secondary tool in a multi-part request
   (e.g. `EnsureSimulatorVmRunning` scoring 0.22 below that turn's own top match is still offered).
+- **Compound turns are also ranked clause by clause** (`Tooling/RetrievalClauseSplitter.cs`,
+  `Retrieval:ClauseTopK`, default 5). This fixes a real, operator-reported miss. In "bring them all
+  home and give me full summary of today session", the summary half dominated the whole-sentence
+  embedding: "session" pulled toward the simulator's lesson tools. `ReturnToLaunch` ranked 14th on
+  the turn text and 11th with history, against a top-K of 10. The model, never offered the tool,
+  either said it had no return-to-launch capability or — measured live, 5 of 8 repeats —
+  **falsely claimed** all three UAVs were returning while their real telemetry still said
+  `Transiting`. `BuildToolsForTurn` now also ranks each clause (split on `,` `;` "and" "then"
+  "also" "plus", dropping one-word fragments) for its top `ClauseTopK`, and unions the results with
+  the whole-turn and turn+history rankings. It only ever adds candidates, so a clumsy split can't
+  remove a tool the whole-turn ranking found. All of a turn's queries are embedded in one batched
+  request. Measured against the real catalog, `ClauseTopK` 5 kept every required tool across the
+  tested compound phrasings with 10–13 tools offered; 10 per clause offered up to 17.
+  Regression coverage:
+  - `ReturnAllHomeWithSessionSummaryLiveTests` replays the exact conversation: 8/8 with the fix,
+    2/8 with `ClauseTopK` 0.
+  - `BuildToolsForTurnLiveTests` checks the failing phrase directly.
+  - `eval/tool-retrieval-lab`'s `return-home-with-summary` scenario: 0/8 without `--split-clauses`,
+    8/8 with it.
+- **Every turn logs what retrieval offered** (`ToolInvocationLogger.LogRetrievalCandidates`): one
+  `[Retrieval]` line with each offered tool's best score and which query found it. A tool missing
+  from that line was a retrieval miss, not a model decision. Added because diagnosing the incident
+  above otherwise meant re-running the ranking by hand.
 - **`tool_choice` is left at its default, "auto" — never forced**, and there is no verified-retry
   loop. An earlier version of this flat design forced `tool_choice: "required"` on a turn's first
   completion plus a 3-attempt retry that rolled back BrainAgent's own history whenever a completion

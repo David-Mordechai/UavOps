@@ -82,10 +82,20 @@ public sealed class ToolRetrievalIndex
         return new ToolRetrievalIndex(index, generator);
     }
 
-    public async Task<Embedding<float>> EmbedQueryAsync(string text, CancellationToken cancellationToken)
+    public async Task<Embedding<float>> EmbedQueryAsync(string text, CancellationToken cancellationToken) =>
+        (await EmbedQueriesAsync([text], cancellationToken))[0];
+
+    /// <summary>Embeds several queries in one request - a turn's whole text, each of its clauses
+    /// and its history-contextual text (see <see cref="Agents.AgentFactory.BuildToolsForTurn"/>)
+    /// cost one embedding round trip together, not one each.</summary>
+    public async Task<IReadOnlyList<Embedding<float>>> EmbedQueriesAsync(IReadOnlyList<string> texts, CancellationToken cancellationToken)
     {
-        var response = await _generator.GenerateAsync([text], cancellationToken: cancellationToken);
-        return response.FirstOrDefault() ?? throw new InvalidOperationException("Failed to embed query.");
+        var response = await _generator.GenerateAsync(texts, cancellationToken: cancellationToken);
+        if (response.Count != texts.Count)
+        {
+            throw new InvalidOperationException($"Expected {texts.Count} query embeddings, got {response.Count}.");
+        }
+        return response;
     }
 
     /// <summary>Ranks every indexed tool by cosine similarity to <paramref name="query"/>, returns
