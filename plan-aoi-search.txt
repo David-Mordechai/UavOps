@@ -1,0 +1,202 @@
+STATUS (2026-09-24): planned and agreed, NOT started. Resume from Phase 0.
+Branch when written: split-agents-domains.
+
+# AOI search mission: "Enter AOI zone ZoneA and search for white van"
+
+## Context
+The operator wants one chat command to run a search mission:
+1. Look up a named AOI polygon in a database.
+2. Plan a search route over it.
+3. Upload the route to the UAV, and on a separate command start flying it.
+4. Hand the target ("white van") to the AI agent onboard the UAV (later: a vision model on a Jetson Nano).
+5. When the onboard agent spots it, the operator gets an unprompted chat message with the location and can act on it ("send 998 to the white van").
+
+In dev, a separate map-based simulator shows the UAV flying the mission and plays the onboard detector.
+
+Today nothing supports this:
+- There's no database.
+- Simulated UAVs teleport and never fly waypoints (`SimulatedUavOperationService`).
+- Every host↔fleet-app call is host-initiated, so the aircraft can't report anything back unprompted.
+- There's no map anywhere.
+
+**User decisions:**
+- **AOI storage:** SQLite, behind an interface.
+- **Onboard detector:** simulated now; the real Jetson service comes later against the same contract.
+- **Simulator:** a separate local .NET 8 web app.
+- **Map:** fully offline.
+- **Mission start:** a separate step; uploading doesn't start flight.
+- **Offline map file:** built once from OpenStreetMap.
+
+## Architecture
+```
+Operator ─chat─▶ UavOps.Agent (BrainAgent) ─MCP─▶ McpMoav tools
+                                                   ├ ground-only: zone lookup (SQLite) + route planner
+                                                   └ wire: UploadRoute / StartMission / SetSearchTarget
+        ChatHub /uavCommandHub ◀──SignalR──▶ UavOps.Simulator  (dev stand-in for the real fleet app)
+          ▲ ReportDetection / ReportMissionEvent (NEW client→host)   flies UAVs, simulated detector,
+          │                                                          /simHub → browser (MapLibre, offline)
+   deterministic chat push + BrainAgent history + targetable point
+```
+The simulator connects exactly where the real fleet app does: McpMoav `OperationBackend: SignalR` → `MoavRelayService` → `ChatHub.Relay*` → `RemoteOperationBroker` → client. So the ground side is written once against the real wire contract. `SimulatedUavOperationService` stays for dev without the simulator and for fast live tests.
+
+## 1. Pure mission logic: new library `src/UavOps.Agent.Mission` (net8)
+Referenced by McpMoav, the simulator, and the tests.
+- **Types:** `GeoPoint`, `AoiZone(Name, Vertices)`, `SearchRoute(RouteId, TailNumber, ZoneName, Waypoints, LengthMeters, EstimatedDuration, LaneCount)`.
+- **`GeoProjection`:** equirectangular around the polygon centroid; error well under 1 m at km scale.
+- **`SearchRoutePlanner.Plan(polygon, uavPosition, SearchPlanParameters)`:** a lawnmower (boustrophedon) sweep.
+  1. Project to meters.
+  2. Pick the sweep direction as the polygon's minimum-width direction, using rotating calipers on the convex hull. This gives the fewest lanes.
+  3. Lane spacing = 2·alt·tan(HFOV/2)·(1 − overlap), with the first lane half a spacing in from the edge.
+  4. Clip each lane with scanline intersection (sorted edge crossings, paired). This handles concave zones, which give several segments per lane.
+  5. Chain the segments serpentine-style, linking leftover segments by nearest neighbour.
+  6. Try the 4 corner/direction variants and keep the one with the smallest (UAV→first waypoint + route length).
+  7. Guards: a zone narrower than one lane gets a single centreline pass; `MaxWaypoints` exceeded is an error; fewer than 3 vertices is rejected.
+- **`IAoiZoneStore`** (`GetAsync`, `ListAsync`), with name normalization: case-insensitive, whitespace and dashes stripped, so "zone a" finds ZoneA.
+- **`SqliteAoiZoneStore`:** `Microsoft.Data.Sqlite` only, no ORM. It's the repo's first DB package; its native `e_sqlite3` must ship on publish.
+  - Table `aoi_zone(name TEXT PRIMARY KEY COLLATE NOCASE, polygon_geojson TEXT, updated_utc)`. GeoJSON text moves to PostGIS later unchanged.
+  - Created on first run and seeded from `aoi-seed.json`. ZoneA is a ~1.5×1 km L-shape near alpha (31.812, 34.66), concave on purpose so clipping gets exercised; ZoneB sits near bravo.
+
+## 2. Tools in McpMoav (`MoavTools.cs` + `ToolsConfig.yaml`)
+They go in McpMoav, not a new server, because the upload/start/target tools need its `IOperationService` under both backends.
+
+| Tool | Params | Annotation | Notes |
+|---|---|---|---|
+| `ListAoiZones` | – | readOnly | So the model can offer the valid names. |
+| `GetAoiZone` | `zoneName` | readOnly | Info only (area, centroid, bounds); never required first. |
+| `PlanSearchRoute` | `tailNumber, zoneName, altitudeFt?` | destructive: false | Reads telemetry for the entry corner and stores the route per tail in the in-memory `IRouteStore`. |
+| `UploadRoute` | `tailNumber` | destructive: false | Uploads that tail's latest planned route via the **existing `UploadWaypoints` wire op**. No routeId for the model to copy. |
+| `SetSearchTarget` | `tailNumber, targetDescription` | destructive: false | Sends `SearchTargetRequest(MissionId, ZoneName, Prompt, MinConfidence)` to the onboard agent. |
+| `PrepareAoiSearch` | `tailNumber, zoneName, targetDescription` | destructive: false | **Composite: plan → upload → set target. Does NOT start.** |
+| `StartMission` | `tailNumber` | **destructive: true** | Needs operator confirmation. New wire op; mode becomes `Searching`. |
+
+- **Why the composite:** in this repo's live testing the model reliably makes the first call of a multi-call request and then drops the rest (6/8 failures on "bring the rest home"). A four-step dependent chain is the worst case. So "Enter AOI zone ZoneA and search for white van" maps to `PrepareAoiSearch`, and the agent then asks "start the mission?". The granular tools stay for piecemeal commands like "tell 997 to look for a red car".
+- **Descriptions:**
+  - Separate `PrepareAoiSearch` from `Navigate` ("enter" is a trap word), and `UploadRoute` from `UploadWaypoints` (explicit coordinates).
+  - `tailNumber` must say "one UAV only": an ALL fan-out would send the same route to every UAV.
+  - Parameter named `zoneName`, never `location`.
+  - The utterance names no UAV, so the existing `TailNumberDisambiguationTool` will ask "which UAV?", which is correct.
+  - Block-scalar YAML, reviewed with the `tool-description-review` skill, plus a short "AOI search" paragraph in `serverInstructions`.
+- **Options:** `Mission` section in `McpMoav/appsettings.json`: `AoiDatabasePath`, `DefaultAltitudeFt` 1000, `CameraHorizontalFovDeg` 60, `SideOverlap` 0.2, `MaxWaypoints` 300. `AoiDatabasePath` is added to `SettingsStore.PathFields`.
+- **Registration:** the new services must be registered in `McpMoav/Program.cs` before `McpToolsBuilder.Build`, or they'd leak into tool schemas.
+
+## 3. Wire contract
+- **Host → fleet app:**
+  - `IOperationService.StartMission(tailNumber)` returns `MissionStatus`.
+  - `SetSearchTarget(tailNumber, SearchTargetRequest)` returns an ack.
+  - Both are ≤2 args, so `MoavRelayService.InvokeAsync` needs no change.
+  - Each goes through the usual layers: `SimulatedUavOperationService` (bookkeeping only), `MoavRelayService`, `IOperationClientProxy`, `ChatHub.Relay*`, FleetClient.
+- **`MissionStatus`** gains trailing optional fields `CurrentWaypointIndex`, `ActiveMissionId`, `SearchPrompt`, so tests can assert real state.
+- **Fleet app → host (new direction):** accepted only from the real fleet endpoint (`IsMoavCommandEndpoint`).
+  - `ChatHub.ReportDetection(DetectionReport(TailNumber, MissionId, ZoneName, Prompt, Label, Confidence, Lat, Lng, DetectedAtUtc, TrackId))`.
+  - `ChatHub.ReportMissionEvent(MissionEventReport(TailNumber, MissionId, ZoneName, Kind: Completed|Aborted))`.
+- **UavOps.FleetClient:**
+  - Multi-target `net47;net8.0`, with ReferenceAssemblies conditioned on net47, so the simulator reuses `FleetClientConnection`.
+  - The new ops go in a **separate optional `IUavMissionHandler`**, registered only if the handler implements it. The real fleet app then keeps compiling unchanged until it opts in.
+  - New `ReportDetectionAsync` / `ReportMissionEventAsync`; DTO copies in `Models.cs`.
+  - A contract-drift unit test (net8 can now reference FleetClient) checks the proxy names against the handler/`On<>` names.
+- **Locations:** `KnownPoints.TryResolve` also accepts a `"lat,lng"` literal. The FleetClient README documents that a real fleet app must parse it.
+
+## 4. Detection → operator (host: `src/UavOps.Agent/FleetEvents/`)
+`DetectionEventService` (singleton), called by the two new hub methods:
+- **Dedupe:** key on (MissionId, Prompt), and drop reports within `DedupeRadiusMeters` (100) of one already pushed. Settings in `FleetEventOptions`.
+- **Deterministic message** (not LLM-phrased, since coordinates are safety-relevant and a small model can garble digits): "White van detected at 31.81234, 34.66123 by 997 while searching ZoneA." It's broadcast as `ReceiveChatMessage` under a fresh correlationId, so `chat.js` needs no change.
+- **Into BrainAgent's memory:** the existing lesson-outcome push isn't, so follow-ups know nothing.
+  - A new `ProactiveHistoryJournal` is drained at the start of `MainAgentOrchestrator.HandleAsync`. It appends a user "[System note, not from the operator] …" message plus the assistant message via `InMemoryChatHistoryProvider.SetMessages`.
+  - Draining at the start of the next turn avoids racing a completion that's still running.
+  - `ToolCallAwareChatReducer` keeps it as its own turn, and retrieval's history text picks it up.
+- **Targetable:** a host-side `DynamicPointRegistry` maps aliases ("white van", "the van", "detection 1") to "lat,lng". `LocationCanonicalizationTool` checks it before `KnownPoints`, so "send 998 to the white van" becomes `Navigate(998, "31.81234,34.66123")` on either backend.
+- **Mission end:** `Completed` with no detections pushes "997 finished searching ZoneA — no white van found"; with detections it pushes a one-line summary. `Aborted` (operator Navigate/RTL) only adds a history note. After a detection the UAV keeps searching; the operator decides what happens next.
+
+## 5. `src/UavOps.Simulator` (ASP.NET Core net8, port 5270, in `UavOps.sln`, opt-in)
+- **References:** FleetClient (net8), `UavOps.Agent.Mission`, and Contracts (with a `using` alias for the `Waypoint` name clash).
+- **`SimFleet`:** 997/998/999 at today's start points, state under locks.
+- **`SimulatorCommandHandler : IUavCommandHandler, IUavMissionHandler`:**
+  - `Navigate` sets a target and mode `Transiting`; it flies there, no teleport.
+  - Speed and altitude changes take effect over time.
+  - RTL flies home.
+  - `UploadWaypoints` stores the route; `StartMission` sets `Searching`.
+- **`FlightTickService`:** `PeriodicTimer` at 100 ms with `TimeScale`. Advances each UAV at its speed, moves to the next waypoint inside an arrival radius, and raises `Completed` at the route's end.
+- **`SimulatedDetector` behind `IOnboardDetector`:** the seam the real Jetson service replaces.
+  - While a search target is set, it hits when a scenario object is inside the camera footprint and every prompt word appears in the object's tags.
+  - Reports once per object per mission, with a little position jitter.
+- **`FleetConnectionService`:** a `BackgroundService` retrying the connection, like `HubConnectionStarter`.
+- **Scenario:** `Scenario:Objects` in its `appsettings.json` (a white van inside ZoneA), plus `POST /api/objects` for click-to-place on the map.
+- **Browser:** `/simHub` pushes state at ~5 Hz. `wwwroot/index.html` + `sim.js` (MapLibre) draw:
+  - the AOI polygons, read from the same SQLite file, read-only;
+  - the planned route, UAV icons with heading and trail, and the camera footprint;
+  - objects and detection markers.
+- **Mock client:** MockFleetClient gets a **D** key that sends a fake detection, to test the host side without the simulator.
+
+## 6. Offline map (one-time build; internet needed only for this step)
+**Renderer: MapLibre GL JS, not Leaflet.**
+- Planetiler outputs **vector** tiles (OpenMapTiles schema); Leaflet only renders raster tiles natively.
+- MapLibre + the pmtiles protocol read one static `.pmtiles` file through HTTP range requests, so no tile server is needed.
+- OSM's own tile servers forbid bulk/offline download, which is why the file is built from an extract instead.
+
+**`scripts/build-offline-map.ps1`:**
+- Runs Planetiler (Docker `ghcr.io/onthegomap/planetiler`, or Java 21) on Geofabrik `israel-and-palestine-latest.osm.pbf` (~114 MB), with `--bounds=34.40,31.60,34.95,32.05 --output=israel.pmtiles --download`.
+- The download pulls in extra coastline/Natural Earth data (several hundred MB) the first time.
+
+**`src/UavOps.Simulator/wwwroot/` layout:**
+- `map/style.json`: adapted Positron/OSM Bright, with source `pmtiles:///map/israel.pmtiles` and local glyph/sprite URLs.
+- `map/glyphs/`: Noto Sans plus Hebrew ranges.
+- `map/sprites/`
+- `vendor/`: `maplibre-gl` js/css, `pmtiles.js`, `signalr.js`, and the `mapbox-gl-rtl-text` plugin, which Hebrew labels need to render correctly.
+
+**Committed vs ignored:** vendored JS, fonts and style are committed (a few MB); the `.pmtiles` file is git-ignored.
+
+**Serving:** register `.pmtiles` and `.pbf` in a `FileExtensionContentTypeProvider`, or static files return 404 for unknown extensions.
+
+**Fallback:** if the `.pmtiles` file is missing, `sim.js` uses a plain background plus a generated lat/lng grid.
+
+## 7. Phases (each testable on its own)
+0. FleetClient multi-target + optional `IUavMissionHandler` + contract-drift test.
+1. `UavOps.Agent.Mission`: projection, planner, SQLite store + seed (unit tests).
+2. McpMoav tools + `StartMission`/`SetSearchTarget` through every wire layer + `MissionStatus` fields + YAML review (unit + live + retrieval tests).
+3. Host fleet events: hub methods, `DetectionEventService`, journal, `DynamicPointRegistry`, `lat,lng` parsing, MockFleetClient D key.
+4. Simulator: headless tick/detector first, then the web page with the grid fallback.
+5. Offline map script, style and vendored assets.
+6. Docs: CLAUDE.md sections + Ports list (5270), FleetClient README, simulator README.
+
+## Critical files
+- **New:**
+  - `src/UavOps.Agent.Mission/**`
+  - `src/UavOps.Simulator/**`
+  - `src/UavOps.Agent/FleetEvents/{DetectionEventService,ProactiveHistoryJournal,DynamicPointRegistry,FleetEventOptions}.cs`
+  - `src/UavOps.FleetClient/IUavMissionHandler.cs`
+  - `scripts/build-offline-map.ps1`
+- **Modified:**
+  - `src/UavOps.Agent.Contracts/{IOperationService,OperationModels,KnownPoints}.cs`
+  - `src/UavOps.Agent.McpMoav/{MoavTools,SimulatedUavOperationService,MoavRelayService,Program}.cs`, plus `ToolsConfig.yaml` and `appsettings.json`
+  - `src/UavOps.Agent/Hubs/{ChatHub,IOperationClientProxy}.cs`, `Agents/MainAgentOrchestrator.cs`, `Tooling/LocationCanonicalizationTool.cs`, `Options/SettingsStore.cs`, `Program.cs`, `appsettings.json`
+  - `src/UavOps.FleetClient/{UavOps.FleetClient.csproj,Models.cs,FleetClientConnection.cs,README.md}`
+  - `src/UavOps.MockFleetClient/{EmptyCommandHandler,Program}.cs`
+  - `UavOps.sln`, `CLAUDE.md`, `.gitignore`
+- **Reused:**
+  - `McpToolsBuilder`, `RemoteOperationBroker`, `FleetClientConnection`
+  - `TailNumberDisambiguationTool`, `LocationCanonicalizationTool`, `ToolCallAwareChatReducer`
+  - the `PushLessonOutcome` broadcast pattern and the `HubConnectionStarter` retry pattern
+  - `ServiceConfigFileStore`-style path handling, `LiveTestSupport`
+
+## Verification
+- **Unit tests:**
+  - Planner: rectangle lane count and spacing; L-shape gives clipped segments with every waypoint inside the polygon; entry corner nearest the UAV; zone narrower than one lane; projection round-trip under 1 m.
+  - Store: seed, name normalization, unknown zone.
+  - Relay/broker/simulated service for the new ops; contract drift.
+  - `DetectionEventService`: dedupe, message text, journal drain, reducer keeps the note turn, alias rewrite, rejects a non-fleet caller.
+  - Simulator: `SimFleet` + tick with a fake clock + detector flying the ZoneA route with the van inside gives exactly one report, then `Completed`.
+- **Retrieval:** a `BuildToolsForTurnLiveTests` case for "Enter AOI zone ZoneA and search for white van" expecting `PrepareAoiSearch`, plus an `eval/tool-retrieval-lab` scenario (~33 tools now; check "enter" doesn't pull `Navigate`).
+- **Live tests** (new classes, 8 repeats each, real post-conditions):
+  - `AoiSearchMissionLiveTests`: send the command and answer "997" to the which-UAV prompt. Assert real `GetMissionStatus` (WaypointCount > 0, `SearchPrompt` contains "white van", mode not yet `Searching`). Then "start the mission" and approve: assert mode `Searching`.
+  - `NavigateToDetectionLiveTests`: inject a detection through `DetectionEventService`, then "send 998 to the white van". Assert 998's real telemetry heads to the van's lat/lng.
+- **Manual demo:**
+  1. Run `scripts/build-offline-map.ps1` once.
+  2. Set McpMoav `OperationBackend: SignalR`, run the host (5262) and `UavOps.Simulator` (5270), and open both pages.
+  3. Type the command, answer the UAV prompt, then say "start the mission" and approve.
+  4. Watch the sweep over ZoneA, the van detection marker, and the chat push.
+  5. Say "send 998 to the white van" and watch 998 fly there.
+
+## Out of scope (follow-ups)
+- The real Jetson service (same `SearchTargetRequest`/`DetectionReport` contract, with an open-vocabulary detector replacing the tag match).
+- A real AOI database.
+- Obstacle/no-fly-aware transit legs.
