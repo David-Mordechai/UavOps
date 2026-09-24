@@ -227,7 +227,10 @@ connection.on("ReceiveChoices", (correlationId, options) => {
 });
 
 connection.onreconnecting(() => setStatus("reconnecting…", "status-connecting"));
-connection.onreconnected(() => setStatus("connected", "status-connected"));
+connection.onreconnected(() => {
+  setStatus("connected", "status-connected");
+  reportChatActivity();
+});
 // onclose fires once automatic reconnect gives up (or the connection was never established) — the
 // retry policy above never gives up on its own, but restart here too as a safety net so the page
 // always keeps trying to get back to a connected state without a manual refresh.
@@ -240,6 +243,7 @@ async function start() {
   try {
     await connection.start();
     setStatus("connected", "status-connected");
+    reportChatActivity();
   } catch (err) {
     console.error(err);
     setStatus("disconnected", "status-disconnected");
@@ -265,10 +269,11 @@ form.addEventListener("submit", (evt) => {
 });
 
 // ---- Voice: speak a command (mic → Voice/VoiceEndpoints' /v1/audio/transcriptions) ----------
-// Same manual ScriptProcessorNode PCM capture + WAV encoding as eval/voice-test-harness's
-// providers.js, not MediaRecorder's default webm/opus container — kept consistent with what's
-// already proven to round-trip correctly through this same backend (whisper-server's audio
-// decode path). Unlike that harness's acoustic-loopback test, echoCancellation is left at its
+// Manual PCM capture + WAV encoding, as in eval/voice-test-harness's providers.js, not
+// MediaRecorder's default webm/opus container — kept consistent with what's already proven to
+// round-trip correctly through this same backend (whisper-server's audio decode path). Capture
+// runs in an AudioWorklet (mic-capture-worklet.js) rather than the harness's ScriptProcessorNode,
+// which Chrome flags as deprecated on every recording; the samples and WAV are the same either way. Unlike that harness's acoustic-loopback test, echoCancellation is left at its
 // default (true) here — this is a real operator speaking into a real mic, not a speaker-to-mic
 // digital loopback, so the normal echo/noise suppression a browser mic applies is exactly what's
 // wanted.
@@ -299,36 +304,85 @@ function encodeWav(samples, sampleRate) {
   return new Blob([buffer], { type: "audio/wav" });
 }
 
-let micState = "idle"; // "idle" | "recording" | "transcribing"
+let micState = "idle"; // "idle" | "starting" | "recording" | "transcribing"
 let micStream = null;
 let micAudioCtx = null;
 let micSourceNode = null;
-let micProcessorNode = null;
+let micCaptureNode = null; // AudioWorkletNode running mic-capture-worklet.js
 let micPcmChunks = [];
+let micStopRequested = false; // a release that arrived while still "starting"
+let micMaxDurationTimer = null;
+
+// A joystick-started recording stops on its own after this long, in case the release event is
+// ever lost (e.g. this tab's connection dropped while the button was held).
+const REMOTE_MIC_MAX_MS = 60000;
 
 function setMicState(next) {
   micState = next;
-  micButton.classList.toggle("is-recording", next === "recording");
+  micButton.classList.toggle("is-recording", next === "starting" || next === "recording");
   micButton.classList.toggle("is-transcribing", next === "transcribing");
+}
+
+function releaseMicResources() {
+  micCaptureNode?.disconnect();
+  micSourceNode?.disconnect();
+  micStream?.getTracks().forEach((t) => t.stop());
+  if (micAudioCtx && micAudioCtx.state !== "closed") micAudioCtx.close();
+  micStream = micAudioCtx = micSourceNode = micCaptureNode = null;
+}
+
+// Asks the worklet for its last partial batch and resolves once it has arrived (see
+// mic-capture-worklet.js). Bounded, so a worklet that somehow never answers can't hang a stop.
+function flushMicCapture() {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 500);
+    micCaptureNode.port.onmessage = (e) => {
+      if (e.data === "flushed") {
+        clearTimeout(timer);
+        resolve();
+      } else {
+        micPcmChunks.push(e.data);
+      }
+    };
+    micCaptureNode.port.postMessage("flush");
+  });
 }
 
 async function startRecording() {
   micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   micAudioCtx = new AudioContext();
+  // Chrome's autoplay policy creates an AudioContext "suspended" if this page hasn't had a user
+  // gesture yet - normal for a joystick press (no click here at all) in a tab the operator never
+  // clicked. resume() then never settles, so don't wait on it forever; a suspended context would
+  // just record silence.
+  if (micAudioCtx.state !== "running") {
+    await Promise.race([micAudioCtx.resume(), new Promise((r) => setTimeout(r, 500))]);
+  }
+  if (micAudioCtx.state !== "running") {
+    releaseMicResources();
+    throw new Error("audio-blocked");
+  }
+  try {
+    await micAudioCtx.audioWorklet.addModule("mic-capture-worklet.js");
+  } catch (err) {
+    releaseMicResources();
+    throw err;
+  }
   micSourceNode = micAudioCtx.createMediaStreamSource(micStream);
-  micProcessorNode = micAudioCtx.createScriptProcessor(4096, 1, 1);
+  micCaptureNode = new AudioWorkletNode(micAudioCtx, "mic-capture", { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1] });
   micPcmChunks = [];
-  micProcessorNode.onaudioprocess = (e) => micPcmChunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-  micSourceNode.connect(micProcessorNode);
-  micProcessorNode.connect(micAudioCtx.destination); // required by some browsers to keep the graph running
+  micCaptureNode.port.onmessage = (e) => micPcmChunks.push(e.data);
+  micSourceNode.connect(micCaptureNode);
+  // The worklet never writes its output (silence), but keeping it wired to the destination keeps
+  // it in the graph the browser actually renders - same reason the ScriptProcessorNode was.
+  micCaptureNode.connect(micAudioCtx.destination);
 }
 
 async function stopRecordingAndTranscribe() {
-  micProcessorNode.disconnect();
   micSourceNode.disconnect();
+  await flushMicCapture();
   const sampleRate = micAudioCtx.sampleRate;
-  micStream.getTracks().forEach((t) => t.stop());
-  await micAudioCtx.close();
+  releaseMicResources();
 
   const totalLength = micPcmChunks.reduce((sum, c) => sum + c.length, 0);
   const merged = new Float32Array(totalLength);
@@ -344,32 +398,96 @@ async function stopRecordingAndTranscribe() {
   return { text: (json.text || "").trim(), rawText: (json.rawText || "").trim() };
 }
 
-micButton.addEventListener("click", async () => {
-  if (micState === "idle") {
-    try {
-      await startRecording();
-      setMicState("recording");
-    } catch (err) {
-      console.error("mic start error", err);
-      setMicState("idle");
+function renderNotice(text) {
+  const el = document.createElement("div");
+  el.className = "message message-notice";
+  el.textContent = text;
+  threadEl.appendChild(el);
+  scrollToBottom();
+}
+
+async function beginRecording({ remote = false } = {}) {
+  if (micState !== "idle") return;
+  setMicState("starting");
+  micStopRequested = false;
+  try {
+    await startRecording();
+  } catch (err) {
+    console.error("mic start error", err);
+    setMicState("idle");
+    if (err.message === "audio-blocked") {
+      renderNotice("Push-to-talk couldn't turn the mic on: the browser blocks audio until this page has been clicked once. Click anywhere in this window, then press the button again.");
     }
-  } else if (micState === "recording") {
-    setMicState("transcribing");
-    try {
-      const { text, rawText } = await stopRecordingAndTranscribe();
-      setMicState("idle");
-      if (text) {
-        // Sent directly, not via input.value + requestSubmit() - that path only carries the
-        // final text through <form>'s submit event, with nowhere to also carry rawText for the
-        // "as heard" line (see renderOperatorMessage).
-        sendOperatorReply(text, rawText);
-      }
-    } catch (err) {
-      console.error("transcription error", err);
-      setMicState("idle");
-    }
+    return;
   }
-  // "transcribing" state ignores further clicks until the in-flight request resolves.
+  setMicState("recording");
+  if (remote) micMaxDurationTimer = setTimeout(finishRecording, REMOTE_MIC_MAX_MS);
+  if (micStopRequested) await finishRecording();
+}
+
+async function finishRecording() {
+  if (micState === "starting") {
+    micStopRequested = true; // beginRecording finishes this as soon as the mic is actually up
+    return;
+  }
+  if (micState !== "recording") return;
+  clearTimeout(micMaxDurationTimer);
+  setMicState("transcribing");
+  try {
+    const { text, rawText } = await stopRecordingAndTranscribe();
+    setMicState("idle");
+    if (text) {
+      // Sent directly, not via input.value + requestSubmit() - that path only carries the
+      // final text through <form>'s submit event, with nowhere to also carry rawText for the
+      // "as heard" line (see renderOperatorMessage).
+      sendOperatorReply(text, rawText);
+    }
+  } catch (err) {
+    console.error("transcription error", err);
+    setMicState("idle");
+  }
+}
+
+micButton.addEventListener("click", () => {
+  if (micState === "idle") beginRecording();
+  else if (micState === "recording") finishRecording();
+  // "starting"/"transcribing" ignore further clicks until the in-flight step resolves.
+});
+
+// ---- Voice: push-to-talk from the fleet app's joystick (see Voice/PushToTalkRouter.cs) --------
+// The host sends SetMicActive only to the chat tab used most recently, by this tab's own report of
+// when the operator last clicked or typed in it - so a press never records in two tabs at once.
+let lastActivityUnixMs = Date.now();
+let lastActivityReportMs = 0;
+let activityReportTimer = null;
+
+function reportChatActivity() {
+  if (connection.state !== signalR.HubConnectionState.Connected) return;
+  lastActivityReportMs = Date.now();
+  connection.invoke("ReportChatActivity", lastActivityUnixMs).catch(console.error);
+}
+
+// At most one report per 2s while typing, but always a trailing one - the *last* click/keypress
+// before the operator moves to another tab is exactly the one that decides which tab is newest.
+function onOperatorActivity() {
+  lastActivityUnixMs = Date.now();
+  const sinceLastReport = Date.now() - lastActivityReportMs;
+  if (sinceLastReport > 2000) {
+    reportChatActivity();
+  } else if (!activityReportTimer) {
+    activityReportTimer = setTimeout(() => {
+      activityReportTimer = null;
+      reportChatActivity();
+    }, 2000 - sinceLastReport);
+  }
+}
+
+window.addEventListener("pointerdown", onOperatorActivity, true);
+window.addEventListener("keydown", onOperatorActivity, true);
+
+connection.on("SetMicActive", (active) => {
+  if (active) beginRecording({ remote: true });
+  else finishRecording();
 });
 
 // ---- Voice: hear replies (BrainAgent's final answer → Voice/VoiceEndpoints' /v1/audio/speech) --

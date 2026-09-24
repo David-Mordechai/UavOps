@@ -48,6 +48,20 @@ namespace UavOps.FleetClient
             return _connection.StopAsync();
         }
 
+        /// <summary>
+        /// Push-to-talk for UavOps.Agent's chat window: call with <c>true</c> when the operator
+        /// presses the talk button (e.g. on the joystick) and <c>false</c> when they release it.
+        /// The chat tab the operator used most recently starts recording on press, and on release
+        /// stops, transcribes and sends what was said - same as clicking its mic button twice.
+        /// Returns <c>false</c> if nothing acted on it (no chat window open on press; the mic
+        /// wasn't on for a release). If this connection drops while the button is held, the host
+        /// releases the mic itself.
+        /// </summary>
+        public Task<bool> SetPushToTalkAsync(bool pressed)
+        {
+            return _connection.InvokeAsync<bool>("SetPushToTalk", pressed);
+        }
+
         private void RegisterHandlers()
         {
             _connection.On<string>("ListFleet", correlationId =>

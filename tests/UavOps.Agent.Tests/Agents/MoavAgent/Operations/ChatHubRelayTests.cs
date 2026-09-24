@@ -7,6 +7,7 @@ using UavOps.Agent.Agents;
 using UavOps.Agent.Contracts;
 using UavOps.Agent.Hubs;
 using UavOps.Agent.Tooling;
+using UavOps.Agent.Voice;
 using Xunit;
 
 namespace UavOps.Agent.Tests.Agents.MoavAgent.Operations;
@@ -34,7 +35,8 @@ public class ChatHubRelayTests
         // MainAgentOrchestrator/AgentFactory are never touched by any Relay* method (only
         // PushLessonOutcome touches AgentFactory) - null! is fine here since they're only
         // constructor dependencies of ChatHub, never invoked by the methods under test.
-        var chatHub = new ChatHub(null!, confirmationGate, operatorPromptGate, toolLogger, broker, hub, null!, NullLogger<ChatHub>.Instance);
+        var chatHub = new ChatHub(null!, confirmationGate, operatorPromptGate, toolLogger, broker, hub, null!,
+            new PushToTalkRouter(hub, NullLogger<PushToTalkRouter>.Instance), NullLogger<ChatHub>.Instance);
         return (chatHub, operatorPromptGate);
     }
 

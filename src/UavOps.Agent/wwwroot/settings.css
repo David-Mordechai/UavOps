@@ -1,13 +1,52 @@
 /* Settings view (see index.html/settings.js) — built entirely on theme.css's own tokens, same as
    chat.css/graph.css already do, so it never needs its own palette. */
 
+/* Fixed header (title + Save + banner) above, and only .settings-scroll scrolls - so Save and a
+   save's outcome (e.g. "Shut down now") are always on screen together. min-height: 0 lets this
+   flex child shrink below its content height, which is what makes the inner scroll area work. */
 #settings-container {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.settings-header {
+  flex-shrink: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.25rem 1rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-header-row {
+  width: 100%;
+  max-width: 640px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  min-height: 2.6rem;
+  margin-bottom: 1rem;
+}
+
+/* Save and the banner take turns in the header row - see renderSettings in settings.js. */
+.settings-header-row:has(.settings-banner:not([hidden])) .settings-save-btn {
+  display: none;
+}
+
+.settings-scroll {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1.75rem 1rem 3rem;
+  padding: 1rem 1rem 3rem;
 }
 
 .settings-loading {
@@ -16,29 +55,32 @@
 }
 
 .settings-heading {
-  width: 100%;
-  max-width: 640px;
-  margin: 0 0 1rem;
+  margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
 }
 
 .settings-banner {
-  width: 100%;
-  max-width: 640px;
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.65rem 1rem;
-  margin-bottom: 1rem;
+  padding: 0.5rem 0.9rem;
   border-radius: var(--radius-sm);
   font-size: 0.85rem;
 }
 
+/* display: flex above would otherwise override the UA's own [hidden] rule. */
+.settings-banner[hidden] { display: none; }
+
 .settings-banner-restart { background: var(--warning-bg); color: var(--warning); }
 .settings-banner-saved { background: var(--success-bg); color: var(--success); }
 .settings-banner-error { background: var(--danger-bg); color: var(--danger); }
+.settings-banner-prompt { align-items: flex-start; }
+.settings-banner-list { margin: 0.35rem 0 0; padding-left: 1.1rem; word-break: break-all; }
+.settings-banner-actions { display: flex; gap: 0.5rem; flex-shrink: 0; }
 
 .settings-shutdown-btn {
   flex-shrink: 0;
@@ -224,14 +266,6 @@
 .settings-list-add:hover {
   color: var(--text);
   border-color: var(--accent);
-}
-
-.settings-save-row {
-  width: 100%;
-  max-width: 640px;
-  display: flex;
-  justify-content: flex-end;
-  padding: 0.5rem 0 2rem;
 }
 
 .settings-save-btn {

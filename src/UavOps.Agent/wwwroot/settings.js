@@ -137,8 +137,19 @@ function renderScalarField(value, pathParts, formRoot, liveFieldsSet, pathFields
     input = document.createElement("input");
     input.type = "number";
     input.className = "settings-input";
+    input.step = "any";
     input.value = value;
-    input.addEventListener("input", () => setPath(formRoot, pathParts, input.valueAsNumber));
+    // A cleared (or otherwise unparseable) box is NaN, which JSON.stringify would save as null -
+    // keep the last valid number in the form state instead, and show it again on blur.
+    let lastValid = value;
+    input.addEventListener("input", () => {
+      if (Number.isNaN(input.valueAsNumber)) return;
+      lastValid = input.valueAsNumber;
+      setPath(formRoot, pathParts, lastValid);
+    });
+    input.addEventListener("blur", () => {
+      if (Number.isNaN(input.valueAsNumber)) input.value = lastValid;
+    });
   } else {
     input = document.createElement("input");
     input.type = "text";
@@ -154,7 +165,7 @@ function renderScalarField(value, pathParts, formRoot, liveFieldsSet, pathFields
     const status = document.createElement("span");
     status.className = "settings-path-status";
     row.appendChild(status);
-    pathValidationTargets.push({ path: dotted, status });
+    pathValidationTargets.push({ path: dotted, input, status });
     const debouncedValidate = debounce(() => validatePathField(input, status), 400);
     input.addEventListener("input", debouncedValidate);
     validatePathField(input, status);
@@ -378,29 +389,128 @@ function showRestartBanner(banner) {
     shutdownBtn.textContent = "Shutting down…";
     try {
       await fetch("/api/shutdown", { method: "POST" });
-      text.textContent = "Shut down. Relaunch UavOps.Agent to continue.";
     } catch {
       text.textContent = "Shutdown request failed — stop the process manually.";
       shutdownBtn.disabled = false;
       shutdownBtn.textContent = "Shut down now";
+      return;
+    }
+
+    text.textContent = "Shut down. Relaunch UavOps.Agent to continue.";
+    shutdownBtn.hidden = true;
+    await waitForRestart();
+    try {
+      const refreshed = await (await fetch("/api/settings")).json();
+      renderSettings(refreshed, "restarted");
+    } catch (err) {
+      showErrorBanner(banner, "UavOps.Agent restarted, but reloading settings failed: " + err.message);
     }
   });
   banner.appendChild(shutdownBtn);
 }
 
-function showSavedToast(banner) {
-  banner.hidden = false;
-  banner.className = "settings-banner settings-banner-saved";
-  banner.textContent = "Saved — applied immediately, no restart needed.";
+// Resolves once a *new* process is fully up after "Shut down now": first waits to see the old one
+// gone (a failed request) or the new one still booting (/healthz "starting" - MCP servers and the
+// retrieval index aren't ready yet), then for "ok". Waiting for the down/starting phase first
+// matters because the old process keeps answering for a moment after /api/shutdown returns.
+async function waitForRestart() {
+  let sawDown = false;
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1000));
+    try {
+      const res = await fetch("/healthz", { cache: "no-store" });
+      const status = res.ok ? (await res.json()).status : null;
+      if (status !== "ok") sawDown = true;
+      else if (sawDown) return;
+    } catch {
+      sawDown = true;
+    }
+  }
 }
 
-async function handleSave(originalData, formState, liveFieldsSet, banner) {
+function showSavedToast(banner, message = "Saved — applied immediately, no restart needed.") {
+  banner.hidden = false;
+  banner.className = "settings-banner settings-banner-saved";
+  banner.textContent = message;
+  // Nothing to act on here, so hand the header slot back to Save on its own.
+  setTimeout(() => {
+    if (banner.classList.contains("settings-banner-saved")) banner.hidden = true;
+  }, 3000);
+}
+
+function showErrorBanner(banner, message) {
+  banner.hidden = false;
+  banner.className = "settings-banner settings-banner-error";
+  banner.innerHTML = "";
+
+  const text = document.createElement("span");
+  text.textContent = message;
+  banner.appendChild(text);
+
+  const dismissBtn = document.createElement("button");
+  dismissBtn.type = "button";
+  dismissBtn.className = "settings-shutdown-btn";
+  dismissBtn.textContent = "Dismiss";
+  dismissBtn.addEventListener("click", () => {
+    banner.hidden = true;
+  });
+  banner.appendChild(dismissBtn);
+}
+
+// In-page replacement for a blocking window.confirm(): lists each missing path in the banner with
+// "Save anyway"/"Cancel" buttons, leaving the rest of the page usable (e.g. to go fix a path
+// first) while the choice is pending.
+function showMissingPathsPrompt(banner, missingPaths, onSaveAnyway) {
+  banner.hidden = false;
+  banner.className = "settings-banner settings-banner-restart settings-banner-prompt";
+  banner.innerHTML = "";
+
+  const text = document.createElement("div");
+  const heading = document.createElement("span");
+  heading.textContent = missingPaths.length + " path(s) don't exist on disk:";
+  text.appendChild(heading);
+  const list = document.createElement("ul");
+  list.className = "settings-banner-list";
+  for (const target of missingPaths) {
+    const item = document.createElement("li");
+    item.textContent = labelFor(target.path.split(".")) + ": " + target.input.value.trim();
+    list.appendChild(item);
+  }
+  text.appendChild(list);
+  banner.appendChild(text);
+
+  const actions = document.createElement("div");
+  actions.className = "settings-banner-actions";
+
+  const saveAnywayBtn = document.createElement("button");
+  saveAnywayBtn.type = "button";
+  saveAnywayBtn.className = "settings-shutdown-btn";
+  saveAnywayBtn.textContent = "Save anyway";
+  saveAnywayBtn.addEventListener("click", onSaveAnyway);
+  actions.appendChild(saveAnywayBtn);
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "settings-shutdown-btn";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("click", () => {
+    banner.hidden = true;
+  });
+  actions.appendChild(cancelBtn);
+
+  banner.appendChild(actions);
+}
+
+function handleSave(originalData, formState, liveFieldsSet, banner) {
   const missingPaths = pathValidationTargets.filter((t) => t.status.classList.contains("settings-path-missing"));
   if (missingPaths.length > 0) {
-    const proceed = confirm(missingPaths.length + " path(s) don't exist on disk — save anyway?");
-    if (!proceed) return;
+    showMissingPathsPrompt(banner, missingPaths, () => saveSettings(originalData, formState, liveFieldsSet, banner));
+    return;
   }
+  saveSettings(originalData, formState, liveFieldsSet, banner);
+}
 
+async function saveSettings(originalData, formState, liveFieldsSet, banner) {
   const changedPaths = diffPaths(originalData, formState);
   const needsRestart = changedPaths.some((p) => !liveFieldsSet.has(p));
 
@@ -420,9 +530,7 @@ async function handleSave(originalData, formState, liveFieldsSet, banner) {
     const refreshed = await (await fetch("/api/settings")).json();
     renderSettings(refreshed, needsRestart ? "restart" : "saved");
   } catch (err) {
-    banner.hidden = false;
-    banner.className = "settings-banner settings-banner-error";
-    banner.textContent = "Failed to save settings: " + err.message;
+    showErrorBanner(banner, "Failed to save settings: " + err.message);
   }
 }
 
@@ -437,17 +545,53 @@ function renderSettings(data, flash) {
   pathValidationTargets = [];
 
   const container = document.getElementById("settings-container");
+  // A save re-renders everything - keep the operator where they were instead of jumping to the top.
+  const previousScrollTop = container.querySelector(".settings-scroll")?.scrollTop ?? 0;
   container.innerHTML = "";
+
+  // Pinned header: Save and every save outcome (missing-path prompt, restart/shutdown banner,
+  // error) share one row, always visible - only .settings-scroll below it scrolls. The banner and
+  // Save take turns in that row (settings.css hides Save while the banner is showing) to save
+  // vertical space; hiding the banner - its own Cancel/Dismiss, the "saved" toast timing out, or
+  // any edit below - brings Save back.
+  const header = document.createElement("div");
+  header.className = "settings-header";
+  const headerRow = document.createElement("div");
+  headerRow.className = "settings-header-row";
 
   const heading = document.createElement("h2");
   heading.className = "settings-heading";
   heading.textContent = "Settings";
-  container.appendChild(heading);
+  headerRow.appendChild(heading);
 
   const banner = document.createElement("div");
   banner.className = "settings-banner";
   banner.hidden = true;
-  container.appendChild(banner);
+  headerRow.appendChild(banner);
+
+  const saveBtn = document.createElement("button");
+  saveBtn.type = "button";
+  saveBtn.className = "settings-save-btn";
+  saveBtn.textContent = "Save";
+  headerRow.appendChild(saveBtn);
+  header.appendChild(headerRow);
+  container.appendChild(header);
+
+  const scroll = document.createElement("div");
+  scroll.className = "settings-scroll";
+  container.appendChild(scroll);
+
+  // Editing anything means the banner's message is about a state that no longer matches the
+  // form - clear it so Save is available again. List/dictionary add/remove are buttons, not
+  // inputs, hence the click listener too.
+  const dismissBanner = () => {
+    banner.hidden = true;
+  };
+  scroll.addEventListener("input", dismissBanner);
+  scroll.addEventListener("change", dismissBanner);
+  scroll.addEventListener("click", (e) => {
+    if (e.target.closest("button")) dismissBanner();
+  });
 
   const agentSection = document.createElement("section");
   agentSection.className = "settings-domain";
@@ -455,7 +599,7 @@ function renderSettings(data, flash) {
   agentTitle.textContent = "Agent";
   agentSection.appendChild(agentTitle);
   renderFields(formState.agent, ["agent"], formState, liveFieldsSet, pathFieldsSet, agentSection);
-  container.appendChild(agentSection);
+  scroll.appendChild(agentSection);
 
   for (const [name, server] of Object.entries(data.mcpServers)) {
     const section = document.createElement("section");
@@ -483,19 +627,13 @@ function renderSettings(data, flash) {
     section.appendChild(enabledRow);
 
     renderFields(formState.mcpServers[name].settings, ["mcpServers", name, "settings"], formState, liveFieldsSet, pathFieldsSet, section);
-    container.appendChild(section);
+    scroll.appendChild(section);
   }
 
-  const saveRow = document.createElement("div");
-  saveRow.className = "settings-save-row";
-  const saveBtn = document.createElement("button");
-  saveBtn.type = "button";
-  saveBtn.className = "settings-save-btn";
-  saveBtn.textContent = "Save";
   saveBtn.addEventListener("click", () => handleSave(data, formState, liveFieldsSet, banner));
-  saveRow.appendChild(saveBtn);
-  container.appendChild(saveRow);
+  scroll.scrollTop = previousScrollTop;
 
   if (flash === "restart") showRestartBanner(banner);
   else if (flash === "saved") showSavedToast(banner);
+  else if (flash === "restarted") showSavedToast(banner, "UavOps.Agent restarted — saved settings are now in effect.");
 }

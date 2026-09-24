@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.SignalR;
 using UavOps.Agent.Agents;
 using UavOps.Agent.Contracts;
 using UavOps.Agent.Tooling;
+using UavOps.Agent.Voice;
 
 namespace UavOps.Agent.Hubs;
 
@@ -47,6 +48,7 @@ public sealed class ChatHub(
     IRemoteOperationBroker broker,
     IHubContext<ChatHub> hubContext,
     AgentFactory agentFactory,
+    PushToTalkRouter pushToTalkRouter,
     ILogger<ChatHub> logger) : Hub<IOperationClientProxy>
 {
     public async Task SendMessage(string user, string text, string correlationId)
@@ -125,15 +127,32 @@ public sealed class ChatHub(
         return base.OnConnectedAsync();
     }
 
-    public override Task OnDisconnectedAsync(Exception? exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (IsMoavCommandEndpoint)
         {
             broker.UnregisterConnection(Context.ConnectionId);
         }
 
-        return base.OnDisconnectedAsync(exception);
+        // Either role: a chat tab leaving drops out of push-to-talk routing, and a fleet client
+        // leaving with its joystick button held releases the mic it turned on.
+        await pushToTalkRouter.ConnectionClosedAsync(Context.ConnectionId);
+
+        await base.OnDisconnectedAsync(exception);
     }
+
+    /// <summary>Called by a chat tab on (re)connect and whenever the operator clicks or types in
+    /// it, so <see cref="SetPushToTalk"/> knows which tab is the one actually in use - see
+    /// <see cref="PushToTalkRouter"/>.</summary>
+    public void ReportChatActivity(long lastActivityUnixMs) =>
+        pushToTalkRouter.ReportActivity(Context.ConnectionId, lastActivityUnixMs);
+
+    /// <summary>Called by the fleet app (<c>UavOps.FleetClient</c>'s <c>SetPushToTalkAsync</c>)
+    /// on its joystick's push-to-talk button: <c>true</c> on press, <c>false</c> on release.
+    /// Turns the most recently used chat tab's mic on/off (<c>SetMicActive</c> event). Returns
+    /// <c>false</c> if no chat tab was there to act on it.</summary>
+    public Task<bool> SetPushToTalk(bool pressed) =>
+        pushToTalkRouter.SetPushToTalkAsync(Context.ConnectionId, pressed);
 
     /// <summary>Called by the connected real Moav client once it has handled an operation —
     /// resolves the broker's pending call for that <paramref name="correlationId"/>.</summary>

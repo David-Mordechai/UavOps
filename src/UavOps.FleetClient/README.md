@@ -18,6 +18,24 @@ to write.
    `IUavCommandHandler` implementation (on a background thread, so a slow/blocking call doesn't
    stall the connection), and replies to `UavOps.Agent` with the result.
 
+### Push-to-talk (joystick talk button)
+
+Call `SetPushToTalkAsync(true)` when the operator presses the talk button and
+`SetPushToTalkAsync(false)` when they release it. The `UavOps.Agent` chat tab the operator used
+most recently turns its mic on at press, and at release stops, transcribes and sends the spoken
+command, exactly like clicking the chat window's mic button twice. The result is `false` if nothing
+acted on it: no chat window was open at press, or the mic wasn't on at release.
+
+```csharp
+joystick.TalkButtonDown += async () => await connection.SetPushToTalkAsync(true);
+joystick.TalkButtonUp   += async () => await connection.SetPushToTalkAsync(false);
+```
+
+Safety nets: if this connection drops while the button is held, the host releases the mic itself,
+and a recording started this way stops on its own after 60 seconds. The first time, the browser
+asks for microphone permission. It also won't start audio in a tab that has never been clicked:
+the chat window then shows a notice asking the operator to click it once.
+
 See `UavOps.MockFleetClient` (in this repo) for a minimal, complete example — it implements
 `IUavCommandHandler` with stub logic only (no real fleet-state tracking), specifically to prove
 this plumbing works end to end during development.

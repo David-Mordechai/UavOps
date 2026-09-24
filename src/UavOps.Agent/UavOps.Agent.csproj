@@ -23,6 +23,10 @@
     <!-- Unlike appsettings*.json, the SDK doesn't auto-copy an arbitrary new folder to the
          output/publish directory. -->
     <None Update="Agents\**\*.yaml" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The Settings page's saved overrides (Options/SettingsStore.cs) are per-machine state, not
+         build input - the Web SDK would otherwise ship this machine's own copy with every build
+         and publish, silently overwriting whatever a deployed instance had saved on redeploy. -->
+    <Content Update="appsettings.Local.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
   <ItemGroup>

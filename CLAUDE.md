@@ -730,6 +730,28 @@ owns all the SignalR connection/dispatch plumbing, invoking your handler on a ba
 per command and replying to the host's operation hub with the result (or the exception message, if
 your handler throws). See `src/UavOps.FleetClient/README.md`.
 
+**Push-to-talk** (the fleet app's joystick talk button → the chat window's mic):
+`FleetClientConnection.SetPushToTalkAsync(bool pressed)` → `ChatHub.SetPushToTalk` →
+`Voice/PushToTalkRouter` → a `SetMicActive(bool)` event to exactly **one** chat tab: the one with
+the newest self-reported last-activity time (`ChatHub.ReportChatActivity`, sent by `chat.js` on
+connect/reconnect and on click/keypress). Never a broadcast, since every tab that got "mic on" would
+record and send the same command, executing it once per tab. A release always goes to the tab that
+got the press. A fleet connection dropping with the button held releases the mic host-side, and a
+joystick-started recording also stops by itself after 60s (`REMOTE_MIC_MAX_MS` in `chat.js`).
+Browser caveat, confirmed live: Chrome's autoplay policy creates an `AudioContext` suspended in a
+tab with no user gesture yet. A joystick press in a never-clicked tab therefore can't record, so
+`chat.js` detects this and shows a notice asking the operator to click the window once, rather than
+uploading silence. Browser-automation clicks don't count as a user gesture, so this path can't be
+driven end to end by the claude-in-chrome extension. What does work, verified: a separate headless
+Chrome (`--headless=new --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream
+--use-fake-device-for-media-stream "--use-file-for-fake-audio-capture=<speech.wav>%noloop"
+--enable-logging=stderr`, own `--user-data-dir`). There the "mic" plays a WAV, e.g. one generated
+with `System.Speech`, and console output, deprecation warnings included, lands in stderr. Mic
+capture runs in an AudioWorklet (`wwwroot/mic-capture-worklet.js`), not the deprecated
+`ScriptProcessorNode`.
+`UavOps.MockFleetClient`'s **T** key toggles press/release, since a console can't see a key being
+released.
+
 `UavOps.MockFleetClient` (net47 console app) is the dev/test stand-in: it references the library
 and implements `IUavCommandHandler` with `EmptyCommandHandler` — logs each command to the console
 and returns a hardcoded, correctly-shaped placeholder. **Deliberately does not simulate fleet

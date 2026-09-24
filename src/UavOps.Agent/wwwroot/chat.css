@@ -60,6 +60,19 @@ main:has(.thread .message)::before {
 }
 
 /* ---- Agent message — flat full-width row with an avatar, no card boundary ------------------ */
+/* A local, client-side notice (e.g. push-to-talk blocked - see chat.js's renderNotice), not a
+   message from anyone - centered and muted so it doesn't read as operator or agent text. */
+.message-notice {
+  align-self: center;
+  max-width: 85%;
+  padding: 0.5rem 0.8rem;
+  border-radius: var(--radius-sm);
+  background: var(--warning-bg);
+  color: var(--warning);
+  font-size: 0.82rem;
+  text-align: center;
+}
+
 .message-agent {
   align-self: stretch;
   width: 100%;

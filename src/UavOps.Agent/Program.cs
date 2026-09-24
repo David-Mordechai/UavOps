@@ -182,6 +182,7 @@ builder.Services.AddSingleton<Func<string, string?, IChatClient>>(sp => (modelNa
 builder.Services.AddHttpClient("SttInference", c => c.Timeout = TimeSpan.FromSeconds(voiceOptions.HttpTimeoutSeconds));
 builder.Services.AddHttpClient("TtsInference", c => c.Timeout = TimeSpan.FromSeconds(voiceOptions.HttpTimeoutSeconds));
 builder.Services.AddSingleton<VoiceGatewayService>();
+builder.Services.AddSingleton<PushToTalkRouter>();
 
 builder.Services.AddSingleton<AgentFactory>(sp =>
     new AgentFactory(
@@ -226,7 +227,11 @@ app.MapGet("/healthz", () =>
     return Results.Ok(new
     {
         status = "ok",
-        ollamaModel = ollamaOptions.DefaultModel,
+        // BrainAgent's real provider/model (AgentModels override applied above), not
+        // Ollama:DefaultModel - that one is only the app-wide fallback and never reflected an
+        // AgentModels change saved from the Settings page.
+        provider = agentConfig.Provider,
+        model = agentConfig.Model,
         mcpServers = agentConfig.McpServers.Count,
         mcpTools = factory.McpTools.Count,
         retrievalTools = factory.RetrievalIndex.Count
