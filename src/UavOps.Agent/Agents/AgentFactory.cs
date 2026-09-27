@@ -55,6 +55,8 @@ public sealed class AgentFactory(
     /// circular construction-order dependency.</summary>
     public ToolRetrievalIndex RetrievalIndex { get; set; } = null!;
 
+    public RetrievalOptions Retrieval => retrievalOptions;
+
     /// <summary>Unprompted messages waiting to join BrainAgent's history - see
     /// <see cref="ProactiveHistoryJournal"/>. Owned here so the orchestrator (which drains it) and
     /// ChatHub (which fills it from MCP servers) share one instance, live tests included.</summary>

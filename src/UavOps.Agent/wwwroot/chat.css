@@ -1,6 +1,14 @@
 /* Design tokens, reset, and header/nav chrome live in theme.css — this file only has the Chat
    view's own layout: the message thread and composer. */
 
+/* ---- Size -------------------------------------------------------------- */
+/* The conversation is read at a glance on an operator console: twice the page's base size (15px ->
+   30px), across the whole window. Every size below is in em, so it all scales together. */
+main,
+#composer {
+  font-size: 2em;
+}
+
 /* ---- Message list ------------------------------------------------------ */
 main {
   flex: 1;
@@ -8,7 +16,7 @@ main {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1.75rem 1rem 2rem;
+  padding: 1.5rem 2rem 2rem;
 }
 
 main::before {
@@ -16,7 +24,7 @@ main::before {
   display: block;
   margin: auto;
   color: var(--text-faint);
-  font-size: 0.9rem;
+  font-size: 0.9em;
   text-align: center;
 }
 
@@ -26,17 +34,16 @@ main:has(.thread .message)::before {
 
 .thread {
   width: 100%;
-  max-width: 900px;
   display: flex;
   flex-direction: column;
-  gap: 1.4rem;
+  gap: 1.4em;
 }
 
 /* ---- Operator (user) message — kept as a distinguishable right-aligned bubble ------------- */
 .message-operator {
   align-self: flex-end;
   max-width: 85%;
-  padding: 0.65rem 0.9rem;
+  padding: 0.65em 0.9em;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   background: var(--accent);
@@ -51,10 +58,10 @@ main:has(.thread .message)::before {
    (see chat.js's renderOperatorMessage) - makes a silent correction visible instead of just
    trusting it happened. */
 .message-heard {
-  margin-top: 0.35rem;
-  padding-top: 0.35rem;
+  margin-top: 0.35em;
+  padding-top: 0.35em;
   border-top: 1px solid color-mix(in srgb, var(--accent-text) 25%, transparent);
-  font-size: 0.78rem;
+  font-size: 0.78em;
   font-style: italic;
   color: color-mix(in srgb, var(--accent-text) 70%, transparent);
 }
@@ -65,11 +72,11 @@ main:has(.thread .message)::before {
 .message-notice {
   align-self: center;
   max-width: 85%;
-  padding: 0.5rem 0.8rem;
+  padding: 0.5em 0.8em;
   border-radius: var(--radius-sm);
   background: var(--warning-bg);
   color: var(--warning);
-  font-size: 0.82rem;
+  font-size: 0.82em;
   text-align: center;
 }
 
@@ -81,13 +88,13 @@ main:has(.thread .message)::before {
 .message-row {
   display: flex;
   align-items: flex-start;
-  gap: 0.75rem;
+  gap: 0.75em;
 }
 
 .avatar {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 1.9em;
+  height: 1.9em;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -100,8 +107,8 @@ main:has(.thread .message)::before {
 }
 
 .avatar-agent svg {
-  width: 16px;
-  height: 16px;
+  width: 1.1em;
+  height: 1.1em;
 }
 
 .message-body {
@@ -110,13 +117,13 @@ main:has(.thread .message)::before {
 }
 
 .message-meta {
-  font-size: 0.78rem;
+  font-size: 0.78em;
   font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 0.3rem;
+  margin-bottom: 0.3em;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.4em;
 }
 
 .message-text {
@@ -125,13 +132,13 @@ main:has(.thread .message)::before {
 }
 
 .message-resolution {
-  margin-top: 0.4rem;
+  margin-top: 0.4em;
   color: var(--text-muted);
 }
 
 .message-text pre {
-  margin: 0.5rem 0 0;
-  padding: 0.6rem 0.75rem;
+  margin: 0.5em 0 0;
+  padding: 0.6em 0.75em;
   background: var(--bg-subtle);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -141,7 +148,7 @@ main:has(.thread .message)::before {
 
 .message-text pre code {
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: 0.82em;
   line-height: 1.45;
   white-space: pre;
 }
@@ -149,11 +156,11 @@ main:has(.thread .message)::before {
 /* ---- Reasoning trace ---------------------------------------------------- */
 .trace {
   display: none; /* hidden until it has at least one step — see .has-steps */
-  margin-top: 0.6rem;
-  font-size: 0.8rem;
+  margin-top: 0.6em;
+  font-size: 0.8em;
   color: var(--text-muted);
   border-left: 2px solid var(--border-strong);
-  padding-left: 0.65rem;
+  padding-left: 0.65em;
 }
 
 .trace.has-steps {
@@ -162,13 +169,13 @@ main:has(.thread .message)::before {
 
 .trace summary {
   cursor: pointer;
-  padding: 0.3rem 0;
+  padding: 0.3em 0;
   font-weight: 500;
   color: var(--text-muted);
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.35em;
 }
 
 .trace summary::-webkit-details-marker { display: none; }
@@ -184,15 +191,15 @@ main:has(.thread .message)::before {
 }
 
 .trace-steps {
-  padding: 0.3rem 0 0.15rem;
+  padding: 0.3em 0 0.15em;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.35em;
 }
 
 .trace-step {
   font-family: var(--font-mono);
-  font-size: 0.76rem;
+  font-size: 0.76em;
   line-height: 1.45;
   color: var(--text-muted);
   word-break: break-word;
@@ -203,10 +210,10 @@ main:has(.thread .message)::before {
 
 /* ---- Choice options (confirmation / operator-choice prompts) ------------ */
 .choice-options {
-  margin-top: 0.6rem;
+  margin-top: 0.6em;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: 0.4em;
 }
 
 .choice-options:empty {
@@ -215,12 +222,12 @@ main:has(.thread .message)::before {
 }
 
 .choice-option {
-  padding: 0.4rem 0.85rem;
+  padding: 0.4em 0.85em;
   border-radius: var(--radius-pill);
   border: 1px solid transparent;
   background: var(--bg-subtle);
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: 0.82em;
   font-weight: 500;
   cursor: pointer;
 }
@@ -247,13 +254,12 @@ main:has(.thread .message)::before {
 #composer-inner {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.5em;
   width: 100%;
-  max-width: 900px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  padding: 0.35rem 0.4rem 0.35rem 1.1rem;
+  padding: 0.35em 0.4em 0.35em 1.1em;
   box-shadow: var(--shadow);
 }
 
@@ -265,7 +271,7 @@ main:has(.thread .message)::before {
   flex: 1;
   border: none;
   background: transparent;
-  padding: 0.5rem 0;
+  padding: 0.5em 0;
   color: var(--text);
 }
 
@@ -282,8 +288,8 @@ main:has(.thread .message)::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 2.2em;
+  height: 2.2em;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -293,8 +299,8 @@ main:has(.thread .message)::before {
 }
 
 #composer button[type="submit"] svg {
-  width: 16px;
-  height: 16px;
+  width: 1.05em;
+  height: 1.05em;
 }
 
 #composer button[type="submit"]:hover { filter: brightness(1.08); }
@@ -307,8 +313,8 @@ main:has(.thread .message)::before {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 2.2em;
+  height: 2.2em;
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -318,7 +324,7 @@ main:has(.thread .message)::before {
 }
 
 #micButton:hover { background: var(--bg-subtle); color: var(--text); }
-#micButton svg { width: 16px; height: 16px; }
+#micButton svg { width: 1.05em; height: 1.05em; }
 
 #micButton .icon-mic-busy { display: none; }
 

@@ -31,10 +31,15 @@ public static class AoiZoneNames
 /// AOI polygons in a SQLite file, one row per zone, polygon as GeoJSON text (so moving to a
 /// spatial database later keeps the data as-is). The table is created and seeded from the
 /// embedded aoi-seed.json the first time any process opens the file; McpMoav and
-/// UavOps.Simulator open the same one.
+/// UavOps.Simulator open the same one. When the seed changes (<see cref="SeedVersion"/>), a file
+/// seeded from an older one gets the seed's zones rewritten; zones with other names are kept.
 /// </summary>
 public sealed class SqliteAoiZoneStore : IAoiZoneStore
 {
+    /// <summary>Bump when aoi-seed.json changes. 2: the zones moved to open country with real
+    /// aerial photos (Yatir forest road, Route 443).</summary>
+    public const int SeedVersion = 2;
+
     private readonly string _connectionString;
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private bool _initialized;
@@ -105,7 +110,7 @@ public sealed class SqliteAoiZoneStore : IAoiZoneStore
         return connection;
     }
 
-    // IF NOT EXISTS / INSERT OR IGNORE: two processes may open a brand-new file at the same time.
+    // IF NOT EXISTS / INSERT OR REPLACE: two processes may open the same file at the same time.
     private static async Task InitializeAsync(SqliteConnection connection, CancellationToken cancellationToken)
     {
         var create = connection.CreateCommand();
@@ -119,13 +124,22 @@ public sealed class SqliteAoiZoneStore : IAoiZoneStore
             """;
         await create.ExecuteNonQueryAsync(cancellationToken);
 
-        var count = connection.CreateCommand();
-        count.CommandText = "SELECT COUNT(*) FROM aoi_zone";
-        if ((long)(await count.ExecuteScalarAsync(cancellationToken))! > 0)
+        var meta = connection.CreateCommand();
+        meta.CommandText = "CREATE TABLE IF NOT EXISTS aoi_seed (version INTEGER NOT NULL)";
+        await meta.ExecuteNonQueryAsync(cancellationToken);
+        var read = connection.CreateCommand();
+        read.CommandText = "SELECT MAX(version) FROM aoi_seed";
+        var seeded = await read.ExecuteScalarAsync(cancellationToken) is long v ? v : 0;
+        if (seeded >= SeedVersion)
             return;
 
+        // A new file, or one seeded from an older aoi-seed.json: (re)write the seed's zones.
         foreach (var zone in LoadSeed())
-            await WriteAsync(connection, zone, replace: false, cancellationToken);
+            await WriteAsync(connection, zone, replace: true, cancellationToken);
+        var write = connection.CreateCommand();
+        write.CommandText = "DELETE FROM aoi_seed; INSERT INTO aoi_seed VALUES ($v)";
+        write.Parameters.AddWithValue("$v", SeedVersion);
+        await write.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task WriteAsync(SqliteConnection connection, AoiZone zone, bool replace, CancellationToken cancellationToken)

@@ -29,7 +29,7 @@ public class MissionEventServiceTests
         (await _sut.HandleDetectionAsync(Van())).Should().BeTrue();
 
         _notifier.Posted.Select(p => p.Message).Should().Equal(
-            "White van detected at 31.81234, 34.66123 by 997 while searching ZoneA (confidence 87%).");
+            "Detection 1: White van detected at 31.81234, 34.66123 by 997 while searching ZoneA (confidence 87%).");
     }
 
     [Fact]
@@ -94,6 +94,75 @@ public class MissionEventServiceTests
         _notifier.Posted[^1].Message.Should().Be("997 finished searching ZoneA - 1 detection of white van, the last at 31.81234, 34.66123.");
     }
 
+    // ~300 m apart along a line: each one a separate object.
+    private static DetectionReport VanNumber(int i, double confidence = 0.87) =>
+        Van(lat: 31.81234 + i * 0.003) with { Confidence = confidence };
+
+    [Fact]
+    public async Task AFlood_PostsTheFirstThree_ThenOneNumberedSummaryWhenDue()
+    {
+        var t0 = new DateTime(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
+        for (var i = 0; i < 8; i++)
+            (await _sut.HandleDetectionAsync(VanNumber(i, confidence: 0.6 + i * 0.04), t0.AddSeconds(i))).Should().BeTrue();
+
+        _notifier.Posted.Should().HaveCount(3, "the first three are posted as they come");
+        _notifier.Posted.Select(p => p.Message).Should().AllSatisfy(m => m.Should().StartWith("Detection "));
+
+        await _sut.FlushDueSummariesAsync(t0.AddSeconds(20));
+        _notifier.Posted.Should().HaveCount(3, "the summary isn't due yet");
+
+        await _sut.FlushDueSummariesAsync(t0.AddSeconds(40));
+        _notifier.Posted.Should().HaveCount(4);
+        var (message, note) = _notifier.Posted[^1];
+        message.Should().StartWith("Detections 4-8: 5 more white vans found by 997 while searching ZoneA. Most confident: #8 at");
+        note.Should().Contain("detection 4 at location").And.Contain("detection 8 at location").And.Contain("nothing else has been done");
+
+        _points.TryResolve("Detection 6", out _).Should().BeTrue("a detection held for a summary is targetable straight away");
+    }
+
+    [Fact]
+    public async Task ASummaryListsTheMostConfident_AndCountsTheRest()
+    {
+        var t0 = DateTime.UtcNow;
+        for (var i = 0; i < 12; i++)
+            await _sut.HandleDetectionAsync(VanNumber(i), t0);
+
+        await _sut.FlushDueSummariesAsync(t0, force: true);
+
+        _notifier.Posted[^1].Message.Should().EndWith("; and 4 more.");
+    }
+
+    [Fact]
+    public async Task MissionEnd_PostsWhatIsHeld_BeforeTheEnd()
+    {
+        for (var i = 0; i < 5; i++)
+            await _sut.HandleDetectionAsync(VanNumber(i));
+
+        await _sut.HandleMissionEventAsync(new MissionEventReport("997", "m1", "ZoneA", MissionEventKinds.Completed));
+
+        _notifier.Posted.Select(p => p.Message).Should().SatisfyRespectively(
+            m => m.Should().StartWith("Detection 1:"),
+            m => m.Should().StartWith("Detection 2:"),
+            m => m.Should().StartWith("Detection 3:"),
+            m => m.Should().StartWith("Detections 4-5:"),
+            m => m.Should().StartWith("997 finished searching ZoneA - 5 detections of white van"));
+    }
+
+    [Fact]
+    public async Task TheVoiceGetsAShortForm_WithoutCoordinates_GroupedByMission()
+    {
+        for (var i = 0; i < 5; i++)
+            await _sut.HandleDetectionAsync(VanNumber(i));
+        await _sut.FlushDueSummariesAsync(DateTime.UtcNow, force: true);
+
+        _notifier.Voices.Select(v => v!.Spoken).Should().Equal(
+            "Detection 1: white van, by 997.",
+            "Detection 2: white van, by 997.",
+            "Detection 3: white van, by 997.",
+            "Detections 4 to 5: 2 more white vans, by 997.");
+        _notifier.Voices.Select(v => v!.Group).Should().AllBe("detections:m1");
+    }
+
     [Fact]
     public async Task MissionAborted_OnlyNotesItInHistory()
     {
@@ -110,9 +179,12 @@ internal sealed class RecordingOperatorNotifier : IOperatorNotifier
     public List<(string Message, string? HistoryNote)> Posted { get; } = [];
     public List<(string Note, string Message)> HistoryNotes { get; } = [];
 
-    public Task PostAsync(string message, string? historyNote)
+    public List<OperatorVoice?> Voices { get; } = [];
+
+    public Task PostAsync(string message, string? historyNote, OperatorVoice? voice = null)
     {
         Posted.Add((message, historyNote));
+        Voices.Add(voice);
         return Task.CompletedTask;
     }
 

@@ -26,8 +26,8 @@ public class SimulatedUavOperationServiceTests
 
         result.Success.Should().BeTrue();
         var snapshot = (TelemetrySnapshot)result.Value!;
-        snapshot.Lat.Should().Be(31.812000);
-        snapshot.Lng.Should().Be(34.660000);
+        snapshot.Lat.Should().Be(31.346500);
+        snapshot.Lng.Should().Be(35.050300);
         snapshot.Mode.Should().Be("Transiting");
     }
 

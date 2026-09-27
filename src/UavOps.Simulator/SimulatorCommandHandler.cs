@@ -3,7 +3,7 @@ using UavOps.FleetClient;
 namespace UavOps.Simulator;
 
 /// <summary>What the real fleet app implements, answered by <see cref="SimFleet"/>.</summary>
-public sealed class SimulatorCommandHandler(SimFleet fleet, ILogger<SimulatorCommandHandler> logger) : IUavCommandHandler, IUavMissionHandler
+public sealed class SimulatorCommandHandler(SimFleet fleet, ILogger<SimulatorCommandHandler> logger) : IUavCommandHandler, IUavMissionHandler, IUavPayloadZoomHandler
 {
     public CommandResult<List<UavSummary>> ListFleet() => Log("ListFleet", "", () => CommandResult<List<UavSummary>>.Ok(fleet.ListFleet()));
     public CommandResult<TelemetrySnapshot> GetTelemetry(string tailNumber) => Log("GetTelemetry", tailNumber, () => fleet.GetTelemetry(tailNumber));
@@ -13,6 +13,7 @@ public sealed class SimulatorCommandHandler(SimFleet fleet, ILogger<SimulatorCom
     public CommandResult<TelemetrySnapshot> ReturnToLaunch(string tailNumber) => Log("ReturnToLaunch", tailNumber, () => fleet.ReturnToLaunch(tailNumber));
     public CommandResult<TelemetrySnapshot> PointPayload(string tailNumber, string location) => Log("PointPayload", $"{tailNumber}, {location}", () => fleet.PointPayload(tailNumber, location));
     public CommandResult<TelemetrySnapshot> ResetPayload(string tailNumber) => Log("ResetPayload", tailNumber, () => fleet.ResetPayload(tailNumber));
+    public CommandResult<TelemetrySnapshot> SetPayloadZoom(string tailNumber, double zoom) => Log("SetPayloadZoom", $"{tailNumber}, {zoom}x", () => fleet.SetPayloadZoom(tailNumber, zoom));
     public CommandResult<int> UploadWaypoints(string tailNumber, List<Waypoint> waypoints) => Log("UploadWaypoints", $"{tailNumber}, {waypoints.Count} waypoints", () => fleet.UploadWaypoints(tailNumber, waypoints));
     public CommandResult<MissionStatus> GetMissionStatus(string tailNumber) => Log("GetMissionStatus", tailNumber, () => fleet.GetMissionStatus(tailNumber));
     public CommandResult<GdtLinkStatus> GetLinkStatus(string tailNumber) => Log("GetLinkStatus", tailNumber, () => fleet.GetLinkStatus(tailNumber));

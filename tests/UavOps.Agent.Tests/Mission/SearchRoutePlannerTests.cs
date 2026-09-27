@@ -67,7 +67,7 @@ public class SearchRoutePlannerTests
     [Fact]
     public void ConcaveZone_ClipsLanesIntoSeveralSegments_AllInsideThePolygon()
     {
-        // U-shape like the seeded ZoneA: upper lanes cross both arms.
+        // A U-shape: upper lanes cross both arms.
         var zone = Zone("U", (0, 0), (1500, 0), (1500, 1000), (1000, 1000), (1000, 350), (500, 350), (500, 1000), (0, 1000));
         var ring = Local(zone.Vertices);
 
@@ -96,7 +96,7 @@ public class SearchRoutePlannerTests
         var projection = GeoProjection.Around(zone.Vertices);
         var ring = zone.Vertices.Select(projection.ToLocal).ToList();
 
-        var route = SearchRoutePlanner.Plan(zone, "997", new GeoPoint(31.801447, 34.643497), Defaults);
+        var route = SearchRoutePlanner.Plan(zone, "997", new GeoPoint(31.344, 35.035), Defaults); // from the UAV base
 
         route.Waypoints.Should().HaveCountGreaterThan(4);
         route.LengthMeters.Should().BeGreaterThan(0);

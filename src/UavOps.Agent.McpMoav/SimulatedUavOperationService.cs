@@ -22,6 +22,7 @@ public sealed class SimulatedUavOperationService : IOperationService
         public int AltitudeFt = 4000;
         public string Mode = "Orbiting";
         public string? PayloadLockedOn;
+        public double PayloadZoom = 1;
         public List<Waypoint> Waypoints = [];
         public int? CurrentWaypointIndex;
         public string? ActiveMissionId;
@@ -39,10 +40,15 @@ public sealed class SimulatedUavOperationService : IOperationService
         {
             lock (Lock)
             {
-                return new TelemetrySnapshot(Lat, Lng, SpeedKts, AltitudeFt, Mode, PayloadLockedOn);
+                return new TelemetrySnapshot(Lat, Lng, SpeedKts, AltitudeFt, Mode, PayloadLockedOn,
+                    PayloadZoom, PayloadWideHfovDeg / PayloadZoom);
             }
         }
     }
+
+    // The same payload UavOps.Simulator plays: 40 degrees wide, up to 30x.
+    private const double PayloadWideHfovDeg = 40;
+    private const double PayloadMaxZoom = 30;
 
     private sealed class LinkState
     {
@@ -59,9 +65,10 @@ public sealed class SimulatedUavOperationService : IOperationService
     {
         _fleet = new Dictionary<string, VehicleState>(StringComparer.OrdinalIgnoreCase)
         {
-            ["997"] = new VehicleState(31.801447, 34.643497),
-            ["998"] = new VehicleState(31.798000, 34.639000),
-            ["999"] = new VehicleState(31.805000, 34.648000),
+            // 997 and 998 at the base by ZoneA (Yatir); 999 at a forward point by ZoneB (Route 443).
+            ["997"] = new VehicleState(31.344000, 35.035000),
+            ["998"] = new VehicleState(31.342500, 35.033500),
+            ["999"] = new VehicleState(32.064000, 34.912000),
         };
     }
 
@@ -168,6 +175,22 @@ public sealed class SimulatedUavOperationService : IOperationService
         }
 
         lock (v.Lock) { v.PayloadLockedOn = null; }
+        return Task.FromResult(OperationResult.Ok(v.Snapshot()));
+    }
+
+    public Task<OperationResult> SetPayloadZoom(string tailNumber, double zoom, CancellationToken cancellationToken)
+    {
+        if (!_fleet.TryGetValue(tailNumber, out var v))
+        {
+            return Task.FromResult(OperationResult.NotFound(tailNumber));
+        }
+
+        if (double.IsNaN(zoom) || zoom <= 0)
+        {
+            return Task.FromResult(OperationResult.Invalid("zoom must be a positive number (1 = widest)."));
+        }
+
+        lock (v.Lock) { v.PayloadZoom = Math.Clamp(zoom, 1, PayloadMaxZoom); }
         return Task.FromResult(OperationResult.Ok(v.Snapshot()));
     }
 

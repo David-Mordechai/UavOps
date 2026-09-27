@@ -10,9 +10,11 @@ public static class HostHubContract
     /// the host only delivers them.</summary>
     public static class Methods
     {
-        /// <summary><c>(string message, string? historyNote)</c>: show <c>message</c> to the operator
-        /// as-is, and if <c>historyNote</c> is given, add it and the message to BrainAgent's history
-        /// before its next turn.</summary>
+        /// <summary><c>(string message, string? historyNote, string? spoken, string? voiceGroup)</c>:
+        /// show <c>message</c> to the operator as-is, and if <c>historyNote</c> is given, add it and
+        /// the message to BrainAgent's history before its next turn. <c>spoken</c> is a short form
+        /// for the voice to say instead of the full text (e.g. without coordinates); messages that
+        /// share a <c>voiceGroup</c> may be merged by the voice when several are waiting.</summary>
         public const string PostOperatorMessage = nameof(PostOperatorMessage);
 
         /// <summary><c>(string note, string message)</c>: add to BrainAgent's history only, shown to

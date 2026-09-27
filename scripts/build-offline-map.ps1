@@ -19,14 +19,15 @@
   (~115 MB) plus coastline/water polygons and Natural Earth (several hundred MB). Later runs reuse it.
 
 .PARAMETER Bounds
-  minLng,minLat,maxLng,maxLat to keep. Default covers the simulator's area with room to spare.
+  minLng,minLat,maxLng,maxLat to keep. Default covers the simulator's area with room to spare: the
+  coast from Ashdod to Tel Aviv, the Yatir forest (ZoneA, the UAV base) and Route 443 (ZoneB).
 
 .PARAMETER Force
   Rebuild even if the .pmtiles file already exists.
 #>
 [CmdletBinding()]
 param(
-    [string]$Bounds = "34.40,31.60,34.95,32.05",
+    [string]$Bounds = "34.40,31.25,35.20,32.15",
     [switch]$Force
 )
 

@@ -20,7 +20,7 @@ server-wide instructions) — editable without a rebuild, the same principle
 `Agents/BrainAgent.yaml` already established for the host's own cross-cutting instructions. See
 "Split BrainAgent's 3 domains into separate MCP servers" below for why and how.
 
-Up to six server-side processes end to end (counting the opt-in `UavOps.Simulator`), though only one (`UavOps.Agent`) is user-facing:
+Up to seven server-side processes end to end (counting the opt-in `UavOps.Simulator` and `UavOps.Onboard.Detector`), though only one (`UavOps.Agent`) is user-facing:
 
 - **`src/UavOps.Agent`** — the host process: SignalR chat hub (`/chatHub`) for the browser,
   SignalR operation hub (`/uavCommandHub`) for a fleet-commanding client, the single persistent
@@ -50,8 +50,12 @@ Up to six server-side processes end to end (counting the opt-in `UavOps.Simulato
   hub; see its own README. **`src/UavOps.MockFleetClient`** (.NET Framework 4.7) is a thin console
   app referencing that library with stub command handlers — the dev/test stand-in for the real app.
 - **`src/UavOps.Simulator`** (.NET 8 web app, `:5270`, opt-in) — a richer dev stand-in for the
-  fleet app: flies the UAVs, plays the onboard detector, and shows it all on an offline map. See
-  its own README.
+  fleet app: flies the UAVs, renders their payload camera from the offline map, and shows it all on
+  an offline map. See its own README.
+- **`src/UavOps.Onboard.Detector`** (.NET 8, `:5280`, opt-in) — the onboard detection service (the
+  Jetson process next to the camera): searches the camera frames for the search target with a
+  vision-language model. **`src/UavOps.Onboard.Contracts`** holds what it and the aircraft exchange,
+  and the shared `CameraModel`. See "Onboard detection" below and its own README.
 
 There is no separate REST API or OpenAPI spec anywhere in this system. Fleet operations are
 declared as one C# interface (`IOperationService`, in `UavOps.Agent.Contracts`) and invoked
@@ -248,6 +252,12 @@ design is what BrainAgent itself sees or calls).
   - `BuildToolsForTurnLiveTests` checks the failing phrase directly.
   - `eval/tool-retrieval-lab`'s `return-home-with-summary` scenario: 0/8 without `--split-clauses`,
     8/8 with it.
+- **The "turn+history" query is bounded** (`Tooling/RetrievalQuery.cs`, `Retrieval:MaxHistoryChars`,
+  default 4000, newest messages first), and `ToolRetrievalIndex` cuts any single query to 12,000
+  characters as a safety net. It used to be the whole kept history - up to 40 messages, including
+  long detection/summary messages - sent as one embedding input, and a long session failed every
+  turn with the embedding server's 400 "maximum context length is 8192 tokens". Retrieval only needs
+  the last exchange or two.
 - **Every turn logs what retrieval offered** (`ToolInvocationLogger.LogRetrievalCandidates`): one
   `[Retrieval]` line with each offered tool's best score and which query found it. A tool missing
   from that line was a retrieval miss, not a model decision. Added because diagnosing the incident
@@ -578,12 +588,12 @@ behavior. Each repeat spawns fresh child MCP server processes (`McpClientGroup`,
 ### The Moav domain (`src/UavOps.Agent.McpMoav`)
 
 `UavOps.Agent.Contracts`'s `IOperationService.cs` is the single source of truth for what a Moav
-operation is — 14 async methods (`ListFleet`, `GetTelemetry`, `Navigate`, `SetSpeed`,
-`SetAltitude`, `ReturnToLaunch`, `PointPayload`, `ResetPayload`, `UploadWaypoints`,
+operation is — 15 async methods (`ListFleet`, `GetTelemetry`, `Navigate`, `SetSpeed`,
+`SetAltitude`, `ReturnToLaunch`, `PointPayload`, `ResetPayload`, `SetPayloadZoom`, `UploadWaypoints`,
 `GetMissionStatus`, `GetLinkStatus`, `SetTrackingMode`, and the AOI search-mission pair
 `StartMission`/`SetSearchTarget`), each returning `Task<OperationResult>` —
 a uniform, non-generic envelope (`Success`, `Error` enum, `ErrorMessage`, boxed `object? Value`) so
-`MoavTools` can wrap any of the 12 with a one-line method (`ToResultText(await moav.Method(...))`)
+`MoavTools` can wrap any of them with a one-line method (`ToResultText(await moav.Method(...))`)
 with **no `dynamic`, no per-operation switch statement**. A `location` argument is a known point's
 name or a `"lat,lng"` literal (`KnownPoints.TryResolve`), which is how a runtime-named position
 (a search detection) reaches either backend. `ListFleet` keeps "Fleet" in its name
@@ -835,9 +845,12 @@ the white van").
   by McpMoav and the simulator) and `SearchRoutePlanner` — a lawnmower sweep: lanes along the
   polygon's minimum-width direction (rotating calipers on the hull), spaced
   2·alt·tan(HFOV/2)·(1−overlap), clipped by scanline so concave zones split into several segments,
-  chained serpentine, entry corner picked by distance from the UAV. The seeded ZoneA is a U-shape
-  (not the L first planned): an L's minimum-width lanes never cross both arms, so it wouldn't
-  exercise the clipping. Zone names match loosely (`AoiZoneNames.Key`: "zone a", "AOI Zone-A").
+  chained serpentine, entry corner picked by distance from the UAV. The seeded zones are in open
+  country where real aerial photos exist (see "Onboard detection" below): ZoneA a ~1.3 km strip
+  along the Yatir forest road, ZoneB Route 443 near Modi'in. A file seeded from an older seed gets
+  them rewritten (`SqliteAoiZoneStore.SeedVersion`). The UAV base ("home") is by ZoneA, "alpha" on
+  its road, "bravo" in ZoneB, with 999 at a forward point near ZoneB. Zone names match loosely
+  (`AoiZoneNames.Key`: "zone a", "AOI Zone-A").
 - **Tools** (McpMoav, `MoavTools.Mission.cs`): `ListAoiZones`, `GetAoiZone`, `PlanSearchRoute`,
   `UploadRoute`, `SetSearchTarget`, the composite `PrepareAoiSearch` (plan → upload → set target,
   never starts), and `StartMission` (`destructive: false`: the operator's own "start the mission" is the approval, and
@@ -862,85 +875,106 @@ the white van").
   nothing has been done yet and that acting means calling the tool with the detection's `"lat,lng"`:
   a vaguer note let the model claim "998 is on its way" with no `Navigate` call
   (`NavigateToDetectionLiveTests` 6/8 → 8/8). The by-name lookup is the fallback for the operator's
-  own wording. Mission `Completed` is posted as a summary; `Aborted` (operator redirected the UAV)
-  only becomes a history note (`AddHistoryNote`). Under `OperationBackend: Simulated` there is no
+  own wording. Every detection is numbered ("Detection 5"). A busy search doesn't post one message
+  per object: the first `Mission:DetectionsReportedIndividually` (3) of a mission are posted as they
+  come, the rest are gathered into one summary every `Mission:DetectionSummaryIntervalSeconds` (30),
+  naming the most confident few, with every position in its history note (`DetectionSummaryFlusher`;
+  a live search once posted 51 red-car messages in a row). Each message also carries a short spoken
+  form without coordinates for the voice (see "Voice" below). Mission `Completed` is posted as a
+  summary, after anything still held; `Aborted` (operator redirected the UAV, or gave it a new
+  search) only becomes a history note (`AddHistoryNote`). A search whose route is flown stays open
+  until the onboard agent has looked at every frame; a new search set up meanwhile first closes it
+  under its own mission id (`SimFleet.CloseDrainingSearch`) - before that, the old search's end was
+  announced as the new one's ("no red car found" for a white-pickup search). Under `OperationBackend: Simulated` there is no
   host connection and no fleet app, so nothing reports and `LogOnlyOperatorNotifier` stands in.
-- **Dev**: `UavOps.Simulator` (see its README) or the mock client's **D** key.
+- **Dev**: `UavOps.Simulator` (see its README) with `UavOps.Onboard.Detector` (below), or the mock
+  client's **D** key.
 - **Tests**: planner/store/tools/relay/event/simulator unit tests; `BuildToolsForTurnLiveTests`
   covers the command's retrieval; `AoiSearchMissionLiveTests` and `NavigateToDetectionLiveTests`
   check real mission state and telemetry; `eval/tool-retrieval-lab` has an `aoi-search` scenario.
 
-## Voice STT/TTS evaluation — OPEN ISSUE, not yet merged into the app
+## Voice (speech in and out)
 
-Not part of `UavOps.Agent` yet — this is standalone research/eval work, tracked here because it's
-an active, unresolved thread the operator (David) wants picked back up in a future session, not
-because any of it has been wired into the real app.
+Voice is part of the app: push-to-talk in the chat UI (and the fleet app's joystick button, see
+"Push-to-talk" above) records the operator, and replies can be spoken. All offline, on the GX10;
+`Voice/VoiceGatewayService.cs` does everything around the bare model servers (`Voice` section of
+`appsettings.json`).
 
-**Goal**: replace/augment text chat with voice input/output, offline-only (no cloud STT/TTS),
-running on the existing self-hosted GX10 (ASUS Ascent, GB10 Grace Blackwell, ARM64) alongside the
-chat/embedding vLLM containers already documented in "Running it" above. Motivated by a prior,
-separate project's experience that offline Whisper.net quality was noticeably worse than
-Google's cloud Speech-to-Text — the bar for this work is "as good as that", not just "works".
+- **Speech to text**: a bare `whisper-server` per language (`ggml-large-v3` for English, ivrit.ai's
+  Hebrew-tuned large-v3 for Hebrew), then a grammar-fix pass with the chat model that repairs
+  domain mishearings ("UABs" -> "UAVs", "V999" -> "UAV 999") and never changes numbers. The operator
+  sees the raw transcript next to the fixed one whenever they differ.
+- **whisper's initial prompt** (`Voice:SttEnglishPrompt`, English only): the fleet's vocabulary plus
+  a few example commands. Measured 2026-09-27 on 10 operator commands in 5 Windows voices, sent
+  straight to the STT (no speakers or mic): WER 2.4% -> 0.0%, exact 42/50 -> 50/50. The worst miss
+  it fixed: "Point 999's payload" came out "0.999's payload" in all five voices. 50 held-out
+  commands (simulator, watchdog, a greeting) were 50/50 with and without it, so it doesn't pull
+  unrelated speech toward fleet words. A vocabulary-only prompt (no example commands) got 48/50.
+- **Text to speech**: Chatterbox-Turbo. Bare 3+ digit numbers without a unit are spaced out before
+  synthesis ("9 9 8"): a digital TTS-to-STT round trip showed tail-number errors came from the TTS
+  pronouncing them ambiguously (two different STT engines mis-heard the same audio the same way),
+  not from STT.
+- **The voice scheduler** (`chat.js`): what's said is the message's short spoken form when its poster
+  gave one (McpMoav gives detections and mission ends one, without coordinates - see
+  `PostOperatorMessage`'s `spoken`/`voiceGroup`). Waiting messages of one voice group are merged
+  (the newest is said, plus how many earlier ones are on screen); one waiting over 60 s is only
+  counted; a question with Yes/No choices goes first and cuts a message being said short; the
+  operator starting to talk stops the voice at once; the next chunk is synthesized while the current
+  one plays. Built after a busy search left the voice minutes behind the screen and the operator
+  sent a UAV by stale speech.
+- **Evaluation history**: `eval/voice-test-harness/` plays sentences through real speakers into a
+  real mic and scores WER (needs a genuinely quiet room: with echo cancellation off, as the loopback
+  requires, anyone talking in the room is recorded too - a 23.1% WER run was exactly that). Its
+  2026-09-10 result (Parakeet STT, before whisper-server and before tail numbers became plain
+  numbers) was 11.8% WER, all of it callsign formatting.
 
-**What exists today**:
-- `eval/voice-test-harness/` — a standalone browser page (not an UavOps.sln project, no build
-  step) that closed-loop tests STT/TTS: it plays a ground-truth sentence through real physical
-  speakers, simultaneously records via a real physical microphone, uploads the recording to an STT
-  endpoint, and scores word-level WER against the original text. Two swappable providers: the
-  browser's own Web Speech API (Chrome's built-in TTS + cloud STT, the "as good as Google"
-  baseline) and a generic custom-HTTP-endpoint provider (JSON `{"input": "..."}` → WAV for TTS,
-  multipart WAV upload → `{"text": "..."}` for STT — OpenAI-Whisper/TTS-shaped on purpose, see
-  below). Driven via the `claude-in-chrome` browser extension so an agent can run it end to end
-  without a human speaking — real mic/speaker hardware, no synthetic audio files.
-- Two always-on Docker services on the GX10 (`~/playground/voice-eval/` on that machine, **not**
-  in this repo — see that directory's own `README.md`/`SUMMARY.md` for full detail, connection
-  info, and the real ARM64/NeMo/torchaudio build friction that went into getting them running at
-  all): **Parakeet-TDT-0.6B-v3** (NVIDIA, STT, `:8002`) and **Chatterbox-Turbo** (Resemble AI, TTS,
-  `:8003`) — both OpenAI-Whisper/TTS-API-shaped, both CORS-enabled (`allow_origins=["*"]`, added
-  2026-09-10 specifically so a browser-based harness on another PC can call them cross-origin —
-  they had **no** CORS support originally, confirmed via a 405 on the OPTIONS preflight, not
-  guessed). Chatterbox-Turbo, not the originally-planned CosyVoice2 — CosyVoice2 wasn't gotten
-  working; Chatterbox was the brief's own named fallback.
+### Onboard detection (`src/UavOps.Onboard.Detector`, `src/UavOps.Simulator/Camera`)
 
-**Real, measured result (2026-09-10, quiet room, confirmed-clean run)**: 10 UAV-operator-style
-sentences (e.g. "Set UAV-1 speed to 200 knots", "Return to launch") through the full closed
-acoustic loop scored **avg WER 11.8%, 6/10 exact matches**. Every single nonzero-WER case was a
-UAV-N tail-number callsign, and every one of those was a **formatting** miss ("U8v1"/"UAV3"/"UAV1"
-instead of the hyphenated "UAV-1"/"UAV-3"), never a wrong-content miss — every plain-language
-command transcribed perfectly. Full results table and methodology notes in
-`~/playground/voice-eval/SUMMARY.md` on the GX10. Recorded verbatim under the fleet's naming
-scheme **as it stood on 2026-09-10** — real tail numbers are plain numeric strings (100-99999) as
-of the 2026-09-14 rename below, so a future voice-eval run will show numeric-string callsigns
-(e.g. "997"), not "UAV-1"; this specific historical result is left as originally measured rather
-than rewritten to match, since it quotes actual STT output.
+The search target is found by a vision-language model looking at a camera, not by a tag match. Both
+sides are outside the host and McpMoav: the host and McpMoav see only the same `SearchTargetRequest`
+in and `DetectionReport` out as before.
 
-**One methodology finding worth remembering if this gets picked up again**: an earlier run the
-same day scored much worse (avg WER 23.1%) with several fluent-but-completely-unrelated
-transcripts (e.g. "Mm-hmm.", "The court uh") — root cause was someone talking in the room during
-that run, not a model quality problem. The harness's mic capture has to run with Chrome's
-echo-cancellation explicitly **disabled** (`echoCancellation: false` in `providers.js`) for the
-acoustic loopback to work at all — AEC correctly identifies the TTS played through the same PC's
-own speakers as system echo and cancels it, which is required here, but with AEC off, anything
-else in the room (a person talking) is captured uncancelled right alongside the intended TTS
-audio. This is an artifact of same-machine loopback testing specifically — a real operator
-speaking into a mic has no such echo/AEC tradeoff — but it means any future run of this harness
-needs a genuinely quiet room to produce a trustworthy number, and a "bad" result should be
-double-checked against "was someone talking" before being read as a model-quality finding.
-
-**Why this stays open**: David is not satisfied with the callsign-formatting gap yet — real for an
-app whose whole purpose is fleet commands addressed to specific tail numbers. Untried next steps
-(see `SUMMARY.md` for the full list): whether NeMo's `ASRModel` exposes any hotword/biasing
-mechanism for the callsign format, whether regex-normalizing STT output before it reaches the
-agent is a reasonable stopgap (`TailNumberDisambiguationTool` already exists specifically to not
-blindly trust a raw guessed tail number, so this would slot into an already-skeptical pipeline),
-and whether the error is actually coming from Chatterbox's *pronunciation* of the callsign in the
-generated TTS audio rather than Parakeet's transcription of it — never isolated/checked. **Do not
-treat the numbers above as a final verdict or start wiring voice into `UavOps.Agent` without
-picking this thread back up first.**
+- **The aircraft** (`UavOps.Simulator`) renders its payload camera: over the zones, **real aerial
+  photos** (openly licensed drone orthomosaics from OpenAerialMap, 2-4 cm/px, fetched once by
+  `scripts/fetch-imagery.ps1`, git-ignored; read by a small GeoTIFF/UTM reader, no GDAL), with
+  scenario targets drawn as **real vehicle photos** cut from them (`Simulator:VehiclePhotos`);
+  elsewhere, the ground drawn from the offline OSM map with sparse traffic. Survey frames by distance
+  flown while on the search route (30% overlap), a live MJPEG view, and zoom close-ups.
+  **Nothing on the aircraft changes by itself**: altitude only by a command (a search route is
+  planned at the UAV's current altitude), zoom only by `SetPayloadZoom` (a Moav tool through every
+  layer, like `PointPayload`; the payload is 40° wide, up to 30x), and `PointPayload` only aims the
+  camera (the live view centres on the point, north-up). `PrepareAoiSearch` sends the search zoom
+  itself, so the frame is about `Mission:SearchGroundWidthMeters` (100 m, ~0.08 m/px) across, and
+  spaces the lanes from the field of view the aircraft reports in telemetry (`PayloadHfovDeg`). A
+  UAV sent to a point circles around it. It hands the
+  search to the detector (`OnboardDetectorClient`: PUT/DELETE `/tasks/{tail}`) and turns the
+  detector's callbacks into the ordinary `DetectionReport`. A search is reported `Completed` only
+  once the route is flown **and** the detector has analysed every frame - reporting "nothing found"
+  with frames still waiting was a real bug. `Simulator:Detector = Simulated` keeps the old tag match.
+- **The detector** asks the model two questions per frame: every object of the target's colour and
+  kind (recall), then, for each, what a zoom close-up of it is (colour + type), matched to the
+  target word by word. Both were measured, not guessed: asked directly for "white van", the model
+  boxed white trucks and buses and missed the van; asked for "things like the target" it proposed
+  one candidate and stopped (the white pickup 1/5); from crops of the survey frame it named pickups
+  "car" (0/6), from zoom close-ups correctly (6/6). See its README for the numbers and the Jetson
+  notes. These close-ups are the **onboard computer's own payload control** during a search (on a
+  real UAV, the Jetson slewing and zooming the payload itself), deliberately not a ground command:
+  the rule that the payload moves only by tool (`PointPayload`, `SetPayloadZoom`) is about the
+  ground side. Kept because crops of the survey frame measurably misidentified vehicles.
+- **On the real photos** (measured): the placed white van and red car on the Yatir road were each
+  found within 0.2 m of where they were placed; on Route 443 the real white van in the photo was found
+  and two other real white vehicles were rejected up close ("white car", "white pickup"). ~1.4-2.4 s
+  per frame - open country has far fewer candidates than a town.
+- **Throughput is still the limit** in a busy scene (~1.9 s per frame in the drawn town), so
+  detections can trail the aircraft and drain after the route.
+- **What's on the ground**: in a zone, the photo's own real vehicles plus the placed targets. Drawn
+  traffic (outside the photos, `Simulator:TrafficDensity`) never contains a white, silver or beige
+  van, so a white van in view is a placed target or real.
 
 ## Ports (local dev)
 
 - `UavOps.Agent`: `http://localhost:5262` (chat UI, `/chatHub`, `/uavCommandHub`, `/healthz`,
   `/api/agent-graph`)
-- `UavOps.Simulator`: `http://localhost:5270` (map page, `/simHub`, `/api/*`)
+- `UavOps.Simulator`: `http://localhost:5270` (map page, `/simHub`, `/api/*`, camera endpoints)
+- `UavOps.Onboard.Detector`: `http://localhost:5280` (`/tasks`, `/healthz`)
 - Ollama: `http://localhost:11434`

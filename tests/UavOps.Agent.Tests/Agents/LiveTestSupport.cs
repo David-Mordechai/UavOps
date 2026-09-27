@@ -325,6 +325,10 @@ internal static class LiveTestSupport
         foreach (var serverConfig in agentConfig.McpServers)
         {
             serverConfig.Args = serverConfig.Args.Select(a => a.Replace("{configuration}", buildConfiguration)).ToList();
+            // Always McpMoav's own in-memory fleet, fresh per repeat - never whatever the Settings
+            // page saved for the running app (SignalR would send these commands to the map simulator).
+            if (serverConfig.Name == "moav")
+                serverConfig.Args = [.. serverConfig.Args, "--OperationBackend", "Simulated"];
         }
 
         var mockHubContext = Substitute.For<IHubContext<ChatHub>>();

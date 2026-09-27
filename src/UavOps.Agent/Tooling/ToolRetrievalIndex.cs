@@ -82,6 +82,9 @@ public sealed class ToolRetrievalIndex
         return new ToolRetrievalIndex(index, generator);
     }
 
+    /// <summary>~3-6k tokens depending on language, under the 8192-token embedding server.</summary>
+    private const int MaxQueryChars = 12000;
+
     public async Task<Embedding<float>> EmbedQueryAsync(string text, CancellationToken cancellationToken) =>
         (await EmbedQueriesAsync([text], cancellationToken))[0];
 
@@ -90,7 +93,11 @@ public sealed class ToolRetrievalIndex
     /// cost one embedding round trip together, not one each.</summary>
     public async Task<IReadOnlyList<Embedding<float>>> EmbedQueriesAsync(IReadOnlyList<string> texts, CancellationToken cancellationToken)
     {
-        var response = await _generator.GenerateAsync(texts, cancellationToken: cancellationToken);
+        // Safety net under RetrievalQuery's own bound: no single input may overflow the embedding
+        // model's context (a 400 there fails the whole turn). Keeps the end, where the operator's
+        // current words are.
+        var bounded = texts.Select(t => t.Length <= MaxQueryChars ? t : t[^MaxQueryChars..]).ToList();
+        var response = await _generator.GenerateAsync(bounded, cancellationToken: cancellationToken);
         if (response.Count != texts.Count)
         {
             throw new InvalidOperationException($"Expected {texts.Count} query embeddings, got {response.Count}.");

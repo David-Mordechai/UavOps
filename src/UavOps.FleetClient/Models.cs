@@ -23,6 +23,13 @@ namespace UavOps.FleetClient
         public int AltitudeFt { get; set; }
         public string Mode { get; set; }
         public string PayloadLockedOn { get; set; }
+
+        /// <summary>The payload camera's zoom (1 = widest), or 0 if not reported.</summary>
+        public double PayloadZoom { get; set; }
+
+        /// <summary>The payload camera's horizontal field of view at that zoom, in degrees, or 0
+        /// if not reported. Search routes are planned from it.</summary>
+        public double PayloadHfovDeg { get; set; }
     }
 
     public sealed class GdtLinkStatus

@@ -12,9 +12,7 @@ public sealed class SqliteAoiZoneStoreTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_directory))
-            Directory.Delete(_directory, recursive: true);
+        TempDirectory.DeleteSqliteFolder(_directory);
     }
 
     [Fact]
@@ -23,7 +21,7 @@ public sealed class SqliteAoiZoneStoreTests : IDisposable
         var zones = await NewStore().ListAsync(CancellationToken.None);
 
         zones.Select(z => z.Name).Should().Equal("ZoneA", "ZoneB");
-        zones[0].Vertices.Should().HaveCount(8, "the closing GeoJSON vertex is dropped");
+        zones[0].Vertices.Should().HaveCount(30, "the seed's 31 GeoJSON points, the closing one dropped");
     }
 
     [Theory]
@@ -64,9 +62,34 @@ public sealed class SqliteAoiZoneStoreTests : IDisposable
 
         var summary = zoneA.Summarize();
 
-        // 1.5 x 1 km minus the 0.5 x 0.65 km notch.
-        summary.AreaSqKm.Should().BeApproximately(1.5 - 0.325, 0.02);
-        summary.SouthWest.Should().Be(new GeoPoint(31.80750, 34.65200));
-        summary.NorthEast.Should().Be(new GeoPoint(31.81649, 34.66786));
+        // The ~1.3 km x ~190 m strip along the Yatir road.
+        summary.AreaSqKm.Should().BeApproximately(0.224, 0.005);
+        summary.SouthWest.Should().Be(new GeoPoint(31.343184, 35.044370));
+        summary.NorthEast.Should().Be(new GeoPoint(31.350906, 35.054600));
+    }
+
+    [Fact]
+    public async Task AFileSeededFromAnOlderSeed_GetsTheNewZones_AndKeepsOthers()
+    {
+        // A database from before the zones moved: old ZoneA, an operator's ZoneC, no seed version.
+        var path = Path.Combine(_directory, "old.db");
+        Directory.CreateDirectory(_directory);
+        await using (var connection = new SqliteConnection($"Data Source={path}"))
+        {
+            await connection.OpenAsync();
+            var command = connection.CreateCommand();
+            command.CommandText = """
+                CREATE TABLE aoi_zone (name TEXT PRIMARY KEY COLLATE NOCASE, name_key TEXT NOT NULL UNIQUE, polygon_geojson TEXT NOT NULL, updated_utc TEXT NOT NULL);
+                INSERT INTO aoi_zone VALUES ('ZoneA', 'zonea', '{"type":"Polygon","coordinates":[[[34.652,31.8075],[34.667,31.8075],[34.667,31.816],[34.652,31.8075]]]}', '2026-01-01');
+                INSERT INTO aoi_zone VALUES ('ZoneC', 'zonec', '{"type":"Polygon","coordinates":[[[34.60,31.80],[34.61,31.80],[34.61,31.81],[34.60,31.80]]]}', '2026-01-01');
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+        SqliteConnection.ClearAllPools();
+
+        var zones = await new SqliteAoiZoneStore(path).ListAsync(CancellationToken.None);
+
+        zones.Select(z => z.Name).Should().Equal("ZoneA", "ZoneB", "ZoneC");
+        zones[0].Vertices.Should().Equal(SqliteAoiZoneStore.LoadSeed().Single(z => z.Name == "ZoneA").Vertices);
     }
 }

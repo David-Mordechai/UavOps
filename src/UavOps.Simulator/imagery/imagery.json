@@ -1,0 +1,38 @@
+{
+  "comment": "Real aerial photos the simulated payload camera shows where they cover the ground (the rest is drawn from the OSM map). Openly licensed drone orthomosaics from OpenAerialMap; the .tif files are fetched once by scripts/fetch-imagery.ps1 and git-ignored. 'role': 'ground' images are drawn as terrain; 'vehicles' images are only a source of real vehicle photos for scenario objects (see Simulator:VehiclePhotos).",
+  "images": [
+    {
+      "name": "yatir-road",
+      "file": "yatir-road.tif",
+      "role": "ground",
+      "url": "https://oin-hotosm-temp.s3.amazonaws.com/5b1388002b6a08001185f4f1/0/5b1388002b6a08001185f4f2.tif",
+      "title": "Yatir road",
+      "attribution": "Ecophysiology Group, Weizmann Institute of Science, via OpenAerialMap",
+      "license": "CC-BY 4.0",
+      "acquired": "2018-05-30",
+      "gsdMeters": 0.042
+    },
+    {
+      "name": "route-443",
+      "file": "route-443.tif",
+      "role": "ground",
+      "url": "https://oin-hotosm-temp.s3.us-east-1.amazonaws.com/6817ab77e6f78fff9b806758/0/6817ab77e6f78fff9b806759.tif",
+      "title": "Route 443 (Maccabit road), 4.5.2025",
+      "attribution": "WebODM contributor, via OpenAerialMap",
+      "license": "CC-BY 4.0",
+      "acquired": "2025-05-04",
+      "gsdMeters": 0.02
+    },
+    {
+      "name": "glilot-parking",
+      "file": "glilot-parking.tif",
+      "role": "vehicles",
+      "url": "https://oin-hotosm-temp.s3.amazonaws.com/602130a6adcbbb0006afa3e4/0/602130a6adcbbb0006afa3e5.tif",
+      "title": "Cinema City Glilot Parking Lot",
+      "attribution": "Harel Dan, via OpenAerialMap",
+      "license": "CC BY-SA 4.0",
+      "acquired": "2021-02-08",
+      "gsdMeters": 0.02
+    }
+  ]
+}

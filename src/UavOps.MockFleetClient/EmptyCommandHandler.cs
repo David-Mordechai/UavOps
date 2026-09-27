@@ -11,18 +11,20 @@ namespace UavOps.MockFleetClient
     /// UavOps.Agent's Simulation/ services. A real fleet-commanding app implements
     /// IUavCommandHandler with real hardware calls in place of this.
     /// </summary>
-    public sealed class EmptyCommandHandler : IUavCommandHandler, IUavMissionHandler
+    public sealed class EmptyCommandHandler : IUavCommandHandler, IUavMissionHandler, IUavPayloadZoomHandler
     {
         private static TelemetrySnapshot DummySnapshot()
         {
             return new TelemetrySnapshot
             {
-                Lat = 31.801447,
-                Lng = 34.643497,
+                Lat = 31.344000,
+                Lng = 35.035000,
                 SpeedKts = 100,
                 AltitudeFt = 4000,
                 Mode = "Orbiting",
-                PayloadLockedOn = null
+                PayloadLockedOn = null,
+                PayloadZoom = 1,
+                PayloadHfovDeg = 40
             };
         }
 
@@ -36,7 +38,7 @@ namespace UavOps.MockFleetClient
             Log("ListFleet", "");
             return CommandResult<List<UavSummary>>.Ok(new List<UavSummary>
             {
-                new UavSummary { TailNumber = "997", Mode = "Orbiting", Lat = 31.801447, Lng = 34.643497 }
+                new UavSummary { TailNumber = "997", Mode = "Orbiting", Lat = 31.344000, Lng = 35.035000 }
             });
         }
 
@@ -79,6 +81,12 @@ namespace UavOps.MockFleetClient
         public CommandResult<TelemetrySnapshot> ResetPayload(string tailNumber)
         {
             Log("ResetPayload", tailNumber);
+            return CommandResult<TelemetrySnapshot>.Ok(DummySnapshot());
+        }
+
+        public CommandResult<TelemetrySnapshot> SetPayloadZoom(string tailNumber, double zoom)
+        {
+            Log("SetPayloadZoom", string.Format("{0}, {1}x", tailNumber, zoom));
             return CommandResult<TelemetrySnapshot>.Ok(DummySnapshot());
         }
 

@@ -10,7 +10,28 @@
 </head>
 <body>
   <div class="layout">
-    <div id="map" class="map" aria-label="Map"></div>
+    <div class="map-area">
+      <div id="map" class="map" aria-label="Map"></div>
+
+      <section id="cameraPanel" class="camera-panel" hidden aria-label="Payload camera">
+        <header class="camera-header">
+          <span class="swatch" id="cameraSwatch"></span>
+          <span id="cameraTitle">Camera</span>
+          <span id="cameraMeta" class="camera-meta"></span>
+          <button type="button" id="cameraClose" class="icon-btn" title="Close">✕</button>
+        </header>
+        <img id="cameraFeed" class="camera-feed" alt="Live payload camera view" />
+        <div id="detectorStatus" class="camera-status"></div>
+        <div id="lastDetection" class="last-detection" hidden>
+          <div class="section-title">What the model matched</div>
+          <div class="last-frame">
+            <img id="lastDetectionFrame" alt="The survey frame the detection came from" />
+            <div id="lastDetectionBox" class="last-box"></div>
+          </div>
+          <div id="lastDetectionText" class="camera-meta"></div>
+        </div>
+      </section>
+    </div>
 
     <aside class="panel">
       <header class="panel-header">
@@ -18,6 +39,7 @@
         <div class="pills">
           <span id="hostStatus" class="pill pill-wait" title="Connection to UavOps.Agent's fleet hub">host: connecting…</span>
           <span id="mapStatus" class="pill" title="Base map">map: …</span>
+          <span id="detectorPill" class="pill" title="Who searches the camera frames">detector: …</span>
         </div>
       </header>
 
@@ -52,7 +74,8 @@
         </div>
         <div id="placeHint" class="hint" hidden>
           <input id="objectLabel" type="text" placeholder="What is it? e.g. white van" autocomplete="off" />
-          <span>then click the map. <button type="button" id="cancelPlace" class="link-btn">Cancel</button></span>
+          <span>Colour and vehicle type (car, van, pickup, truck, bus) come from the words. Then click the map.
+            <button type="button" id="cancelPlace" class="link-btn">Cancel</button></span>
         </div>
         <div id="objectList" class="list"></div>
       </section>

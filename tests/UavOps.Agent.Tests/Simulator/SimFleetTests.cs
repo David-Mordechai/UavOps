@@ -1,7 +1,9 @@
 using FluentAssertions;
 using UavOps.Agent.Mission;
 using UavOps.FleetClient;
+using UavOps.Onboard.Contracts;
 using UavOps.Simulator;
+using KnownPoints = UavOps.Agent.Contracts.KnownPoints;
 
 namespace UavOps.Agent.Tests.Simulator;
 
@@ -11,13 +13,19 @@ public class SimFleetTests
 {
     private static readonly SimOptions Options = new();
 
+    // The search zoom: 20 degrees across (2x of the 40-degree payload).
+    private const double SurveyHfovDeg = 20;
+
     private static (SimFleet Fleet, ScenarioStore Scenario) Create(params ScenarioObjectConfig[] objects)
     {
         var scenario = new ScenarioStore(new ScenarioOptions { Objects = [.. objects] });
         return (new SimFleet(new SimulatedDetector(scenario, Options), Options), scenario);
     }
 
-    private static ScenarioObjectConfig WhiteVan => new() { Id = "van", Label = "white van", Lat = 31.81380, Lng = 34.66521 };
+    // On the Yatir road inside ZoneA, where the default scenario puts it.
+    private static ScenarioObjectConfig WhiteVan => new() { Id = "van", Label = "white van", Lat = 31.348227, Lng = 35.052693 };
+
+    private static GeoPoint Home => KnownPoints.TryResolve("home", out var lat, out var lng) ? new GeoPoint(lat, lng) : throw new InvalidOperationException();
 
     /// <summary>Runs sim time forward in 1 s steps, collecting everything reported.</summary>
     private static (List<DetectionReport> Detections, List<MissionEventReport> Events) Run(SimFleet fleet, double seconds)
@@ -36,12 +44,13 @@ public class SimFleetTests
     private static List<Waypoint> ZoneARoute(string tail = "997")
     {
         var zone = SqliteAoiZoneStore.LoadSeed().Single(z => z.Name == "ZoneA");
-        var route = SearchRoutePlanner.Plan(zone, tail, new GeoPoint(31.801447, 34.643497), new SearchPlanParameters(1000, 60, 0.2, 300, 105));
+        var route = SearchRoutePlanner.Plan(zone, tail, Home, new SearchPlanParameters(1000, SurveyHfovDeg, 0.2, 300, 105));
         return route.Waypoints.Select(p => new Waypoint { Lat = p.Lat, Lng = p.Lng, AltitudeFt = route.AltitudeFt }).ToList();
     }
 
     private static void PrepareSearch(SimFleet fleet, string prompt = "white van")
     {
+        fleet.SetPayloadZoom("997", Options.PayloadWideHorizontalFovDeg / SurveyHfovDeg);
         fleet.UploadWaypoints("997", ZoneARoute()).Success.Should().BeTrue();
         fleet.SetSearchTarget("997", new SearchTargetRequest { MissionId = "m1", ZoneName = "ZoneA", Prompt = prompt, MinConfidence = 0.5 });
     }
@@ -62,7 +71,8 @@ public class SimFleetTests
         Run(fleet, 600);
         var there = fleet.GetTelemetry("997").Value;
         there.Mode.Should().Be("Orbiting");
-        GeoProjection.DistanceMeters(new GeoPoint(there.Lat, there.Lng), new GeoPoint(31.812, 34.66))
+        KnownPoints.TryResolve("alpha", out var alphaLat, out var alphaLng);
+        GeoProjection.DistanceMeters(new GeoPoint(there.Lat, there.Lng), new GeoPoint(alphaLat, alphaLng))
             .Should().BeLessThan(2 * Options.OrbitRadiusMeters + 1, "it holds near where it was sent");
     }
 
@@ -96,7 +106,8 @@ public class SimFleetTests
 
         var telemetry = fleet.GetTelemetry("997").Value;
         telemetry.Mode.Should().Be("Landed");
-        telemetry.Lat.Should().BeApproximately(31.801447, 1e-6);
+        telemetry.Lat.Should().BeApproximately(Home.Lat, 1e-6);
+        telemetry.Lng.Should().BeApproximately(Home.Lng, 1e-6);
     }
 
     [Fact]
@@ -178,19 +189,144 @@ public class SimFleetTests
     {
         var (fleet, _) = Create();
 
-        fleet.Navigate("998", "31.81380,34.66521").Success.Should().BeTrue();
+        fleet.Navigate("998", "31.348227,35.052693").Success.Should().BeTrue();
         Run(fleet, 900);
 
         var telemetry = fleet.GetTelemetry("998").Value;
-        GeoProjection.DistanceMeters(new GeoPoint(telemetry.Lat, telemetry.Lng), new GeoPoint(31.8138, 34.66521))
+        GeoProjection.DistanceMeters(new GeoPoint(telemetry.Lat, telemetry.Lng), new GeoPoint(31.348227, 35.052693))
             .Should().BeLessThan(2 * Options.OrbitRadiusMeters + 1);
+    }
+
+    [Fact]
+    public void PointPayload_CentresTheLiveCameraOnThePoint_WithoutZooming_AndResetReturnsItStraightDown()
+    {
+        var (fleet, _) = Create();
+
+        fleet.PointPayload("997", "31.344911,35.048701").Success.Should().BeTrue();
+        var locked = fleet.CameraNow("997", DateTime.UtcNow)!;
+        locked.Lat.Should().BeApproximately(31.344911, 1e-9);
+        locked.Lng.Should().BeApproximately(35.048701, 1e-9);
+        locked.HFovDeg.Should().Be(Options.PayloadWideHorizontalFovDeg, "pointing never zooms; only SetPayloadZoom does");
+        var uav = fleet.CameraNow("997", DateTime.UtcNow, nadir: true)!;
+        GeoProjection.DistanceMeters(new GeoPoint(uav.Lat, uav.Lng), new GeoPoint(31.344911, 35.048701))
+            .Should().BeGreaterThan(1000, "the zoom endpoint still measures range from the UAV itself");
+
+        fleet.ResetPayload("997");
+        var down = fleet.CameraNow("997", DateTime.UtcNow)!;
+        down.Should().BeEquivalentTo(fleet.CameraNow("997", DateTime.UtcNow, nadir: true)!, o => o.Excluding(f => f.CapturedAtUtc));
+    }
+
+    [Fact]
+    public void SendToAPointAndPointThePayloadThere_ItOrbitsAroundIt_WithThePayloadOnIt()
+    {
+        var (fleet, _) = Create();
+        var target = new GeoPoint(31.344911, 35.048701);
+
+        // "send 997 to the red car and point the payload there": the two tool calls.
+        fleet.Navigate("997", "31.344911,35.048701");
+        fleet.PointPayload("997", "31.344911,35.048701");
+        Run(fleet, 900);
+
+        var telemetry = fleet.GetTelemetry("997").Value;
+        telemetry.Mode.Should().Be("Orbiting");
+        telemetry.PayloadLockedOn.Should().Be("31.344911,35.048701");
+        for (var i = 0; i < 5; i++)
+        {
+            Run(fleet, 7);
+            var now = fleet.GetTelemetry("997").Value;
+            GeoProjection.DistanceMeters(new GeoPoint(now.Lat, now.Lng), target)
+                .Should().BeApproximately(Options.OrbitRadiusMeters, 5, "the circle is centred on where it was sent");
+            var camera = fleet.CameraNow("997", DateTime.UtcNow)!;
+            GeoProjection.DistanceMeters(new GeoPoint(camera.Lat, camera.Lng), target).Should().BeLessThan(0.5);
+            camera.HeadingDeg.Should().Be(0, "the locked view stays still (north-up) while the UAV circles");
+        }
+    }
+
+    [Fact]
+    public void SetPayloadZoom_NarrowsTheCamera_ClampsToThePayload_AndReportsIt()
+    {
+        var (fleet, _) = Create();
+
+        var zoomed = fleet.SetPayloadZoom("997", 8).Value;
+        zoomed.PayloadZoom.Should().Be(8);
+        zoomed.PayloadHfovDeg.Should().Be(Options.PayloadWideHorizontalFovDeg / 8);
+        fleet.CameraNow("997", DateTime.UtcNow)!.HFovDeg.Should().Be(Options.PayloadWideHorizontalFovDeg / 8);
+        zoomed.AltitudeFt.Should().Be(4000, "zooming never touches the altitude");
+
+        fleet.SetPayloadZoom("997", 1000).Value.PayloadZoom.Should().Be(Options.PayloadMaxZoom);
+        fleet.SetPayloadZoom("997", 0).Success.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ARouteAtTheCurrentAltitude_IsFlownWithoutChangingAltitude()
+    {
+        var (fleet, _) = Create(WhiteVan);
+        var zone = SqliteAoiZoneStore.LoadSeed().Single(z => z.Name == "ZoneA");
+        var route = SearchRoutePlanner.Plan(zone, "997", Home, new SearchPlanParameters(4000, 5, 0.2, 300, 105));
+        fleet.SetPayloadZoom("997", Options.PayloadWideHorizontalFovDeg / 5);
+        fleet.UploadWaypoints("997", route.Waypoints.Select(p => new Waypoint { Lat = p.Lat, Lng = p.Lng, AltitudeFt = 4000 }).ToList());
+        fleet.SetSearchTarget("997", new SearchTargetRequest { MissionId = "m1", ZoneName = "ZoneA", Prompt = "white van", MinConfidence = 0.5 });
+        fleet.StartMission("997");
+
+        var detections = new List<DetectionReport>();
+        for (var i = 0; i < 3 * 120; i++)
+        {
+            detections.AddRange(Run(fleet, 30).Detections);
+            fleet.GetTelemetry("997").Value.AltitudeFt.Should().Be(4000);
+        }
+        detections.Should().ContainSingle("the van is still found from 4000 ft, zoomed in");
+    }
+
+    /// <summary>An onboard agent still working through frames after the route is flown.</summary>
+    private sealed class StillAnalysingDetector : IOnboardDetector
+    {
+        public bool Finished { get; set; }
+        public IEnumerable<DetectionReport> Look(SimUav uav, DateTime nowUtc) => [];
+        public bool HasFinished(SimUav uav) => Finished;
+    }
+
+    [Theory]
+    [InlineData(false, MissionEventKinds.Aborted)]
+    [InlineData(true, MissionEventKinds.Completed)]
+    public void ANewSearchWhileTheLastOneIsStillBeingAnalysed_ClosesTheLastOneUnderItsOwnId(bool analysisFinished, string kind)
+    {
+        // Reported live: the white-pickup search's end came out as the red-car search's
+        // ("finished searching ZoneA - no red car found").
+        var detector = new StillAnalysingDetector();
+        var fleet = new SimFleet(detector, Options);
+        fleet.SetPayloadZoom("997", Options.PayloadWideHorizontalFovDeg / SurveyHfovDeg);
+        fleet.UploadWaypoints("997", ZoneARoute());
+        fleet.SetSearchTarget("997", new SearchTargetRequest { MissionId = "pickup", ZoneName = "ZoneA", Prompt = "white pickup", MinConfidence = 0.5 });
+        fleet.StartMission("997");
+        Run(fleet, 3 * 3600).Events.Should().BeEmpty("the route is flown but its frames are still being looked at");
+        detector.Finished = analysisFinished;
+
+        fleet.UploadWaypoints("997", ZoneARoute());
+        fleet.SetSearchTarget("997", new SearchTargetRequest { MissionId = "redcar", ZoneName = "ZoneA", Prompt = "red car", MinConfidence = 0.5 });
+        var events = Run(fleet, 60).Events;
+
+        events.Should().ContainSingle();
+        events[0].MissionId.Should().Be("pickup");
+        events[0].Kind.Should().Be(kind);
+    }
+
+    [Fact]
+    public void StartingASearch_PutsThePayloadBackStraightDown()
+    {
+        var (fleet, _) = Create();
+        fleet.PointPayload("997", "alpha");
+        PrepareSearch(fleet);
+
+        fleet.StartMission("997");
+
+        fleet.GetTelemetry("997").Value.PayloadLockedOn.Should().BeNull();
     }
 
     [Fact]
     public void AnObjectPlacedLater_IsFoundToo()
     {
         var (fleet, scenario) = Create();
-        scenario.Add("white van", null, 31.80900, 34.65500);
+        scenario.Add("white van", null, 31.344911, 35.048701); // on the road at the west end of ZoneA
         PrepareSearch(fleet);
         fleet.StartMission("997");
 
@@ -212,7 +348,7 @@ public class SimFleetTests
         var events = fleet.Advance(0, DateTime.UtcNow).MissionEvents;
 
         events.Should().ContainSingle().Which.Kind.Should().Be(MissionEventKinds.Aborted);
-        foreach (var (tail, lat, lng) in new[] { ("997", 31.801447, 34.643497), ("998", 31.798000, 34.639000), ("999", 31.805000, 34.648000) })
+        foreach (var (tail, lat, lng) in new[] { ("997", 31.344000, 35.035000), ("998", 31.342500, 35.033500), ("999", 32.064000, 34.912000) })
         {
             var telemetry = fleet.GetTelemetry(tail).Value;
             telemetry.Lat.Should().BeApproximately(lat, 1e-6);
@@ -222,6 +358,6 @@ public class SimFleetTests
             fleet.GetMissionStatus(tail).Value.WaypointCount.Should().Be(0);
             fleet.GetMissionStatus(tail).Value.SearchPrompt.Should().BeNull();
         }
-        fleet.View(_ => 0).Detections.Should().BeEmpty();
+        fleet.View().Detections.Should().BeEmpty();
     }
 }

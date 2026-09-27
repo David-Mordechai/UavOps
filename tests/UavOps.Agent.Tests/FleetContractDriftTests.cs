@@ -17,7 +17,7 @@ namespace UavOps.Agent.Tests;
 /// </summary>
 public class FleetContractDriftTests
 {
-    private static readonly Type[] HandlerInterfaces = [typeof(IUavCommandHandler), typeof(IUavMissionHandler)];
+    private static readonly Type[] HandlerInterfaces = [typeof(IUavCommandHandler), typeof(IUavMissionHandler), typeof(IUavPayloadZoomHandler)];
 
     [Fact]
     public void EveryHostCommand_HasAFleetClientHandlerWithTheSameArguments()

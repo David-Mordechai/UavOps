@@ -30,9 +30,7 @@ public sealed class MoavMissionToolsTests : IDisposable
 
     public void Dispose()
     {
-        SqliteConnection.ClearAllPools();
-        if (Directory.Exists(_directory))
-            Directory.Delete(_directory, recursive: true);
+        TempDirectory.DeleteSqliteFolder(_directory);
     }
 
     private async Task<MissionStatus> MissionStatusOf(string tailNumber) =>
@@ -53,6 +51,20 @@ public sealed class MoavMissionToolsTests : IDisposable
         status.SearchPrompt.Should().Be("white van");
         status.ActiveMissionId.Should().Be(_routes.Get("997")!.RouteId);
         status.Mode.Should().NotBe("Searching");
+    }
+
+    [Fact]
+    public async Task PrepareAoiSearch_ZoomsThePayloadByCommand_AndPlansAtTheCurrentAltitude()
+    {
+        await MoavTools.PrepareAoiSearch(_moav, _zones, _routes, _options, _missionEvents, "997", "ZoneA", "white van", CancellationToken.None);
+
+        var telemetry = (TelemetrySnapshot)(await _moav.GetTelemetry("997", CancellationToken.None)).Value!;
+        telemetry.AltitudeFt.Should().Be(4000, "nothing commanded an altitude change");
+        _routes.Get("997")!.AltitudeFt.Should().Be(4000, "the route is flown where the UAV already is");
+        // Zoomed (on the backend itself, i.e. by a command) so the frame shows ~SearchGroundWidthMeters.
+        var groundWidth = 2 * 4000 * 0.3048 * Math.Tan(telemetry.PayloadHfovDeg * Math.PI / 360);
+        groundWidth.Should().BeApproximately(_options.SearchGroundWidthMeters, 2);
+        telemetry.PayloadZoom.Should().BeGreaterThan(1);
     }
 
     [Fact]

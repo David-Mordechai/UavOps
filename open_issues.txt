@@ -1,0 +1,53 @@
+UavOps - open issues
+====================
+Last updated: 2026-09-27
+
+Still open
+----------
+11. Onboard detector on the real Jetson Orin Nano 8GB: which small vision model fits, and its
+    accuracy and speed, are not measured yet (dev runs the GX10's Qwen3.6-35B). Deferred by the
+    operator.
+
+12. (New, minor) Right after "send 998 to the red car and point its payload there", the reply said
+    "Orbiting target" while 998 was still flying there (Transiting). The tool calls were right; only
+    the wording ran ahead of the UAV. Seen once in the chat run; not measured.
+
+13. (New, note) AoiSearchMissionLiveTests: 8/8 when run alone, 7/8 while six live test classes
+    shared the model server - the one miss asked "Which UAV tail number?" in text instead of calling
+    PrepareAoiSearch (the load-related pattern already recorded in McpMoav's ToolsConfig.yaml).
+    Harmless (the operator answers and it proceeds), but visible under load.
+
+Done 2026-09-27
+---------------
+1. Live tests at 8 repeats: PayloadZoom 8/8 (new), NavigateToDetection 8/8, FlyAllFleetWide 8/8,
+   PointPayloadFollowUp 8/8, FullShiftScenario 8/8, AoiSearchMission 8/8 alone (see 13).
+   The live tests now always launch McpMoav with --OperationBackend Simulated, so a Settings-page
+   "SignalR" can no longer send their commands to the running map simulator.
+2. PayloadZoomLiveTests added: "zoom 997's camera to 10x" -> zoom 10; "zoom in more" -> higher;
+   "point 997's payload at alpha" -> pointed without re-zooming; altitude unchanged.
+3. Chat UI end-to-end with the simulator: search prepared (zoom 8.5x sent by command, route at
+   4000 ft) -> started -> red car found from 4000 ft (95%, at its exact position) -> "Detection 1"
+   message -> 998 sent + payload pointed -> zoomed 20x by command -> 998 circles the car 400 m out,
+   its camera centred on it, north-up -> 997's completion summary under the right mission.
+4. McpMoav's backend: the SignalR setting was the Settings page's saved choice
+   (appsettings.Local.json next to McpMoav's build output, git-ignored, survives rebuilds) - no new
+   mechanism needed; documented in the simulator README.
+5. Onboard close-ups kept as the onboard computer's own payload control (crops measurably
+   misidentified vehicles); documented in CLAUDE.md.
+6. Mission handover fixed: a new search set up while the last one is still being analysed closes
+   the last one first under its own mission id (completed if analysis finished, else aborted).
+7. "Point their payloads there" follow-up: 8/8 without any prompt change (fixed earlier by the
+   host's fleet-group memory); ToolsConfig.yaml note updated.
+8. Detection grouping: numbered detections; first 3 of a mission posted individually, then one
+   summary every 30 s; everything held is posted before the mission end.
+9. Voice scheduler: short spoken forms without coordinates, same-search merging, stale messages
+   (>60 s) only counted, questions first, the operator talking stops the voice, next chunk
+   synthesized while the current one plays.
+10. Voice STT: whisper's initial prompt with the fleet vocabulary and example commands. On 50
+    synthesized commands: WER 2.4% -> 0.0%, exact 42 -> 50 of 50 ("Point 999's payload" was heard
+    as "0.999's payload" in all five voices without it); 50 held-out commands unchanged (50/50).
+    The TTS-vs-STT question was already answered in code (tail-number errors came from TTS
+    pronunciation; digits are spaced out before synthesis). CLAUDE.md's voice section rewritten.
+
+Also fixed along the way: a flaky fast test (SQLite temp-folder cleanup racing another test class
+over the process-wide connection pool; failed ~1 run in 10, now 10/10).

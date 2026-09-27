@@ -9,7 +9,7 @@ namespace UavOps.Agent.Voice;
 
 /// <summary>
 /// Everything that used to be Python business logic inside GX10's `stt-parakeet`/`tts-chatterbox`
-/// containers, now living here instead — see <c>CLAUDE.md</c>'s "Voice STT/TTS evaluation"
+/// containers, now living here instead — see <c>CLAUDE.md</c>'s "Voice"
 /// section. GX10 itself now runs only bare model-inference servers (two `whisper-server`
 /// instances for STT, one per language — see <see cref="VoiceOptions"/> — plus the slimmed
 /// Chatterbox-Turbo TTS container); this class does the wire-format adaptation, language
@@ -50,7 +50,7 @@ public sealed class VoiceGatewayService
     // numbers/tail numbers" made the model leave "V999" alone as if it looked like a tail number
     // itself. This is a downstream, cosmetic text patch only - it doesn't explain or fix
     // whatever in the actual STT model causes the mishearing (that's still the open item
-    // CLAUDE.md's "Voice STT/TTS evaluation" section tracks), and BrainAgent's own tail-number
+    // CLAUDE.md's "Voice" section), and BrainAgent's own tail-number
     // resolution already extracted the right UAV from "V999" regardless - this only makes the
     // displayed transcript itself read correctly instead of confusingly.
     private const string GrammarFixSystemPrompt =
@@ -114,15 +114,19 @@ public sealed class VoiceGatewayService
     /// whether/what got fixed along the way).</summary>
     public async Task<(string Text, string RawText)> TranscribeAsync(Stream wavStream, string fileName, string language, CancellationToken cancellationToken)
     {
-        var endpoint = string.Equals(language, "he", StringComparison.OrdinalIgnoreCase)
-            ? _options.SttHebrewEndpoint
-            : _options.SttEnglishEndpoint;
+        var hebrew = string.Equals(language, "he", StringComparison.OrdinalIgnoreCase);
+        var endpoint = hebrew ? _options.SttHebrewEndpoint : _options.SttEnglishEndpoint;
 
         using var content = new MultipartFormDataContent
         {
             { new StreamContent(wavStream), "file", string.IsNullOrEmpty(fileName) ? "clip.wav" : fileName },
             { new StringContent("json"), "response_format" }
         };
+        // whisper-server's initial prompt - see VoiceOptions.SttEnglishPrompt for what it measurably fixes.
+        if (!hebrew && !string.IsNullOrWhiteSpace(_options.SttEnglishPrompt))
+        {
+            content.Add(new StringContent(_options.SttEnglishPrompt), "prompt");
+        }
 
         var client = _httpClientFactory.CreateClient("SttInference");
         using var response = await client.PostAsync($"{endpoint.TrimEnd('/')}/inference", content, cancellationToken);

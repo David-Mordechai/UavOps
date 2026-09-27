@@ -16,6 +16,13 @@ namespace UavOps.Agent.McpMoav;
 /// a detection into <see cref="DetectionPointRegistry"/>, so the operator can follow up with
 /// "send 998 to the white van". After a detection the UAV keeps searching; what happens next is
 /// the operator's call.
+///
+/// Every detection is numbered ("Detection 5"), the name the operator can use for it. A busy search
+/// doesn't post one message per object: the first <see cref="MissionOptions.DetectionsReportedIndividually"/>
+/// of a mission are posted as they come, the rest are gathered and posted as one summary every
+/// <see cref="MissionOptions.DetectionSummaryIntervalSeconds"/> (<see cref="FlushDueSummariesAsync"/>,
+/// driven by <see cref="DetectionSummaryFlusher"/>) - a live search once posted 51 red-car messages
+/// in a row, which neither the operator nor the voice could keep up with.
 /// </summary>
 public sealed class MissionEventService(
     IOperatorNotifier notifier,
@@ -26,7 +33,15 @@ public sealed class MissionEventService(
     private readonly object _lock = new();
     private readonly Dictionary<string, List<DetectionReport>> _detectionsByMission = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _promptByMission = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PendingSummary> _pending = new(StringComparer.Ordinal);
     private int _detectionCount;
+
+    /// <summary>Detections of one mission waiting for the next summary.</summary>
+    private sealed class PendingSummary(DateTime dueUtc)
+    {
+        public DateTime DueUtc { get; } = dueUtc;
+        public List<(int Number, DetectionReport Report)> Detections { get; } = [];
+    }
 
     /// <summary>Called as a search target goes out to a UAV, so a mission that ends with nothing
     /// found can still say what it was looking for.</summary>
@@ -39,7 +54,9 @@ public sealed class MissionEventService(
     }
 
     /// <summary>Returns false (and tells no one) for a report of an object already reported.</summary>
-    public async Task<bool> HandleDetectionAsync(DetectionReport report)
+    public Task<bool> HandleDetectionAsync(DetectionReport report) => HandleDetectionAsync(report, DateTime.UtcNow);
+
+    public async Task<bool> HandleDetectionAsync(DetectionReport report, DateTime nowUtc)
     {
         if (report.Lat is < -90 or > 90 || report.Lng is < -180 or > 180 || string.IsNullOrWhiteSpace(report.Prompt))
         {
@@ -48,6 +65,7 @@ public sealed class MissionEventService(
         }
 
         int number;
+        bool individually;
         lock (_lock)
         {
             var key = MissionKey(report.MissionId, report.Prompt);
@@ -64,26 +82,114 @@ public sealed class MissionEventService(
             seen.Add(report);
             _promptByMission.TryAdd(report.MissionId, report.Prompt);
             number = ++_detectionCount;
+
+            individually = seen.Count <= options.DetectionsReportedIndividually;
+            if (!individually)
+            {
+                if (!_pending.TryGetValue(key, out var pending))
+                    _pending[key] = pending = new PendingSummary(nowUtc.AddSeconds(options.DetectionSummaryIntervalSeconds));
+                pending.Detections.Add((number, report));
+            }
         }
 
         var target = report.Prompt.Trim();
         points.Register(report.Lat, report.Lng, target, $"detection {number}", $"detection #{number}");
+        if (!individually)
+        {
+            logger.LogInformation("Detection {Number} of '{Prompt}' by {TailNumber} held for the next summary.", number, target, report.TailNumber);
+            return true;
+        }
 
         // The note gives the "lat,lng" literal rather than the name: both resolve here, but the
         // literal doesn't depend on DetectionPointRegistry, so it's what the model should copy.
         var latLng = DetectionPointRegistry.FormatLatLng(report.Lat, report.Lng);
-        var message = DescribeDetection(report);
+        var message = $"Detection {number}: {DescribeDetection(report)}";
         logger.LogInformation("Detection {Number}: {Message}", number, message);
+        var voice = new OperatorVoice($"Detection {number}: {target}, by {report.TailNumber}.", VoiceGroup(report.MissionId));
         await notifier.PostAsync(message,
             $"UAV {report.TailNumber}'s onboard agent reported a detection (detection {number}, the {target}) while searching " +
             $"{ZoneText(report.ZoneName)}, and the operator was shown the message below. This is only a report: no UAV " +
             $"has been sent there and nothing else has been done about it. To send a UAV there or point a payload at it, " +
-            $"call that tool with location '{latLng}' - it only happens if you call the tool.");
+            $"call that tool with location '{latLng}' - it only happens if you call the tool.",
+            voice);
         return true;
+    }
+
+    /// <summary>Posts every detection summary that's due (all of them with <paramref name="force"/>).</summary>
+    public async Task FlushDueSummariesAsync(DateTime nowUtc, bool force = false)
+    {
+        List<PendingSummary> due;
+        lock (_lock)
+        {
+            var keys = _pending.Where(kv => force || kv.Value.DueUtc <= nowUtc).Select(kv => kv.Key).ToList();
+            due = keys.Select(k => _pending[k]).ToList();
+            foreach (var key in keys)
+                _pending.Remove(key);
+        }
+        foreach (var summary in due)
+            await PostSummaryAsync(summary.Detections);
+    }
+
+    private async Task FlushMissionAsync(string missionId)
+    {
+        List<PendingSummary> due;
+        lock (_lock)
+        {
+            var keys = _pending.Keys.Where(k => k.StartsWith(missionId + "\n", StringComparison.Ordinal)).ToList();
+            due = keys.Select(k => _pending[k]).ToList();
+            foreach (var key in keys)
+                _pending.Remove(key);
+        }
+        foreach (var summary in due)
+            await PostSummaryAsync(summary.Detections);
+    }
+
+    /// <summary>"Detections 4-8: 5 more red cars found by 997 in ZoneA. Most confident: #6 at ..."
+    /// The message lists the most confident few; the history note has every one's position.</summary>
+    private async Task PostSummaryAsync(List<(int Number, DetectionReport Report)> detections)
+    {
+        var first = detections[0].Report;
+        var target = first.Prompt.Trim();
+        var numbers = NumberList(detections.Select(d => d.Number).ToList());
+        var listed = detections.OrderByDescending(d => d.Report.Confidence).Take(Math.Max(options.MaxDetectionsListedInSummary, 1)).ToList();
+        var rest = detections.Count - listed.Count;
+
+        var shown = string.Join("; ", listed.Select(d =>
+            FormattableString.Invariant($"#{d.Number} at {Coordinates(d.Report)} ({d.Report.Confidence * 100:F0}%)")));
+        var message =
+            $"{(detections.Count == 1 ? "Detection" : "Detections")} {numbers}: {Plural(detections.Count, "more " + target)} found by " +
+            $"{first.TailNumber} while searching {ZoneText(first.ZoneName)}. " +
+            $"{(detections.Count == 1 ? "At" : "Most confident:")} {shown}{(rest > 0 ? "; and " + rest + " more" : "")}.";
+        var all = string.Join("; ", detections.Select(d => FormattableString.Invariant(
+            $"detection {d.Number} at location '{DetectionPointRegistry.FormatLatLng(d.Report.Lat, d.Report.Lng)}' ({d.Report.Confidence * 100:F0}%)")));
+        var note =
+            $"UAV {first.TailNumber}'s onboard agent reported {Plural(detections.Count, "more detection")} of the {target} while searching " +
+            $"{ZoneText(first.ZoneName)}, shown to the operator as one summary: {all}. This is only a report: no UAV has been sent " +
+            "anywhere and nothing else has been done about it. To send a UAV to one or point a payload at it, call that tool with " +
+            "its location - it only happens if you call the tool.";
+        logger.LogInformation("Detection summary: {Message}", message);
+        var spokenNumbers = numbers.Replace("-", " to ", StringComparison.Ordinal);
+        var voice = new OperatorVoice(
+            $"{(detections.Count == 1 ? "Detection" : "Detections")} {spokenNumbers}: {Plural(detections.Count, "more " + target)}, by {first.TailNumber}.",
+            VoiceGroup(first.MissionId));
+        await notifier.PostAsync(message, note, voice);
+    }
+
+    /// <summary>"4-8", or "4, 5 and 9" when they aren't consecutive.</summary>
+    private static string NumberList(List<int> numbers)
+    {
+        if (numbers.Count == 1)
+            return numbers[0].ToString(CultureInfo.InvariantCulture);
+        if (numbers[^1] - numbers[0] == numbers.Count - 1)
+            return $"{numbers[0]}-{numbers[^1]}";
+        return string.Join(", ", numbers.Take(numbers.Count - 1)) + " and " + numbers[^1];
     }
 
     public async Task HandleMissionEventAsync(MissionEventReport report)
     {
+        // Anything still held for a summary goes out before the mission's end is announced.
+        await FlushMissionAsync(report.MissionId);
+
         List<DetectionReport> detections;
         string prompt;
         lock (_lock)
@@ -103,14 +209,19 @@ public sealed class MissionEventService(
                 ? $"{report.TailNumber} finished searching {zone} - no {prompt} found."
                 : $"{report.TailNumber} finished searching {zone} - {Plural(detections.Count, "detection")} of {prompt}, " +
                   $"the last at {Coordinates(detections[^1])}.";
-            await notifier.PostAsync(message, $"UAV {report.TailNumber} reported that its search mission ended: it flew the whole route.");
+            var spoken = detections.Count == 0
+                ? $"{report.TailNumber} finished searching {zone}: no {prompt} found."
+                : $"{report.TailNumber} finished searching {zone}: {Plural(detections.Count, "detection")} of {prompt}.";
+            await notifier.PostAsync(message, $"UAV {report.TailNumber} reported that its search mission ended: it flew the whole route.",
+                new OperatorVoice(spoken));
         }
         else
         {
-            // Aborted means the operator redirected the UAV, so they already know; only the
-            // model's history needs to reflect that the search is over.
+            // Aborted means the operator redirected the UAV or gave it a new search, so they
+            // already know; only the model's history needs to reflect that the search is over.
             await notifier.AddHistoryNoteAsync(
-                $"UAV {report.TailNumber} reported that its search of {zone} stopped before the end of its route.",
+                $"UAV {report.TailNumber} reported that its search of {zone} for {prompt} stopped before it finished " +
+                $"(the UAV was redirected or given a new search).",
                 $"{report.TailNumber} stopped searching {zone} before finishing.");
         }
     }
@@ -124,6 +235,8 @@ public sealed class MissionEventService(
             $"{target} detected at {Coordinates(report)} by {report.TailNumber} while searching {ZoneText(report.ZoneName)} " +
             $"(confidence {report.Confidence * 100:F0}%).");
     }
+
+    private static string VoiceGroup(string missionId) => "detections:" + missionId;
 
     private static string MissionKey(string missionId, string prompt) => missionId + "\n" + prompt.Trim().ToLowerInvariant();
 

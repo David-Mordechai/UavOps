@@ -223,6 +223,9 @@ public sealed class ChatHub(
     public async Task<string> RelayResetPayload(string tailNumber) =>
         ToResultText(await broker.SendAsync<TelemetrySnapshot>((proxy, correlationId) => proxy.ResetPayload(correlationId, tailNumber), CancellationToken.None));
 
+    public async Task<string> RelaySetPayloadZoom(string tailNumber, double zoom) =>
+        ToResultText(await broker.SendAsync<TelemetrySnapshot>((proxy, correlationId) => proxy.SetPayloadZoom(correlationId, tailNumber, zoom), CancellationToken.None));
+
     public async Task<string> RelayUploadWaypoints(string tailNumber, List<Waypoint> waypoints) =>
         ToResultText(await broker.SendAsync<int>((proxy, correlationId) => proxy.UploadWaypoints(correlationId, tailNumber, waypoints), CancellationToken.None));
 
@@ -281,14 +284,14 @@ public sealed class ChatHub(
     /// <summary>Shows <paramref name="message"/> to the operator as-is, as a new unprompted
     /// message; with a <paramref name="historyNote"/>, both also join BrainAgent's history before
     /// its next turn (<see cref="ProactiveHistoryJournal"/>), so a follow-up can refer to it.</summary>
-    public async Task PostOperatorMessage(string message, string? historyNote)
+    public async Task PostOperatorMessage(string message, string? historyNote, string? spoken, string? voiceGroup)
     {
         RequireMcpServerConnection(nameof(PostOperatorMessage));
         if (historyNote is not null)
         {
             proactiveJournal.Add(historyNote, message);
         }
-        await PushUnpromptedAsync(message, 0d);
+        await PushUnpromptedAsync(message, 0d, spoken, voiceGroup);
     }
 
     /// <summary>Adds <paramref name="note"/> and <paramref name="message"/> to BrainAgent's history
@@ -315,8 +318,17 @@ public sealed class ChatHub(
 
     // A fresh correlationId: the chat UI renders a message with a correlationId it hasn't seen as
     // a new bubble, so this needs no frontend support.
-    private Task PushUnpromptedAsync(string message, double elapsedSeconds) =>
-        hubContext.Clients.All.SendAsync("ReceiveChatMessage", AgentFactory.RootAgentName, message, elapsedSeconds, Guid.NewGuid().ToString("N")[..8]);
+    private async Task PushUnpromptedAsync(string message, double elapsedSeconds, string? spoken = null, string? voiceGroup = null)
+    {
+        var correlationId = Guid.NewGuid().ToString("N")[..8];
+        // The voice hint goes first (same connection, so it arrives first): chat.js's voice
+        // scheduler looks it up when the message itself arrives. Relayed as given.
+        if (spoken is not null || voiceGroup is not null)
+        {
+            await hubContext.Clients.All.SendAsync("ReceiveVoiceHint", correlationId, spoken, voiceGroup);
+        }
+        await hubContext.Clients.All.SendAsync("ReceiveChatMessage", AgentFactory.RootAgentName, message, elapsedSeconds, correlationId);
+    }
 
     private void RequireMcpServerConnection(string method)
     {

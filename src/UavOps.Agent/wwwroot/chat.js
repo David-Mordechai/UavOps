@@ -174,7 +174,7 @@ connection.on("ReceiveChatMessage", (user, text, duration, correlationId) => {
     scrollToBottom();
 
     if (speakEnabled) {
-      queueSpeak(text);
+      queueSpeak(text, correlationId);
     }
   }
 });
@@ -206,7 +206,15 @@ connection.on("ReceiveAgentTrace", (correlationId, agent, tool, argsJson, result
 // Sent alongside a ConfirmationGate/OperatorPromptGate prompt's ReceiveChatMessage, under the same
 // correlationId, so the operator can click an answer instead of having to type it. A click submits
 // that exact option text through the same path as typing it — see sendOperatorReply.
+// A short form for the voice to say, and a group it may merge by - sent by the host just before
+// the message it belongs to (same correlationId). Decided by whoever posted the message.
+connection.on("ReceiveVoiceHint", (correlationId, spoken, group) => {
+  voiceHints.set(correlationId, { spoken, group });
+});
+
 connection.on("ReceiveChoices", (correlationId, options) => {
+  // A question waiting for the operator's answer is said before anything else waiting.
+  markVoiceUrgent(correlationId);
   const turn = turns.get(correlationId);
   if (!turn) {
     return;
@@ -324,6 +332,7 @@ function setMicState(next) {
 }
 
 function releaseMicResources() {
+  resumeVoice();
   micCaptureNode?.disconnect();
   micSourceNode?.disconnect();
   micStream?.getTracks().forEach((t) => t.stop());
@@ -349,6 +358,8 @@ function flushMicCapture() {
 }
 
 async function startRecording() {
+  // The operator is talking: the voice stops at once (and would otherwise be recorded too).
+  pauseVoice();
   micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   micAudioCtx = new AudioContext();
   // Chrome's autoplay policy creates an AudioContext "suspended" if this page hasn't had a user
@@ -498,6 +509,10 @@ speakToggle.setAttribute("aria-pressed", String(speakEnabled));
 
 speakToggle.addEventListener("click", () => {
   speakEnabled = !speakEnabled;
+  if (!speakEnabled) {
+    voice.queue = [];
+    stopVoiceNow();
+  }
   localStorage.setItem(SPEAK_KEY, String(speakEnabled));
   speakToggle.classList.toggle("is-active", speakEnabled);
   speakToggle.setAttribute("aria-pressed", String(speakEnabled));
@@ -535,50 +550,168 @@ function splitIntoSpeechChunks(text) {
   return chunks;
 }
 
-async function speakChunk(chunk) {
-  const res = await fetch("/v1/audio/speech", {
+// Synthesizes one chunk; resolves to the audio, or null if synthesis failed (logged), so a chunk
+// started ahead of time and then not needed never leaves an unhandled rejection behind.
+function synthesizeChunk(chunk) {
+  return fetch("/v1/audio/speech", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ input: chunk }),
-  });
-  if (!res.ok) throw new Error(`Speech synthesis failed: ${res.status}`);
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  try {
-    const audio = new Audio(url);
-    await new Promise((resolve, reject) => {
-      audio.onended = resolve;
-      audio.onerror = () => reject(new Error("audio playback failed"));
-      audio.play().catch(reject);
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`Speech synthesis failed: ${res.status}`);
+      return res.blob();
+    })
+    .catch((err) => {
+      console.error("speak error", err, "chunk:", chunk);
+      return null;
     });
-  } finally {
-    URL.revokeObjectURL(url);
-  }
 }
 
-async function speakText(text) {
-  if (!text) {
+// Plays one clip; resolves when it ends, fails, or is stopped (stopVoiceNow).
+function playClip(blob) {
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  return new Promise((resolve) => {
+    const done = () => {
+      URL.revokeObjectURL(url);
+      if (voice.stop === done) voice.stop = null;
+      resolve();
+    };
+    voice.stop = () => {
+      audio.pause();
+      done();
+    };
+    audio.onended = done;
+    audio.onerror = () => {
+      console.error("audio playback failed");
+      done();
+    };
+    audio.play().catch((err) => {
+      console.error("audio playback failed", err);
+      done();
+    });
+  });
+}
+
+// ---- Voice scheduler ----------------------------------------------------------------------------
+// Messages used to be spoken strictly one after another, in full. In a busy search (a live run
+// posted 51 red-car detections) the voice fell minutes behind what was on screen, and the operator
+// sent a UAV by what it was saying rather than by what was current. The rules now:
+//  - What's said is the message's short spoken form when its poster gave one (no coordinates:
+//    they're on screen, and slow and error-prone to hear).
+//  - Waiting messages of the same voice group (e.g. one search's detections) are merged: the newest
+//    is said, plus how many earlier ones are on screen.
+//  - A message waiting longer than VOICE_STALE_MS isn't said at all, only counted ("2 older messages
+//    on screen") - late speech is worse than none.
+//  - A question waiting for the operator's answer (it has choices) goes first, and cuts a message
+//    being said short at the next chunk.
+//  - The operator starting to talk (mic) stops the voice at once; it carries on when they're done.
+//  - The next chunk is synthesized while the current one plays, so there is no gap between chunks.
+const VOICE_STALE_MS = 60000;
+const voiceHints = new Map();
+const voice = {
+  queue: [], // { id, text, group, urgent, at }
+  running: false,
+  paused: false,
+  stop: null, // stops the clip playing now
+  staleCount: 0,
+};
+
+function queueSpeak(text, correlationId) {
+  const hint = voiceHints.get(correlationId);
+  voiceHints.delete(correlationId);
+  const spoken = (hint && hint.spoken) || text;
+  if (!spoken) {
     return;
   }
-  for (const chunk of splitIntoSpeechChunks(text)) {
-    try {
-      await speakChunk(chunk);
-    } catch (err) {
-      // One bad chunk shouldn't silence the rest of the reply - log and keep going.
-      console.error("speak error", err, "chunk:", chunk);
-    }
+  voice.queue.push({ id: correlationId, text: spoken, group: (hint && hint.group) || null, urgent: false, at: Date.now() });
+  runVoice();
+}
+
+function markVoiceUrgent(correlationId) {
+  const item = voice.queue.find((i) => i.id === correlationId);
+  if (item) {
+    item.urgent = true;
   }
 }
 
-// Every ReceiveChatMessage handler call below fires speech independently and was never awaited
-// by its caller (a SignalR event handler can't block the connection on how long TTS playback
-// takes) - real, live-observed this session: two BrainAgent messages arriving close together
-// (e.g. a confirmation prompt immediately followed by its own resolution) each started their own
-// speakText() call with no coordination between them, so their audio played concurrently and
-// overlapped instead of one after another. This single shared promise chain serializes every
-// queued reply's speech across ALL messages, not just chunks within one message - each new call
-// waits for everything already queued to finish first.
-let speechQueue = Promise.resolve();
-function queueSpeak(text) {
-  speechQueue = speechQueue.then(() => speakText(text)).catch(err => console.error("speak queue error", err));
+function stopVoiceNow() {
+  if (voice.stop) {
+    voice.stop();
+  }
+}
+
+function pauseVoice() {
+  voice.paused = true;
+  stopVoiceNow();
+}
+
+function resumeVoice() {
+  if (!voice.paused) {
+    return;
+  }
+  voice.paused = false;
+  runVoice();
+}
+
+// Takes the next thing to say off the queue, applying the rules above.
+function nextUtterance() {
+  const now = Date.now();
+  const stale = voice.queue.filter((i) => !i.urgent && now - i.at > VOICE_STALE_MS);
+  voice.staleCount += stale.length;
+  voice.queue = voice.queue.filter((i) => !stale.includes(i));
+  if (voice.queue.length === 0) {
+    return null;
+  }
+
+  const pick = voice.queue.find((i) => i.urgent) || voice.queue[0];
+  const items = pick.group ? voice.queue.filter((i) => i.group === pick.group) : [pick];
+  voice.queue = voice.queue.filter((i) => !items.includes(i));
+
+  let text = items[items.length - 1].text;
+  if (items.length > 1) {
+    text += ` Plus ${items.length - 1} earlier, on screen.`;
+  }
+  if (voice.staleCount > 0) {
+    text = `${voice.staleCount} older message${voice.staleCount === 1 ? "" : "s"} on screen. ${text}`;
+    voice.staleCount = 0;
+  }
+  return { text, urgent: items.some((i) => i.urgent) };
+}
+
+async function runVoice() {
+  if (voice.running) {
+    return;
+  }
+  voice.running = true;
+  try {
+    while (!voice.paused && speakEnabled) {
+      const utterance = nextUtterance();
+      if (!utterance) {
+        break;
+      }
+      await speakUtterance(utterance);
+    }
+  } catch (err) {
+    console.error("voice error", err);
+  } finally {
+    voice.running = false;
+  }
+}
+
+async function speakUtterance(utterance) {
+  const chunks = splitIntoSpeechChunks(utterance.text);
+  let upcoming = chunks.length > 0 ? synthesizeChunk(chunks[0]) : null;
+  for (let i = 0; i < chunks.length; i++) {
+    const current = upcoming;
+    upcoming = i + 1 < chunks.length ? synthesizeChunk(chunks[i + 1]) : null;
+    if (voice.paused || (!utterance.urgent && voice.queue.some((q) => q.urgent))) {
+      return; // interrupted: the rest is on screen
+    }
+    const clip = await current;
+    if (clip && !voice.paused) {
+      await playClip(clip);
+    }
+  }
 }

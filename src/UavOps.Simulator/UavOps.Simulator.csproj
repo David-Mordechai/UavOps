@@ -15,6 +15,12 @@
     <!-- Only for KnownPoints (named locations + "lat,lng" literals). Its Waypoint and other
          models clash with FleetClient's by name, so its namespace is never imported wholesale. -->
     <ProjectReference Include="..\UavOps.Agent.Contracts\UavOps.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\UavOps.Onboard.Contracts\UavOps.Onboard.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SkiaSharp" Version="4.152.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="4.152.1" />
   </ItemGroup>
 
 </Project>

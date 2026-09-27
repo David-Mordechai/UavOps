@@ -48,6 +48,8 @@
     <ProjectReference Include="..\..\src\UavOps.FleetClient\UavOps.FleetClient.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.Mission\UavOps.Agent.Mission.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Simulator\UavOps.Simulator.csproj" />
+    <ProjectReference Include="..\..\src\UavOps.Onboard.Contracts\UavOps.Onboard.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\UavOps.Onboard.Detector\UavOps.Onboard.Detector.csproj" />
   </ItemGroup>
 
 </Project>

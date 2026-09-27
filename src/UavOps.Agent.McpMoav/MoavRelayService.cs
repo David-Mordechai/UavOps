@@ -44,6 +44,9 @@ public sealed class MoavRelayService(HubConnection hubConnection) : IOperationSe
     public Task<OperationResult> ResetPayload(string tailNumber, CancellationToken cancellationToken) =>
         RelayAsync("RelayResetPayload", cancellationToken, tailNumber);
 
+    public Task<OperationResult> SetPayloadZoom(string tailNumber, double zoom, CancellationToken cancellationToken) =>
+        RelayAsync("RelaySetPayloadZoom", cancellationToken, tailNumber, zoom);
+
     public Task<OperationResult> UploadWaypoints(string tailNumber, List<Waypoint> waypoints, CancellationToken cancellationToken) =>
         RelayAsync("RelayUploadWaypoints", cancellationToken, tailNumber, waypoints);
 

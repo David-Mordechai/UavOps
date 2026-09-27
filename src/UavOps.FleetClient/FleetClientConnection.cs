@@ -133,6 +133,18 @@ namespace UavOps.FleetClient
                 RunAsync(correlationId, () => missionHandler == null
                     ? MissionsNotSupported()
                     : missionHandler.SetSearchTarget(tailNumber, request)));
+
+            var zoomHandler = _handler as IUavPayloadZoomHandler;
+
+            _connection.On<string, string, double>(nameof(IUavPayloadZoomHandler.SetPayloadZoom), (correlationId, tailNumber, zoom) =>
+                RunAsync(correlationId, () => zoomHandler == null
+                    ? ZoomNotSupported()
+                    : zoomHandler.SetPayloadZoom(tailNumber, zoom)));
+        }
+
+        private static CommandResult<TelemetrySnapshot> ZoomNotSupported()
+        {
+            return CommandResult<TelemetrySnapshot>.Fail("This fleet app does not support payload zoom.");
         }
 
         private static CommandResult<MissionStatus> MissionsNotSupported()

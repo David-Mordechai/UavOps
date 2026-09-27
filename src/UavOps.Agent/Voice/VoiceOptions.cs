@@ -25,5 +25,17 @@ public sealed class VoiceOptions
     /// STT rework — its own CORS/business-logic trim is a separate, smaller cleanup).</summary>
     public required string TtsEndpoint { get; init; }
 
+    /// <summary>
+    /// whisper's initial prompt for English transcription: the fleet's vocabulary and a few
+    /// example commands, which bias decoding toward how operators actually talk. Measured on 50
+    /// synthesized commands (10 commands x 5 voices, sent straight to the STT, no speakers/mic):
+    /// word error rate 2.4% -> 0.0%, exact transcripts 42 -> 50 of 50. The worst miss it fixed:
+    /// "Point 999's payload" transcribed as "0.999's payload" in all five voices. On 50 held-out
+    /// commands (simulator, watchdog and greeting phrases included) it changed nothing (50/50
+    /// either way), so it doesn't pull unrelated speech toward fleet words. Blank disables it.
+    /// Not sent to the Hebrew endpoint: an English prompt would skew Hebrew decoding.
+    /// </summary>
+    public string SttEnglishPrompt { get; init; } = "";
+
     public int HttpTimeoutSeconds { get; init; } = 30;
 }

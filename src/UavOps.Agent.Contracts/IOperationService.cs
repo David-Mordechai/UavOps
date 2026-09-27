@@ -28,6 +28,9 @@ public interface IOperationService
     Task<OperationResult> ReturnToLaunch(string tailNumber, CancellationToken cancellationToken);
     Task<OperationResult> PointPayload(string tailNumber, string location, CancellationToken cancellationToken);
     Task<OperationResult> ResetPayload(string tailNumber, CancellationToken cancellationToken);
+    /// <summary>Set the payload camera's zoom (1 = widest); returns telemetry with the zoom and
+    /// field of view the payload actually took (it clamps to its own range).</summary>
+    Task<OperationResult> SetPayloadZoom(string tailNumber, double zoom, CancellationToken cancellationToken);
     Task<OperationResult> UploadWaypoints(string tailNumber, List<Waypoint> waypoints, CancellationToken cancellationToken);
     Task<OperationResult> GetMissionStatus(string tailNumber, CancellationToken cancellationToken);
     Task<OperationResult> GetLinkStatus(string tailNumber, CancellationToken cancellationToken);

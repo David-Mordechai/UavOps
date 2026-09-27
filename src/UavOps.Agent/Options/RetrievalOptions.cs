@@ -30,4 +30,9 @@ public sealed class RetrievalOptions
     /// compound phrasings while holding a compound turn to 10-13 tools offered, vs up to 17 at 10
     /// per clause.</summary>
     public int ClauseTopK { get; set; } = 5;
+
+    /// <summary>How much recent conversation (characters, newest first) goes into the
+    /// "turn + history" retrieval query - see <see cref="Tooling.RetrievalQuery"/>. ~1000 tokens,
+    /// well inside the embedding model's context.</summary>
+    public int MaxHistoryChars { get; set; } = 4000;
 }

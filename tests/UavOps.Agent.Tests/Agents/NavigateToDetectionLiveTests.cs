@@ -70,7 +70,7 @@ public class NavigateToDetectionLiveTests(ITestOutputHelper output)
     /// <summary>What ChatHub.PostOperatorMessage/AddHistoryNote do with a note, minus the chat push.</summary>
     private sealed class JournalNotifier(ProactiveHistoryJournal journal) : IOperatorNotifier
     {
-        public Task PostAsync(string message, string? historyNote)
+        public Task PostAsync(string message, string? historyNote, OperatorVoice? voice = null)
         {
             if (historyNote is not null)
                 journal.Add(historyNote, message);

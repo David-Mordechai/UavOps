@@ -32,3 +32,7 @@ appsettings.Local.json
 # downloaded tools/source data
 *.pmtiles
 .tools/
+
+# scripts/fetch-imagery.ps1: real aerial photos for the simulated camera (~160 MB)
+src/UavOps.Simulator/imagery/*.tif
+src/UavOps.Simulator/imagery/*.partial

@@ -24,8 +24,8 @@ public class KnownPointsTests
         var resolved = KnownPoints.TryResolve(location, out var lat, out var lng);
 
         resolved.Should().BeTrue();
-        lat.Should().Be(31.812000);
-        lng.Should().Be(34.660000);
+        lat.Should().Be(31.346500);
+        lng.Should().Be(35.050300);
     }
 
     [Fact]

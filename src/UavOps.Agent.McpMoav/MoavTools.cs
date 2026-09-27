@@ -56,6 +56,9 @@ public static partial class MoavTools
     public static async Task<string> ResetPayload(IOperationService moav, string tailNumber, CancellationToken cancellationToken) =>
         ToResultText(await moav.ResetPayload(tailNumber, cancellationToken));
 
+    public static async Task<string> SetPayloadZoom(IOperationService moav, string tailNumber, double zoom, CancellationToken cancellationToken) =>
+        ToResultText(await moav.SetPayloadZoom(tailNumber, zoom, cancellationToken));
+
     public static async Task<string> GetLinkStatus(IOperationService moav, string tailNumber, CancellationToken cancellationToken) =>
         ToResultText(await moav.GetLinkStatus(tailNumber, cancellationToken));
 

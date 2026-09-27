@@ -82,7 +82,7 @@ public class ChatHubUnpromptedMessageTests
     [InlineData("/uavCommandHub", null)]
     public async Task PostOperatorMessage_FromAnythingButAnMcpServer_IsRejected(string path, string? clientQuery)
     {
-        var act = () => CreateHub(path, clientQuery).PostOperatorMessage("hello", "a note");
+        var act = () => CreateHub(path, clientQuery).PostOperatorMessage("hello", "a note", null, null);
 
         await act.Should().ThrowAsync<HubException>();
         PushedChatMessages().Should().BeEmpty();
@@ -94,7 +94,7 @@ public class ChatHubUnpromptedMessageTests
     [InlineData("/uavCommandHub")] // McpMoav's relay client
     public async Task PostOperatorMessage_FromAnMcpServer_IsShownAsGiven_AndJoinsHistory(string path)
     {
-        await CreateHub(path, "relay").PostOperatorMessage("White van detected.", "UAV 997 reported a detection.");
+        await CreateHub(path, "relay").PostOperatorMessage("White van detected.", "UAV 997 reported a detection.", null, null);
 
         PushedChatMessages().Should().Equal("White van detected.");
         var history = _journal.Drain();
@@ -106,10 +106,27 @@ public class ChatHubUnpromptedMessageTests
     [Fact]
     public async Task PostOperatorMessage_WithoutANote_LeavesHistoryAlone()
     {
-        await CreateHub("/chatHub", "relay").PostOperatorMessage("Just so you know.", null);
+        await CreateHub("/chatHub", "relay").PostOperatorMessage("Just so you know.", null, null, null);
 
         PushedChatMessages().Should().Equal("Just so you know.");
         _journal.Drain().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PostOperatorMessage_WithAVoiceHint_RelaysItAsGiven_UnderTheMessagesCorrelationId()
+    {
+        await CreateHub("/uavCommandHub", "relay").PostOperatorMessage("Detection 5: White van at 31.8, 34.6.", null, "Detection 5: white van, by 997.", "detections:m1");
+
+        var sends = _allClients.ReceivedCalls()
+            .Where(c => c.GetMethodInfo().Name == nameof(IClientProxy.SendCoreAsync))
+            .Select(c => ((string)c.GetArguments()[0]!, (object?[])c.GetArguments()[1]!))
+            .ToList();
+        sends.Select(s => s.Item1).Should().Equal("ReceiveVoiceHint", "ReceiveChatMessage");
+        var (_, hint) = sends[0];
+        var (_, chat) = sends[1];
+        hint[0].Should().Be(chat[3], "the hint is matched to its message by correlation id");
+        hint[1].Should().Be("Detection 5: white van, by 997.");
+        hint[2].Should().Be("detections:m1");
     }
 
     [Fact]

@@ -31,7 +31,25 @@ html, body { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--text); font: 13px/1.45 var(--font); }
 
 .layout { display: grid; grid-template-columns: 1fr 340px; height: 100vh; }
-.map { position: relative; min-height: 0; }
+.map-area { position: relative; min-height: 0; }
+.map { position: absolute; inset: 0; }
+
+/* Payload camera: floats over the map's top-right corner. */
+.camera-panel {
+  position: absolute; top: 12px; right: 12px; width: min(480px, calc(100% - 24px)); z-index: 5;
+  background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45); overflow: hidden;
+}
+.camera-header { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--border); font-weight: 600; }
+.camera-header .icon-btn { margin-left: auto; }
+.camera-meta { color: var(--text-muted); font-weight: 400; font-size: 12px; font-family: var(--font-mono); }
+.camera-feed { display: block; width: 100%; aspect-ratio: 4 / 3; background: #000; object-fit: cover; }
+.camera-status { padding: 7px 10px; font-size: 12px; color: var(--text-muted); border-top: 1px solid var(--border); }
+.camera-status strong { color: var(--text); font-weight: 600; }
+.last-detection { padding: 8px 10px 10px; border-top: 1px solid var(--border); }
+.last-frame { position: relative; width: 100%; aspect-ratio: 4 / 3; background: #000; margin-bottom: 6px; border-radius: var(--radius-sm); overflow: hidden; }
+.last-frame img { display: block; width: 100%; height: 100%; }
+.last-box { position: absolute; border: 2px solid #50ff78; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
 
 .panel {
   background: var(--bg-elevated);
@@ -128,10 +146,12 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 var(--font); }
   background: rgba(15, 15, 16, 0.78); padding: 1px 5px; border-radius: 4px;
 }
 .zone-label {
-  font: 600 12px var(--font); color: #9fb8ea; letter-spacing: .03em;
+  font: 600 13px var(--font); color: #ff3df2; letter-spacing: .03em;
   text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none;
 }
 .object-marker { width: 12px; height: 12px; }
+.object-marker-photo::before { display: none; }
+.object-sprite { position: absolute; left: 50%; top: 50%; pointer-events: none; transform-origin: center; }
 .object-marker::before {
   content: ""; position: absolute; inset: 0; border-radius: 2px; transform: rotate(45deg);
   background: var(--text-muted); border: 2px solid var(--bg); box-shadow: 0 0 0 1px var(--text-faint);
@@ -157,3 +177,6 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 var(--font); }
   .layout { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; height: auto; min-height: 100vh; }
   .panel { border-left: 0; border-top: 1px solid var(--border); }
 }
+
+.card-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.uav-marker { cursor: pointer; }

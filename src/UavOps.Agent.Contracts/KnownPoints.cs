@@ -16,9 +16,12 @@ public static class KnownPoints
 {
     private static readonly Dictionary<string, (double Lat, double Lng)> Points = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["home"] = (31.801447, 34.643497),
-        ["alpha"] = (31.812000, 34.660000),
-        ["bravo"] = (31.790000, 34.630000),
+        // The UAV base, in open country west of ZoneA (Yatir forest road).
+        ["home"] = (31.344000, 35.035000),
+        // On the Yatir road, at the bend in the middle of ZoneA.
+        ["alpha"] = (31.346500, 35.050300),
+        // On Route 443, in ZoneB.
+        ["bravo"] = (32.067600, 34.919000),
     };
 
     /// <summary>Strips a leading "target " (case-insensitive) - a fixed, known filler word an

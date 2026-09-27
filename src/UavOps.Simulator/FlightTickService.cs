@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.SignalR;
+using UavOps.Simulator.Camera;
 
 namespace UavOps.Simulator;
 
@@ -8,12 +9,14 @@ public sealed class SimHub : Hub;
 
 /// <summary>
 /// The sim clock: every tick advances the fleet by the real time elapsed times
-/// <see cref="SimOptions.TimeScale"/>, reports detections and mission ends to the host, and every
-/// few ticks pushes the whole picture to the page.
+/// <see cref="SimOptions.TimeScale"/>, reports detections and mission ends to the host, hands the
+/// survey frames the cameras took to <see cref="SurveyCameraWorker"/>, and every few ticks pushes
+/// the whole picture to the page.
 /// </summary>
 public sealed class FlightTickService(
     SimFleet fleet,
-    SimulatedDetector detector,
+    SurveyCameraWorker surveyCamera,
+    OnboardDetectorClient onboard,
     ScenarioStore scenario,
     FleetConnectionService connection,
     IHubContext<SimHub> hub,
@@ -41,6 +44,8 @@ public sealed class FlightTickService(
                     _ = connection.ReportDetectionAsync(detection);
                 foreach (var missionEvent in result.MissionEvents)
                     _ = connection.ReportMissionEventAsync(missionEvent);
+                foreach (var capture in result.SurveyCaptures)
+                    surveyCamera.Capture(capture.TailNumber, capture.Telemetry);
 
                 if ((now - lastPush).TotalMilliseconds >= options.StatePushMilliseconds)
                 {
@@ -57,7 +62,7 @@ public sealed class FlightTickService(
 
     public object Snapshot()
     {
-        var view = fleet.View(detector.FootprintRadiusMeters);
+        var view = fleet.View();
         return new
         {
             connected = connection.IsConnected,
@@ -65,7 +70,10 @@ public sealed class FlightTickService(
             timeScale = options.TimeScale,
             uavs = view.Uavs,
             detections = view.Detections,
-            objects = scenario.All()
+            objects = scenario.All(),
+            detector = options.UsesOnboardDetector
+                ? new { mode = "Onboard", url = (string?)options.OnboardDetectorUrl, reachable = onboard.Reachable, tasks = onboard.Statuses, recent = onboard.Recent }
+                : new { mode = "Simulated", url = (string?)null, reachable = true, tasks = (IReadOnlyList<Onboard.Contracts.SearchTaskStatus>)[], recent = (IReadOnlyList<OnboardDetectionView>)[] }
         };
     }
 }

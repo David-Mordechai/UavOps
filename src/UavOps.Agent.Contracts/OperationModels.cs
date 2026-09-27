@@ -2,13 +2,17 @@ namespace UavOps.Agent.Contracts;
 
 public sealed record Waypoint(double Lat, double Lng, int AltitudeFt);
 
+/// <summary>PayloadZoom (1 = widest) and PayloadHfovDeg (the payload camera's horizontal field of
+/// view at that zoom) are optional: 0 from a fleet app that doesn't report its payload.</summary>
 public sealed record TelemetrySnapshot(
     double Lat,
     double Lng,
     int SpeedKts,
     int AltitudeFt,
     string Mode,
-    string? PayloadLockedOn);
+    string? PayloadLockedOn,
+    double PayloadZoom = 0,
+    double PayloadHfovDeg = 0);
 
 public sealed record GdtLinkStatus(string LinkState, int SignalStrengthPercent, string TrackingMode);
 

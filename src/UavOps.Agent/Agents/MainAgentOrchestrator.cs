@@ -94,8 +94,8 @@ public sealed class MainAgentOrchestrator(AgentFactory agentFactory, ToolInvocat
         // near-random noise, silently excluding a tool (e.g. SetSpeed) the earlier part of the same
         // exchange actually needed. History is read here (BEFORE this turn's message joins it) and
         // combined with the current text, so retrieval sees the same conversation BrainAgent itself
-        // does - not a separately-invented "last N messages" window, but the same bounded history
-        // ToolCallAwareChatReducer already keeps for the model. Skips System/Tool-role entries and
+        // does, newest first up to Retrieval:MaxHistoryChars (see RetrievalQuery - the whole history
+        // once overflowed the embedding model's context). Skips System/Tool-role entries and
         // pure tool-call/tool-result messages (ChatMessage.Text is empty for those) - their content
         // is either the system prompt (irrelevant to, and would dilute, retrieval) or already
         // reflected in the plain-language turns around them.
@@ -103,7 +103,7 @@ public sealed class MainAgentOrchestrator(AgentFactory agentFactory, ToolInvocat
         var historyText = history
             .Where(m => (m.Role == ChatRole.User || m.Role == ChatRole.Assistant) && !string.IsNullOrWhiteSpace(m.Text))
             .Select(m => m.Text);
-        var retrievalQueryText = string.Join("\n", historyText.Append(text));
+        var retrievalQueryText = RetrievalQuery.Build(historyText, text, agentFactory.Retrieval.MaxHistoryChars);
 
         var tools = await agentFactory.BuildToolsForTurn(correlationId, text, retrievalQueryText, cancellationToken);
         var chatOptions = new ChatOptions { Tools = tools, AllowMultipleToolCalls = true };

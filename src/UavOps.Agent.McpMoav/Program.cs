@@ -24,6 +24,10 @@ var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
 // into this server's own directory - never the checked-in appsettings.json. Loaded last so it has
 // final precedence.
 builder.Configuration.AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: true);
+// ...except for an explicit launch argument, which beats a saved setting: the live tests launch
+// this build with --OperationBackend Simulated so a Settings-page "SignalR" (meant for the map
+// simulator) can't send their commands to a running host and its fleet app.
+builder.Configuration.AddCommandLine(args);
 
 // Stdout is the MCP transport channel itself - any log line written there would corrupt the
 // protocol stream, so every log has to go to stderr instead (the SDK's own documented setup).
@@ -69,6 +73,7 @@ builder.Services.AddSingleton<IAoiZoneStore>(new SqliteAoiZoneStore(MissionOptio
 builder.Services.AddSingleton<IRouteStore, InMemoryRouteStore>();
 builder.Services.AddSingleton<DetectionPointRegistry>();
 builder.Services.AddSingleton<MissionEventService>();
+builder.Services.AddHostedService<DetectionSummaryFlusher>();
 
 // Every AI-facing string for this domain - ServerInstructions, tool descriptions, parameter
 // descriptions, and the readOnly/destructive annotations - lives in this project's own

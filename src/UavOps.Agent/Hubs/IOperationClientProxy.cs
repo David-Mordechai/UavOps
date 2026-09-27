@@ -30,4 +30,7 @@ public interface IOperationClientProxy
     // IUavMissionHandler; FleetClientConnection fails them fast for one that hasn't.
     Task StartMission(string correlationId, string tailNumber);
     Task SetSearchTarget(string correlationId, string tailNumber, SearchTargetRequest request);
+
+    // Payload zoom: UavOps.FleetClient's optional IUavPayloadZoomHandler, failed fast the same way.
+    Task SetPayloadZoom(string correlationId, string tailNumber, double zoom);
 }

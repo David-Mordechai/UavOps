@@ -6,7 +6,7 @@ serverInstructions: |
     launch even though those also end a mission - those are flight tools. Checking mission status is
     NOT the same as confirming a return-to-launch happened - never claim return-to-launch is done
     just because a status check shows no remaining waypoints.
-  - PayloadControlAgent-style tools (PointPayload, ResetPayload) are the sensor/gimbal, distinct from
+  - PayloadControlAgent-style tools (PointPayload, SetPayloadZoom, ResetPayload) are the sensor/gimbal, distinct from
     GdtControlAgent-style tools (GetLinkStatus, SetTrackingMode), which are the ground-side antenna/
     datalink equipment - GetLinkStatus/SetTrackingMode are placeholder mock tools today.
 
@@ -171,8 +171,10 @@ tools:
     description: "Point a UAV's sensor/gimbal at a named location."
     destructive: false
     parameters:
-      # KNOWN OPEN ISSUE, deliberately not patched via prompt text (tracked out-of-band, not
-      # fixed here): PointPayloadFollowUpLiveTests/MultiTurnFleetOpsLiveTests reproduce a
+      # RESOLVED WITHOUT PROMPT TEXT (2026-09-27: PointPayloadFollowUpLiveTests 8/8,
+      # FlyAllFleetWideLiveTests 8/8, both unchanged here - the host's fleet-group memory for
+      # plural follow-ups fixed it deterministically). History, and why not to add text here:
+      # PointPayloadFollowUpLiveTests/MultiTurnFleetOpsLiveTests reproduced a
       # cross-turn fabrication bug - a fleet-wide command ("fly them all to alpha") followed, in
       # a SEPARATE later turn, by a pronoun-only follow-up ("point their payloads there") often
       # fails to resolve to every UAV. Adding inline ALL/pronoun reinforcement here measurably
@@ -200,6 +202,24 @@ tools:
       tailNumber: >-
         The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
         guess one.
+
+  # SetPayloadZoom is the only way the payload camera's zoom changes: PointPayload only aims it,
+  # and the simulator never zooms on its own. PrepareAoiSearch sets the search zoom itself, through
+  # the same command.
+  - operation: SetPayloadZoom
+    description: >-
+      Zoom a UAV's payload camera in or out. Use for 'zoom in', 'zoom 997 to 10x', 'zoom out'. It
+      does not change where the camera points - use PointPayload for that - and never changes the
+      UAV's altitude.
+    destructive: false
+    parameters:
+      tailNumber: >-
+        The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
+        guess one.
+      zoom: >-
+        Zoom factor: 1 is the widest view, larger is closer (the payload clamps to its own maximum,
+        and the result says what it took). For 'zoom in'/'zoom out' without a number, take the
+        current zoom from GetTelemetry and double or halve it.
 
   - operation: GetLinkStatus
     # "Always call this fresh" deleted, same evidence-based basis as GetTelemetry above -
@@ -266,7 +286,8 @@ tools:
   - operation: PrepareAoiSearch
     description: >-
       Prepare one UAV to search a named AOI zone for something: plans a search route covering the
-      zone, uploads it to the UAV, and tells the UAV's onboard agent what to look for. Use for
+      zone, zooms the UAV's payload camera for the search, uploads the route to the UAV, and tells
+      the UAV's onboard agent what to look for. The route is flown at the UAV's current altitude. Use for
       requests like 'enter AOI zone ZoneA and search for a white van' or 'search zone B for a red
       car'. It does NOT start flying; StartMission does that, only once the operator says to start
       - never ask whether to start. 'Enter a zone' here means search it - do not use Navigate for a
@@ -330,8 +351,8 @@ tools:
       zoneName: >-
         Name of the AOI zone to cover, e.g. 'ZoneA'.
       altitudeFt: >-
-        Search altitude in feet, only if the operator stated one; leave it out otherwise. Higher
-        means wider lanes and a shorter route. Never convert from meters.
+        Search altitude in feet, only if the operator stated one; leave it out otherwise, and the
+        route is flown at the UAV's current altitude. Never convert from meters.
 
   - operation: UploadRoute
     description: >-
