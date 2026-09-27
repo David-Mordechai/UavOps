@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using UavOps.Agent.Contracts;
 using UavOps.Agent.McpMoav;
+using UavOps.Agent.Mission;
 
 // ContentRootPath must be this project's own output directory, not left to default to the
 // process's working directory - UavOps.Agent spawns this as a child process with ITS OWN content
@@ -51,11 +52,23 @@ if (operationBackend == OperationBackend.SignalR)
     await hubConnection.StartAsync();
     builder.Services.AddSingleton(hubConnection);
     builder.Services.AddSingleton<IOperationService, MoavRelayService>();
+    builder.Services.AddSingleton<IOperatorNotifier, HubOperatorNotifier>();
 }
 else
 {
     builder.Services.AddSingleton<IOperationService, SimulatedUavOperationService>();
+    builder.Services.AddSingleton<IOperatorNotifier, LogOnlyOperatorNotifier>();
 }
+
+// AOI search missions. Registered before McpToolsBuilder.Build below, which drops DI-satisfied
+// parameters from the tool schemas: registered after, these would show up to the model as
+// arguments it must supply.
+var missionOptions = builder.Configuration.GetSection(MissionOptions.SectionName).Get<MissionOptions>() ?? new MissionOptions();
+builder.Services.AddSingleton(missionOptions);
+builder.Services.AddSingleton<IAoiZoneStore>(new SqliteAoiZoneStore(MissionOptions.ResolveDatabasePath(missionOptions.AoiDatabasePath)));
+builder.Services.AddSingleton<IRouteStore, InMemoryRouteStore>();
+builder.Services.AddSingleton<DetectionPointRegistry>();
+builder.Services.AddSingleton<MissionEventService>();
 
 // Every AI-facing string for this domain - ServerInstructions, tool descriptions, parameter
 // descriptions, and the readOnly/destructive annotations - lives in this project's own
@@ -71,4 +84,16 @@ builder.Services
     .WithStdioServerTransport()
     .WithTools(tools);
 
-await builder.Build().RunAsync();
+var app = builder.Build();
+
+// What the fleet app reports on its own reaches the host (its only endpoint), which forwards it
+// here unchanged: what a detection or a finished mission means is this domain's call, not the
+// host's. Only under SignalR - the Simulated backend has no fleet app to report anything.
+if (app.Services.GetService<HubConnection>() is { } relayConnection)
+{
+    var missionEvents = app.Services.GetRequiredService<MissionEventService>();
+    relayConnection.On<DetectionReport>(HostHubContract.FleetEvents.Detection, report => missionEvents.HandleDetectionAsync(report));
+    relayConnection.On<MissionEventReport>(HostHubContract.FleetEvents.MissionEvent, report => missionEvents.HandleMissionEventAsync(report));
+}
+
+await app.RunAsync();

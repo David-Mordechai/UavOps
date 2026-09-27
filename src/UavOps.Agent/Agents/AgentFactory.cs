@@ -55,6 +55,11 @@ public sealed class AgentFactory(
     /// circular construction-order dependency.</summary>
     public ToolRetrievalIndex RetrievalIndex { get; set; } = null!;
 
+    /// <summary>Unprompted messages waiting to join BrainAgent's history - see
+    /// <see cref="ProactiveHistoryJournal"/>. Owned here so the orchestrator (which drains it) and
+    /// ChatHub (which fills it from MCP servers) share one instance, live tests included.</summary>
+    public ProactiveHistoryJournal ProactiveJournal { get; } = new();
+
     /// <summary>Every tool discovered once at startup across all connected MCP servers (see
     /// <c>Agents/BrainAgent.yaml</c>'s <c>mcpServers:</c> section - today the Moav domain's
     /// <c>UavOps.Agent.McpMoav</c>, the watchdog domain's <c>UavOps.Agent.McpWatchdog</c>, and the
@@ -93,6 +98,10 @@ public sealed class AgentFactory(
     // FleetGroupMemory's own doc comment for the real, live-reproduced cross-turn bug this exists
     // to close.
     private readonly FleetGroupMemory _fleetGroupMemory = new();
+
+    // The UAV the operator last named or picked, for follow-ups that don't name one - see
+    // OperatorUavContext. Session-lifetime, like the group memory above.
+    private readonly OperatorUavContext _operatorUavContext = new();
 
     /// <summary>Returns the single, long-lived BrainAgent instance, its reused conversation
     /// session, and the history provider backing that session (so a caller can snapshot/restore
@@ -284,7 +293,7 @@ public sealed class AgentFactory(
             // instead of asking - see TailNumberDisambiguationTool's own doc comment.
             if (SchemaHasProperty(mcpTool, "tailNumber"))
             {
-                wrappedTool = new TailNumberDisambiguationTool((AIFunction)wrappedTool, ListRealMoavFleetAsync, operatorPromptGate, tailNumberScope, _fleetGroupMemory, RootAgentName, correlationId, operatorText);
+                wrappedTool = new TailNumberDisambiguationTool((AIFunction)wrappedTool, ListRealMoavFleetAsync, operatorPromptGate, tailNumberScope, _fleetGroupMemory, RootAgentName, correlationId, operatorText, _operatorUavContext);
             }
 
             tools.Add(wrappedTool);

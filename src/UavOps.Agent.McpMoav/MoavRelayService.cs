@@ -56,6 +56,12 @@ public sealed class MoavRelayService(HubConnection hubConnection) : IOperationSe
     public Task<OperationResult> SetTrackingMode(string tailNumber, string mode, CancellationToken cancellationToken) =>
         RelayAsync("RelaySetTrackingMode", cancellationToken, tailNumber, mode);
 
+    public Task<OperationResult> StartMission(string tailNumber, CancellationToken cancellationToken) =>
+        RelayAsync("RelayStartMission", cancellationToken, tailNumber);
+
+    public Task<OperationResult> SetSearchTarget(string tailNumber, SearchTargetRequest request, CancellationToken cancellationToken) =>
+        RelayAsync("RelaySetSearchTarget", cancellationToken, tailNumber, request);
+
     private async Task<OperationResult> RelayAsync(string hubMethod, CancellationToken cancellationToken, params object?[] args)
     {
         string resultText;

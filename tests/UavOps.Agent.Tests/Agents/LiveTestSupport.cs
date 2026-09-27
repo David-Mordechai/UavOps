@@ -174,6 +174,22 @@ internal static class LiveTestSupport
     /// <see cref="BuildLiveOrchestrator"/> connected to.</summary>
     public sealed class McpClientGroup(IReadOnlyList<McpClient> clients) : IAsyncDisposable
     {
+        /// <summary>Calls an MCP tool directly, bypassing the agent and every host-side wrapper -
+        /// for reading real backend state (ground truth) after a scenario runs.</summary>
+        public async Task<string> CallToolTextAsync(string toolName, Dictionary<string, object?> arguments)
+        {
+            foreach (var client in clients)
+            {
+                var tool = (await client.ListToolsAsync()).FirstOrDefault(t => t.Name == toolName);
+                if (tool is not null)
+                {
+                    var raw = await tool.InvokeAsync(new AIFunctionArguments(arguments), CancellationToken.None);
+                    return raw?.ToString() ?? "";
+                }
+            }
+            throw new InvalidOperationException($"No connected MCP server has a tool named '{toolName}'.");
+        }
+
         public async ValueTask DisposeAsync()
         {
             foreach (var client in clients)

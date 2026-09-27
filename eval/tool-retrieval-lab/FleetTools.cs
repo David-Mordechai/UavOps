@@ -13,6 +13,9 @@ sealed class UavState
     public int AltitudeFt { get; set; } = 4000;
     public string Mode { get; set; } = "Orbiting";
     public string? PayloadLockedOn { get; set; }
+    public string? SearchZone { get; set; }
+    public string? SearchPrompt { get; set; }
+    public bool MissionStarted { get; set; }
 
     public override string ToString()
     {
@@ -181,6 +184,57 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
         return state;
     }
 
+    // AOI search-mission tools for the "aoi-search" scenario. Descriptions copied from
+    // UavOps.Agent.McpMoav/ToolsConfig.yaml so they rank the way production's do.
+    [Description("Prepare one UAV to search a named AOI zone for something: plans a search route covering the zone, uploads it to the UAV, and tells the UAV's onboard agent what to look for. Use for requests like 'enter AOI zone ZoneA and search for a white van' or 'search zone B for a red car'. It does NOT start flying: afterwards, ask the operator whether to start the mission, and only start it with StartMission. 'Enter a zone' here means search it - do not use Navigate for a zone name; Navigate only flies to a known point like 'alpha'.")]
+    public object PrepareAoiSearch(
+        [Description("The tail number of the ONE UAV to search with, e.g. '997'. Must be one of the known UAVs - never guess one, and never 'ALL' or several UAVs: each search route is for a single UAV.")] string tailNumber,
+        [Description("Name of the AOI zone to search, as the operator said it, e.g. 'ZoneA'. Call ListAoiZones if you need the valid names.")] string zoneName,
+        [Description("What to look for, in the operator's own words, e.g. 'white van'. This is the object to find, not a location.")] string targetDescription)
+    {
+        if (!fleet.TryGetValue(tailNumber, out var state))
+        {
+            var err = new { error = $"Unknown UAV '{tailNumber}'." };
+            Log(nameof(PrepareAoiSearch), new { tailNumber, zoneName, targetDescription }, err);
+            return err;
+        }
+        lock (state)
+        {
+            state.SearchZone = zoneName;
+            state.SearchPrompt = targetDescription;
+        }
+        var result = new { tailNumber, zoneName, searchTarget = targetDescription, waypointsUploaded = 12, started = false, nextStep = "Ask the operator whether to start the mission; start it only with StartMission." };
+        Log(nameof(PrepareAoiSearch), new { tailNumber, zoneName, targetDescription }, result);
+        return result;
+    }
+
+    [Description("Start a UAV flying the search route already uploaded to it (by PrepareAoiSearch or UploadRoute) - what 'start the mission', 'go', or 'begin the search' means after a search was prepared. Not for the training simulator or its lessons, and not for watchdog services.")]
+    public object StartMission(
+        [Description("The tail number of the UAV whose mission to start, e.g. '997'. Must be one of the known UAVs - never guess one.")] string tailNumber)
+    {
+        if (!fleet.TryGetValue(tailNumber, out var state) || state.SearchZone is null)
+        {
+            var err = new { error = $"{tailNumber} has no route uploaded to fly." };
+            Log(nameof(StartMission), new { tailNumber }, err);
+            return err;
+        }
+        lock (state)
+        {
+            state.MissionStarted = true;
+            state.Mode = "Searching";
+        }
+        Log(nameof(StartMission), new { tailNumber }, state);
+        return state;
+    }
+
+    [Description("List the named AOI (area of interest) zones that can be searched, with each zone's area and centre point.")]
+    public object ListAoiZones()
+    {
+        var result = new[] { new { name = "ZoneA", areaSqKm = 1.175 }, new { name = "ZoneB", areaSqKm = 0.52 } };
+        Log(nameof(ListAoiZones), new { }, result);
+        return result;
+    }
+
     public AITool[] AsTools() =>
     [
         AIFunctionFactory.Create(ListFleet),
@@ -190,5 +244,8 @@ sealed class FleetTools(Dictionary<string, UavState> fleet)
         AIFunctionFactory.Create(SetAltitude),
         AIFunctionFactory.Create(PointPayload),
         AIFunctionFactory.Create(ReturnToLaunch),
+        AIFunctionFactory.Create(PrepareAoiSearch),
+        AIFunctionFactory.Create(StartMission),
+        AIFunctionFactory.Create(ListAoiZones),
     ];
 }

@@ -27,3 +27,8 @@ publish/
 
 # Settings-page saved overrides (one per process - host + each MCP server's own directory)
 appsettings.Local.json
+
+# scripts/build-offline-map.ps1: the built map (tens of MB, rebuilt from OSM) and its
+# downloaded tools/source data
+*.pmtiles
+.tools/

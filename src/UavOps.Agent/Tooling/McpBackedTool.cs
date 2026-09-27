@@ -48,7 +48,7 @@ public sealed class McpBackedTool : AIFunction
 
         if (_requiresConfirmation && _confirmationGate.CurrentMode == Options.ExecutionMode.Confirm)
         {
-            var approved = await _confirmationGate.RequireConfirmationAsync(_correlationId, _agentName, Name, Description, argDict, cancellationToken);
+            var approved = await _confirmationGate.RequireConfirmationAsync(_correlationId, _agentName, Name, argDict, cancellationToken);
             if (!approved)
             {
                 return "Not executed: operator declined (or did not respond to) the confirmation request.";

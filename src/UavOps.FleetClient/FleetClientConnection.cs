@@ -62,43 +62,82 @@ namespace UavOps.FleetClient
             return _connection.InvokeAsync<bool>("SetPushToTalk", pressed);
         }
 
+        /// <summary>
+        /// Report that the onboard agent spotted the search target set by
+        /// <see cref="IUavMissionHandler.SetSearchTarget"/>. The operator gets a chat message
+        /// with the location. Safe to call more than once for the same object; the host
+        /// ignores near-duplicates.
+        /// </summary>
+        public Task ReportDetectionAsync(DetectionReport report)
+        {
+            return _connection.InvokeAsync("ReportDetection", report);
+        }
+
+        /// <summary>Report that a search mission ended (see <see cref="MissionEventKinds"/>).</summary>
+        public Task ReportMissionEventAsync(MissionEventReport report)
+        {
+            return _connection.InvokeAsync("ReportMissionEvent", report);
+        }
+
+        // Command names come from the handler's own method names (nameof), so a handler method
+        // and the command it answers can't drift apart; FleetContractDriftTests checks these
+        // names against the host's IOperationClientProxy.
         private void RegisterHandlers()
         {
-            _connection.On<string>("ListFleet", correlationId =>
+            _connection.On<string>(nameof(IUavCommandHandler.ListFleet), correlationId =>
                 RunAsync(correlationId, () => _handler.ListFleet()));
 
-            _connection.On<string, string>("GetTelemetry", (correlationId, tailNumber) =>
+            _connection.On<string, string>(nameof(IUavCommandHandler.GetTelemetry), (correlationId, tailNumber) =>
                 RunAsync(correlationId, () => _handler.GetTelemetry(tailNumber)));
 
-            _connection.On<string, string, string>("Navigate", (correlationId, tailNumber, location) =>
+            _connection.On<string, string, string>(nameof(IUavCommandHandler.Navigate), (correlationId, tailNumber, location) =>
                 RunAsync(correlationId, () => _handler.Navigate(tailNumber, location)));
 
-            _connection.On<string, string, int>("SetSpeed", (correlationId, tailNumber, speedKts) =>
+            _connection.On<string, string, int>(nameof(IUavCommandHandler.SetSpeed), (correlationId, tailNumber, speedKts) =>
                 RunAsync(correlationId, () => _handler.SetSpeed(tailNumber, speedKts)));
 
-            _connection.On<string, string, int>("SetAltitude", (correlationId, tailNumber, altitudeFt) =>
+            _connection.On<string, string, int>(nameof(IUavCommandHandler.SetAltitude), (correlationId, tailNumber, altitudeFt) =>
                 RunAsync(correlationId, () => _handler.SetAltitude(tailNumber, altitudeFt)));
 
-            _connection.On<string, string>("ReturnToLaunch", (correlationId, tailNumber) =>
+            _connection.On<string, string>(nameof(IUavCommandHandler.ReturnToLaunch), (correlationId, tailNumber) =>
                 RunAsync(correlationId, () => _handler.ReturnToLaunch(tailNumber)));
 
-            _connection.On<string, string, string>("PointPayload", (correlationId, tailNumber, location) =>
+            _connection.On<string, string, string>(nameof(IUavCommandHandler.PointPayload), (correlationId, tailNumber, location) =>
                 RunAsync(correlationId, () => _handler.PointPayload(tailNumber, location)));
 
-            _connection.On<string, string>("ResetPayload", (correlationId, tailNumber) =>
+            _connection.On<string, string>(nameof(IUavCommandHandler.ResetPayload), (correlationId, tailNumber) =>
                 RunAsync(correlationId, () => _handler.ResetPayload(tailNumber)));
 
-            _connection.On<string, string, List<Waypoint>>("UploadWaypoints", (correlationId, tailNumber, waypoints) =>
+            _connection.On<string, string, List<Waypoint>>(nameof(IUavCommandHandler.UploadWaypoints), (correlationId, tailNumber, waypoints) =>
                 RunAsync(correlationId, () => _handler.UploadWaypoints(tailNumber, waypoints)));
 
-            _connection.On<string, string>("GetMissionStatus", (correlationId, tailNumber) =>
+            _connection.On<string, string>(nameof(IUavCommandHandler.GetMissionStatus), (correlationId, tailNumber) =>
                 RunAsync(correlationId, () => _handler.GetMissionStatus(tailNumber)));
 
-            _connection.On<string, string>("GetLinkStatus", (correlationId, tailNumber) =>
+            _connection.On<string, string>(nameof(IUavCommandHandler.GetLinkStatus), (correlationId, tailNumber) =>
                 RunAsync(correlationId, () => _handler.GetLinkStatus(tailNumber)));
 
-            _connection.On<string, string, string>("SetTrackingMode", (correlationId, tailNumber, mode) =>
+            _connection.On<string, string, string>(nameof(IUavCommandHandler.SetTrackingMode), (correlationId, tailNumber, mode) =>
                 RunAsync(correlationId, () => _handler.SetTrackingMode(tailNumber, mode)));
+
+            // Registered even when the handler doesn't implement IUavMissionHandler, so the host
+            // gets an immediate "not supported" instead of waiting out its reply timeout.
+            var missionHandler = _handler as IUavMissionHandler;
+
+            _connection.On<string, string>(nameof(IUavMissionHandler.StartMission), (correlationId, tailNumber) =>
+                RunAsync(correlationId, () => missionHandler == null
+                    ? MissionsNotSupported()
+                    : missionHandler.StartMission(tailNumber)));
+
+            _connection.On<string, string, SearchTargetRequest>(nameof(IUavMissionHandler.SetSearchTarget), (correlationId, tailNumber, request) =>
+                RunAsync(correlationId, () => missionHandler == null
+                    ? MissionsNotSupported()
+                    : missionHandler.SetSearchTarget(tailNumber, request)));
+        }
+
+        private static CommandResult<MissionStatus> MissionsNotSupported()
+        {
+            return CommandResult<MissionStatus>.Fail("This fleet app does not support AOI search missions.");
         }
 
         /// <summary>

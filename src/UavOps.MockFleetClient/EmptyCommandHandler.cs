@@ -11,7 +11,7 @@ namespace UavOps.MockFleetClient
     /// UavOps.Agent's Simulation/ services. A real fleet-commanding app implements
     /// IUavCommandHandler with real hardware calls in place of this.
     /// </summary>
-    public sealed class EmptyCommandHandler : IUavCommandHandler
+    public sealed class EmptyCommandHandler : IUavCommandHandler, IUavMissionHandler
     {
         private static TelemetrySnapshot DummySnapshot()
         {
@@ -104,6 +104,54 @@ namespace UavOps.MockFleetClient
         {
             Log("SetTrackingMode", string.Format("{0}, {1}", tailNumber, mode));
             return CommandResult<GdtLinkStatus>.Ok(new GdtLinkStatus { LinkState = "Connected", SignalStrengthPercent = 92, TrackingMode = mode });
+        }
+
+        public CommandResult<MissionStatus> StartMission(string tailNumber)
+        {
+            Log("StartMission", tailNumber);
+            return CommandResult<MissionStatus>.Ok(new MissionStatus { Mode = "Searching", WaypointCount = 0, CurrentWaypointIndex = 0 });
+        }
+
+        private string _lastSearchTail = "997";
+        private SearchTargetRequest _lastSearchTarget = new SearchTargetRequest
+        {
+            MissionId = "mock-mission",
+            ZoneName = "ZoneA",
+            Prompt = "white van",
+            MinConfidence = 0.5
+        };
+
+        /// <summary>A made-up detection for the last search target set (or a white van in ZoneA),
+        /// <paramref name="offsetMeters"/> north of a point inside ZoneA.</summary>
+        public DetectionReport FakeDetection(double offsetMeters)
+        {
+            return new DetectionReport
+            {
+                TailNumber = _lastSearchTail,
+                MissionId = _lastSearchTarget.MissionId,
+                ZoneName = _lastSearchTarget.ZoneName,
+                Prompt = _lastSearchTarget.Prompt,
+                Label = _lastSearchTarget.Prompt,
+                Confidence = 0.9,
+                Lat = 31.80900 + offsetMeters / 111195.0,
+                Lng = 34.66521,
+                DetectedAtUtc = DateTime.UtcNow,
+                TrackId = Guid.NewGuid().ToString("N").Substring(0, 8)
+            };
+        }
+
+        public CommandResult<MissionStatus> SetSearchTarget(string tailNumber, SearchTargetRequest request)
+        {
+            _lastSearchTail = tailNumber;
+            _lastSearchTarget = request;
+            Log("SetSearchTarget", string.Format("{0}, mission={1}, zone={2}, prompt={3}", tailNumber, request.MissionId, request.ZoneName, request.Prompt));
+            return CommandResult<MissionStatus>.Ok(new MissionStatus
+            {
+                Mode = "Orbiting",
+                WaypointCount = 0,
+                ActiveMissionId = request.MissionId,
+                SearchPrompt = request.Prompt
+            });
         }
     }
 }

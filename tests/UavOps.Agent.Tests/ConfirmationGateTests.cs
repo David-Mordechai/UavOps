@@ -55,7 +55,7 @@ public class ConfirmationGateTests
         ConfirmationGate? sut = null;
         sut = CreateSut(TimeSpan.FromSeconds(30), promptText => sut!.TryHandleChatReplyAsync("yes", CancellationToken.None));
 
-        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", new { speedKts = 100 }, CancellationToken.None);
 
         approved.Should().BeTrue();
     }
@@ -66,7 +66,7 @@ public class ConfirmationGateTests
         ConfirmationGate? sut = null;
         sut = CreateSut(TimeSpan.FromSeconds(30), promptText => sut!.TryHandleChatReplyAsync("no", CancellationToken.None));
 
-        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", new { speedKts = 100 }, CancellationToken.None);
 
         approved.Should().BeFalse();
     }
@@ -81,7 +81,7 @@ public class ConfirmationGateTests
         ConfirmationGate? sut = null;
         sut = CreateSut(TimeSpan.FromSeconds(30), promptText => sut!.TryHandleChatReplyAsync(reply, CancellationToken.None));
 
-        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", new { speedKts = 100 }, CancellationToken.None);
 
         approved.Should().BeTrue();
     }
@@ -94,7 +94,7 @@ public class ConfirmationGateTests
         ConfirmationGate? sut = null;
         sut = CreateSut(TimeSpan.FromMilliseconds(50), promptText => sut!.TryHandleChatReplyAsync("maybe", CancellationToken.None));
 
-        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", new { speedKts = 100 }, CancellationToken.None);
 
         approved.Should().BeFalse();
     }
@@ -104,7 +104,7 @@ public class ConfirmationGateTests
     {
         var sut = CreateSut(TimeSpan.FromMilliseconds(50));
 
-        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", "Change speed", new { speedKts = 100 }, CancellationToken.None);
+        var approved = await sut.RequireConfirmationAsync("corr1", "TestAgent", "SetSpeed", new { speedKts = 100 }, CancellationToken.None);
 
         approved.Should().BeFalse();
     }
@@ -123,8 +123,8 @@ public class ConfirmationGateTests
     public async Task RequireConfirmationAsync_PromptText_IsHumanReadable()
     {
         // The operator approving/declining a UAV action shouldn't need to know operationIds or
-        // read raw JSON — the prompt should read like a sentence built from the tool's
-        // human-authored Description and plain "name: value" arguments.
+        // read raw JSON — the prompt is the tool name split into words plus plain "name: value"
+        // arguments, and never the model-facing description (which ran to several lines).
         string? promptText = null;
         ConfirmationGate? sut = null;
         sut = CreateSut(TimeSpan.FromSeconds(30), text =>
@@ -135,13 +135,12 @@ public class ConfirmationGateTests
 
         await sut.RequireConfirmationAsync(
             "corr1", "GdtControlAgent", "SetAntennaTrackingMode",
-            "Set the ground data terminal antenna's tracking mode for a UAV.",
             new { tailNumber = "997", mode = "Manual" },
             CancellationToken.None);
 
         promptText.Should().NotBeNull();
-        promptText.Should().Contain("Set the ground data terminal antenna's tracking mode for a UAV");
-        promptText.Should().Contain("tailNumber: 997");
+        promptText.Should().Contain("Set antenna tracking mode");
+        promptText.Should().Contain("tail number: 997");
         promptText.Should().Contain("mode: Manual");
         promptText.Should().NotContain("SetAntennaTrackingMode");
         promptText.Should().NotContain("{"); // not raw JSON — quotes are fine, used stylistically around yes/no

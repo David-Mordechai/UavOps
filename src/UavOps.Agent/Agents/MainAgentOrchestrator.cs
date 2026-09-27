@@ -78,6 +78,16 @@ public sealed class MainAgentOrchestrator(AgentFactory agentFactory, ToolInvocat
 
         var (brainAgent, session, historyProvider) = await agentFactory.GetOrCreatePersistentBrainAgentAsync(cancellationToken);
 
+        // Messages the operator was sent unprompted since the last turn (a detection, a finished
+        // search) join the history now, before this turn reads it, so a follow-up like "send 998
+        // to the white van" has something to refer to. Added here rather than when they arrived,
+        // which could race a completion still in progress.
+        var proactive = agentFactory.ProactiveJournal.Drain();
+        if (proactive.Count > 0)
+        {
+            historyProvider.SetMessages(session, [.. historyProvider.GetMessages(session), .. proactive]);
+        }
+
         // Tool retrieval needs to see this exchange's real context, not just this turn's bare
         // text - a real, live-reproduced bug: an ambiguous follow-up ("999" answering "which UAV?")
         // has no semantic content of its own, so embedding it alone ranks the whole tool catalog as

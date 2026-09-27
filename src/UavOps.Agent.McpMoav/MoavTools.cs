@@ -19,7 +19,7 @@ namespace UavOps.Agent.McpMoav;
 /// <c>operation:</c> entries exactly (case-sensitive) - <see cref="McpToolsBuilder.Build"/> fails
 /// fast at startup if either side has an entry the other doesn't.
 /// </summary>
-public static class MoavTools
+public static partial class MoavTools
 {
     private static readonly JsonSerializerOptions ResultSerializeOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
@@ -32,8 +32,11 @@ public static class MoavTools
     public static async Task<string> GetTelemetry(IOperationService moav, string tailNumber, CancellationToken cancellationToken) =>
         ToResultText(await moav.GetTelemetry(tailNumber, cancellationToken));
 
-    public static async Task<string> Navigate(IOperationService moav, string tailNumber, string location, CancellationToken cancellationToken) =>
-        ToResultText(await moav.Navigate(tailNumber, location, cancellationToken));
+    public static async Task<string> Navigate(IOperationService moav, DetectionPointRegistry detections, string tailNumber, string location, CancellationToken cancellationToken)
+    {
+        var (resolved, note) = ResolveDetection(detections, location);
+        return note + ToResultText(await moav.Navigate(tailNumber, resolved, cancellationToken));
+    }
 
     public static async Task<string> SetSpeed(IOperationService moav, string tailNumber, int speedKts, CancellationToken cancellationToken) =>
         ToResultText(await moav.SetSpeed(tailNumber, speedKts, cancellationToken));
@@ -44,8 +47,11 @@ public static class MoavTools
     public static async Task<string> ReturnToLaunch(IOperationService moav, string tailNumber, CancellationToken cancellationToken) =>
         ToResultText(await moav.ReturnToLaunch(tailNumber, cancellationToken));
 
-    public static async Task<string> PointPayload(IOperationService moav, string tailNumber, string location, CancellationToken cancellationToken) =>
-        ToResultText(await moav.PointPayload(tailNumber, location, cancellationToken));
+    public static async Task<string> PointPayload(IOperationService moav, DetectionPointRegistry detections, string tailNumber, string location, CancellationToken cancellationToken)
+    {
+        var (resolved, note) = ResolveDetection(detections, location);
+        return note + ToResultText(await moav.PointPayload(tailNumber, resolved, cancellationToken));
+    }
 
     public static async Task<string> ResetPayload(IOperationService moav, string tailNumber, CancellationToken cancellationToken) =>
         ToResultText(await moav.ResetPayload(tailNumber, cancellationToken));
@@ -61,4 +67,12 @@ public static class MoavTools
 
     public static async Task<string> GetMissionStatus(IOperationService moav, string tailNumber, CancellationToken cancellationToken) =>
         ToResultText(await moav.GetMissionStatus(tailNumber, cancellationToken));
+
+    /// <summary>A detection's name ("the white van", "detection 1") becomes its reported
+    /// <c>"lat,lng"</c>, which both backends accept, so neither has to know about detections.
+    /// Known points win: a detection can't shadow 'alpha' or 'home'.</summary>
+    private static (string Location, string Note) ResolveDetection(DetectionPointRegistry detections, string location) =>
+        !KnownPoints.TryResolve(location, out _, out _) && detections.TryResolve(location, out var latLng)
+            ? (latLng, $"Note - '{location}' is the reported position {latLng}; that is where this was sent. ")
+            : (location, "");
 }

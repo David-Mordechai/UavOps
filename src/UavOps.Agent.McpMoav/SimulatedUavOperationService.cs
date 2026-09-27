@@ -23,6 +23,17 @@ public sealed class SimulatedUavOperationService : IOperationService
         public string Mode = "Orbiting";
         public string? PayloadLockedOn;
         public List<Waypoint> Waypoints = [];
+        public int? CurrentWaypointIndex;
+        public string? ActiveMissionId;
+        public string? SearchPrompt;
+
+        public MissionStatus MissionSnapshot()
+        {
+            lock (Lock)
+            {
+                return new MissionStatus(Mode, Waypoints.Count, CurrentWaypointIndex, ActiveMissionId, SearchPrompt);
+            }
+        }
 
         public TelemetrySnapshot Snapshot()
         {
@@ -167,7 +178,11 @@ public sealed class SimulatedUavOperationService : IOperationService
             return Task.FromResult(OperationResult.NotFound(tailNumber));
         }
 
-        lock (v.Lock) { v.Waypoints = waypoints; }
+        lock (v.Lock)
+        {
+            v.Waypoints = waypoints;
+            v.CurrentWaypointIndex = null;
+        }
         return Task.FromResult(OperationResult.Ok(waypoints.Count));
     }
 
@@ -178,10 +193,48 @@ public sealed class SimulatedUavOperationService : IOperationService
             return Task.FromResult(OperationResult.NotFound(tailNumber));
         }
 
+        return Task.FromResult(OperationResult.Ok(v.MissionSnapshot()));
+    }
+
+    // Bookkeeping only: this backend never flies the route (UavOps.Simulator does).
+    public Task<OperationResult> StartMission(string tailNumber, CancellationToken cancellationToken)
+    {
+        if (!_fleet.TryGetValue(tailNumber, out var v))
+        {
+            return Task.FromResult(OperationResult.NotFound(tailNumber));
+        }
+
         lock (v.Lock)
         {
-            return Task.FromResult(OperationResult.Ok(new MissionStatus(v.Mode, v.Waypoints.Count)));
+            if (v.Waypoints.Count == 0)
+            {
+                return Task.FromResult(OperationResult.Invalid($"{tailNumber} has no route uploaded to fly."));
+            }
+
+            v.Mode = "Searching";
+            v.CurrentWaypointIndex = 0;
         }
+        return Task.FromResult(OperationResult.Ok(v.MissionSnapshot()));
+    }
+
+    public Task<OperationResult> SetSearchTarget(string tailNumber, SearchTargetRequest request, CancellationToken cancellationToken)
+    {
+        if (!_fleet.TryGetValue(tailNumber, out var v))
+        {
+            return Task.FromResult(OperationResult.NotFound(tailNumber));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Prompt))
+        {
+            return Task.FromResult(OperationResult.Invalid("The search target description is empty."));
+        }
+
+        lock (v.Lock)
+        {
+            v.ActiveMissionId = request.MissionId;
+            v.SearchPrompt = request.Prompt;
+        }
+        return Task.FromResult(OperationResult.Ok(v.MissionSnapshot()));
     }
 
     public Task<OperationResult> GetLinkStatus(string tailNumber, CancellationToken cancellationToken)

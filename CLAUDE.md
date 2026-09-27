@@ -20,7 +20,7 @@ server-wide instructions) — editable without a rebuild, the same principle
 `Agents/BrainAgent.yaml` already established for the host's own cross-cutting instructions. See
 "Split BrainAgent's 3 domains into separate MCP servers" below for why and how.
 
-Up to five server-side processes end to end, though only one (`UavOps.Agent`) is user-facing:
+Up to six server-side processes end to end (counting the opt-in `UavOps.Simulator`), though only one (`UavOps.Agent`) is user-facing:
 
 - **`src/UavOps.Agent`** — the host process: SignalR chat hub (`/chatHub`) for the browser,
   SignalR operation hub (`/uavCommandHub`) for a fleet-commanding client, the single persistent
@@ -43,10 +43,15 @@ Up to five server-side processes end to end, though only one (`UavOps.Agent`) is
   avoid a circular project reference (`UavOps.Agent.McpSimulator`/`McpWatchdog` need to reference
   the fake to register it; the fake needs to implement interfaces from `Contracts`, not from the
   Mcp* project itself) — see "Simulator infrastructure" below for the full reasoning.
-- **`src/UavOps.FleetClient`** (.NET Framework 4.7) — a class library a real fleet-commanding
-  .NET Framework application references to connect to `UavOps.Agent`'s operation hub; see its
-  own README. **`src/UavOps.MockFleetClient`** (.NET Framework 4.7) is a thin console app
-  referencing that library with stub command handlers — the dev/test stand-in for the real app.
+- **`src/UavOps.Agent.Mission`** — pure AOI search-mission logic (SQLite zone store, lawnmower
+  route planner), shared by McpMoav, the simulator and the tests. See "AOI search missions" below.
+- **`src/UavOps.FleetClient`** (.NET Framework 4.7, also built for .NET 8) — a class library a real
+  fleet-commanding .NET Framework application references to connect to `UavOps.Agent`'s operation
+  hub; see its own README. **`src/UavOps.MockFleetClient`** (.NET Framework 4.7) is a thin console
+  app referencing that library with stub command handlers — the dev/test stand-in for the real app.
+- **`src/UavOps.Simulator`** (.NET 8 web app, `:5270`, opt-in) — a richer dev stand-in for the
+  fleet app: flies the UAVs, plays the onboard detector, and shows it all on an offline map. See
+  its own README.
 
 There is no separate REST API or OpenAPI spec anywhere in this system. Fleet operations are
 declared as one C# interface (`IOperationService`, in `UavOps.Agent.Contracts`) and invoked
@@ -429,7 +434,11 @@ of this exact reasoning got it wrong by assuming otherwise):
 model, not a new mechanism: `UavOps.Agent.McpSimulator` and `UavOps.Agent.McpMoav` (under
 `OperationBackend: SignalR`) each connect back to the host's `/chatHub`/`/uavCommandHub` as their
 *own* SignalR client, alongside whatever else `ChatHub` is already doing for the browser and a real
-fleet client. Two such capabilities exist today:
+fleet client. Every such capability is **domain-agnostic on the host side**: the MCP server decides
+what to send, say, or ask; `ChatHub` only relays or delivers it, and never interprets domain data
+(no mission, detection, or lesson logic in `UavOps.Agent`). An MCP server's connection is marked
+`?client=relay`, and the "post to the operator" methods below accept calls only from such a
+connection. The capabilities today:
 
 - `McpMoav` (`MoavRelayService`) calls one of a dozen typed `Relay*` methods on `ChatHub` (e.g.
   `RelayNavigate`) to reach a real connected fleet client — the exact same
@@ -440,9 +449,17 @@ fleet client. Two such capabilities exist today:
   `OperatorPromptGate` — the domain's own deterministic auto-resolve (`LessonChoiceResolver`, see
   "Deterministic lesson pre-selection" below) settles this without a host round trip whenever it
   can; the relay is only the fallback path.
-- `McpSimulator` (`HubLessonOutcomeNotifier`) pushes a background lesson's outcome back via the
-  existing `ReceiveChatMessage` event under a fresh correlationId (see "Background lesson
-  execution" below) — this is the same mechanism, reused, not a third one.
+- **Unprompted operator messages**, `HostHubContract.Methods` (names shared via Contracts):
+  `PostOperatorMessage(message, historyNote?)` shows the text as-is as a new chat bubble and, with
+  a note, queues it into BrainAgent's history (`ProactiveHistoryJournal`, drained at the start of
+  the next turn); `AddHistoryNote(note, message)` only touches history;
+  `PostPhrasedOperatorMessage(instruction, elapsedSeconds)` has the tools-stripped persona agent
+  phrase the caller's instruction first. McpMoav's `MissionEventService` uses the first two (see "AOI
+  search missions" below); McpSimulator's `HubLessonOutcomeNotifier` uses the third, with the
+  instruction built on the simulator side (see "Background lesson execution" below).
+- **Fleet app → domain**: the fleet app can only reach the host, so its unprompted
+  `ChatHub.ReportDetection`/`ReportMissionEvent` land there and are forwarded unchanged
+  (`HostHubContract.FleetEvents`) to McpMoav's relay connection (SignalR group `moav-relay`).
 
 `HubConnectionStarter` (a `BackgroundService` in `McpSimulator`) starts this connection with a
 retrying loop rather than blocking the server's own startup on it — live-reproduced without this:
@@ -510,6 +527,16 @@ tail number plus the literal sentinel `ALL`.
   reported conversation end to end and checks real fleet telemetry afterward — 2/8 verified
   successes before this fix, 8/8 after, each repeat also roughly 10x faster (no more waiting
   through a disambiguation-prompt round trip per remaining UAV).
+- **The UAV the operator already chose carries over to later turns** (`OperatorUavContext`,
+  session-lifetime like `FleetGroupMemory`). Before this, only the current message's own text
+  could ground a guess, so "start the mission" right after preparing 997's search asked "Which
+  UAV?" again even though the model correctly called `StartMission(997)` (`AoiSearchMissionLiveTests`
+  0/8). Now the last single UAV the operator named (the only known tail number in their message —
+  a speed like "200" doesn't count) or picked at the prompt also grounds a guess of that same UAV.
+  Never when the current message refers to a group ("the rest", "all", "them", "both", "others"):
+  after "bring 997 home", "bring the rest home" must not resolve to 997 — `ReturnRemainingFleetLiveTests`
+  stays 8/8. Any multi-UAV resolution (ALL, subset, group completion) clears it; a different
+  guess still asks, and the answer becomes the new current UAV.
 
 ### Live test infrastructure (`tests/UavOps.Agent.Tests/Agents/LiveTestSupport.cs`)
 
@@ -551,12 +578,15 @@ behavior. Each repeat spawns fresh child MCP server processes (`McpClientGroup`,
 ### The Moav domain (`src/UavOps.Agent.McpMoav`)
 
 `UavOps.Agent.Contracts`'s `IOperationService.cs` is the single source of truth for what a Moav
-operation is — 12 async methods (`ListFleet`, `GetTelemetry`, `Navigate`, `SetSpeed`,
+operation is — 14 async methods (`ListFleet`, `GetTelemetry`, `Navigate`, `SetSpeed`,
 `SetAltitude`, `ReturnToLaunch`, `PointPayload`, `ResetPayload`, `UploadWaypoints`,
-`GetMissionStatus`, `GetLinkStatus`, `SetTrackingMode`), each returning `Task<OperationResult>` —
+`GetMissionStatus`, `GetLinkStatus`, `SetTrackingMode`, and the AOI search-mission pair
+`StartMission`/`SetSearchTarget`), each returning `Task<OperationResult>` —
 a uniform, non-generic envelope (`Success`, `Error` enum, `ErrorMessage`, boxed `object? Value`) so
 `MoavTools` can wrap any of the 12 with a one-line method (`ToResultText(await moav.Method(...))`)
-with **no `dynamic`, no per-operation switch statement**. `ListFleet` keeps "Fleet" in its name
+with **no `dynamic`, no per-operation switch statement**. A `location` argument is a known point's
+name or a `"lat,lng"` literal (`KnownPoints.TryResolve`), which is how a runtime-named position
+(a search detection) reaches either backend. `ListFleet` keeps "Fleet" in its name
 specifically because `Hubs/IOperationClientProxy.cs`'s matching method name is pinned by the
 (unchanged) net47 `UavOps.FleetClient` wire contract.
 
@@ -653,10 +683,11 @@ each job it: (1) runs `ILessonExecutor.ExecuteAsync` — the deterministic "what
 `Restarting (` / `Dead`, and `Exited (N)` for non-zero `N` — `Exited (0)` excluded since it's the
 normal state for a one-shot/init container; `FakeLessonExecutor` for Fake, a short `Task.Delay`
 then a canned outcome — full raw output is logged here for debugging and never passed further);
-then (2) calls back into the *host* over the `HubLessonOutcomeNotifier`/`ReceiveChatMessage`
-mechanism (see "Cross-process capabilities" above) so `UavOps.Agent`'s own persona/model can phrase
-the "simple terms" summary in BrainAgent's own voice — deliberately not phrased by
-`UavOps.Agent.McpSimulator` itself, since only the host holds BrainAgent's actual persona/model.
+then (2) `HubLessonOutcomeNotifier` builds the instruction for the operator summary (what happened,
+what not to invent) and sends it to the host's generic `PostPhrasedOperatorMessage` (see
+"Cross-process capabilities" above), so the "simple terms" summary comes out in BrainAgent's own
+voice — the host only phrases and shows it, since only the host holds BrainAgent's persona/model;
+what to say about a lesson is decided here.
 `chat.js` needed no changes for this — it already renders any `ReceiveChatMessage` as a new bubble
 the first time it sees a correlationId, so the summary appears as a new, unprompted message with
 no frontend work at all.
@@ -791,6 +822,54 @@ http://localhost:5262/uavCommandHub`. Open http://localhost:5262 and type a comm
 reflects its placeholder `TelemetrySnapshot`. Stop the mock and retry the same command to confirm
 it fails fast (near-instant `"No fleet command client is connected."`, not a 10s hang).
 
+### AOI search missions ("Enter AOI zone ZoneA and search for white van")
+
+One chat command plans a search route over a named polygon, uploads it, hands the target to the
+UAV's onboard agent, and (on a separate command) starts it; when the onboard agent
+spots the target, the operator gets an unprompted chat message and can act on it ("send 998 to
+the white van").
+
+- **Ground side** (`src/UavOps.Agent.Mission`, no host/MCP dependency): `SqliteAoiZoneStore`
+  (`Microsoft.Data.Sqlite`, one `aoi_zone` table, polygon as GeoJSON text, created and seeded from
+  the embedded `aoi-seed.json` on first open; default file `%LOCALAPPDATA%\UavOps\aoi.db`, shared
+  by McpMoav and the simulator) and `SearchRoutePlanner` — a lawnmower sweep: lanes along the
+  polygon's minimum-width direction (rotating calipers on the hull), spaced
+  2·alt·tan(HFOV/2)·(1−overlap), clipped by scanline so concave zones split into several segments,
+  chained serpentine, entry corner picked by distance from the UAV. The seeded ZoneA is a U-shape
+  (not the L first planned): an L's minimum-width lanes never cross both arms, so it wouldn't
+  exercise the clipping. Zone names match loosely (`AoiZoneNames.Key`: "zone a", "AOI Zone-A").
+- **Tools** (McpMoav, `MoavTools.Mission.cs`): `ListAoiZones`, `GetAoiZone`, `PlanSearchRoute`,
+  `UploadRoute`, `SetSearchTarget`, the composite `PrepareAoiSearch` (plan → upload → set target,
+  never starts), and `StartMission` (`destructive: false`: the operator's own "start the mission" is the approval, and
+  the model is told not to ask "start?" after preparing, so starting takes one step, not two). The composite
+  exists because the model reliably drops later calls of a multi-call request (see
+  `ToolsConfig.yaml`'s comment). Planned routes live per tail in `IRouteStore`, so the model never
+  copies a route id or waypoint list. Every mission tool's `tailNumber` is single-UAV, and zones are
+  `zoneName`, never `location`. Settings: McpMoav's `Mission` section.
+- **Wire**: the route goes up through the existing `UploadWaypoints`; `StartMission` and
+  `SetSearchTarget` are new host→fleet commands (through every layer: `IOperationService`,
+  `SimulatedUavOperationService` bookkeeping, `MoavRelayService`, `ChatHub.Relay*`,
+  `IOperationClientProxy`, FleetClient's optional `IUavMissionHandler`). The first fleet→host calls,
+  `ChatHub.ReportDetection`/`ReportMissionEvent`, are accepted only from the fleet connection.
+  `FleetContractDriftTests` checks names, argument types and model properties on both sides.
+- **Detections and mission ends** (McpMoav, not the host): the host forwards the fleet app's
+  reports unread to McpMoav (see "Cross-process capabilities" above). `MissionEventService` dedupes
+  (same mission and target within `Mission:DetectionDedupeRadiusMeters`), posts a fixed-text message
+  (not model-phrased: coordinates are safety-relevant) with a history note through
+  `PostOperatorMessage`, and registers the target's name and "detection N" in
+  `DetectionPointRegistry`, which `MoavTools.Navigate`/`PointPayload` resolve to `"lat,lng"` before
+  either backend sees the location (never shadowing a known point). The history note states that
+  nothing has been done yet and that acting means calling the tool with the detection's `"lat,lng"`:
+  a vaguer note let the model claim "998 is on its way" with no `Navigate` call
+  (`NavigateToDetectionLiveTests` 6/8 → 8/8). The by-name lookup is the fallback for the operator's
+  own wording. Mission `Completed` is posted as a summary; `Aborted` (operator redirected the UAV)
+  only becomes a history note (`AddHistoryNote`). Under `OperationBackend: Simulated` there is no
+  host connection and no fleet app, so nothing reports and `LogOnlyOperatorNotifier` stands in.
+- **Dev**: `UavOps.Simulator` (see its README) or the mock client's **D** key.
+- **Tests**: planner/store/tools/relay/event/simulator unit tests; `BuildToolsForTurnLiveTests`
+  covers the command's retrieval; `AoiSearchMissionLiveTests` and `NavigateToDetectionLiveTests`
+  check real mission state and telemetry; `eval/tool-retrieval-lab` has an `aoi-search` scenario.
+
 ## Voice STT/TTS evaluation — OPEN ISSUE, not yet merged into the app
 
 Not part of `UavOps.Agent` yet — this is standalone research/eval work, tracked here because it's
@@ -863,4 +942,5 @@ picking this thread back up first.**
 
 - `UavOps.Agent`: `http://localhost:5262` (chat UI, `/chatHub`, `/uavCommandHub`, `/healthz`,
   `/api/agent-graph`)
+- `UavOps.Simulator`: `http://localhost:5270` (map page, `/simHub`, `/api/*`)
 - Ollama: `http://localhost:11434`

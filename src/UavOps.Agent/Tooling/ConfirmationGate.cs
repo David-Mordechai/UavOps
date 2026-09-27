@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.SignalR;
 using UavOps.Agent.Hubs;
 using UavOps.Agent.Options;
@@ -21,9 +22,10 @@ namespace UavOps.Agent.Tooling;
 /// operator-message path, so it and typing "yes"/"no" are handled identically. Either way, the
 /// operator's next plain-text reply is parsed by <see cref="ChatConfirmationParser"/> — see
 /// <see cref="ChatHub.SendMessage"/>, which checks <see cref="TryHandleChatReplyAsync"/> before
-/// treating an incoming message as a new command. The prompt text is built from the tool's
-/// human-authored <see cref="AgentToolConfig.Description"/>, never the raw operationId or JSON
-/// arguments — an operator shouldn't need to know function names to approve or decline an action.
+/// treating an incoming message as a new command. The prompt text is the tool's name split into
+/// words ("StartMission" → "Start mission") plus its arguments as plain "name: value" pairs, never
+/// raw JSON. Not the tool's description: that's written for the model (when to pick the tool, what
+/// it's not for) and ran to several lines in the operator's chat.
 ///
 /// Only one confirmation can be outstanding at a time (<see cref="_turnstile"/>) — with
 /// concurrent tool invocation enabled, two mutating calls could otherwise both need approval at
@@ -51,7 +53,6 @@ public sealed class ConfirmationGate(
         string correlationId,
         string agentName,
         string operationId,
-        string description,
         object? arguments,
         CancellationToken cancellationToken)
     {
@@ -59,14 +60,14 @@ public sealed class ConfirmationGate(
         try
         {
             var promptCorrelationId = Guid.NewGuid().ToString("N")[..8];
-            var summary = $"{description.TrimEnd('.')} ({FormatArguments(arguments)})";
+            var summary = $"{Humanize(operationId)} ({FormatArguments(arguments)})";
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             _current = new PendingConfirmation(agentName, summary, promptCorrelationId, tcs);
 
             await hub.Clients.All.SendAsync(
                 "ReceiveChatMessage",
                 agentName,
-                $"Approval needed: {summary}. Reply \"yes\" to approve or \"no\" to decline (within {_timeout.TotalSeconds:0}s).",
+                $"Approval needed: {summary}. Reply within {_timeout.TotalSeconds:0}s.",
                 0d,
                 promptCorrelationId,
                 cancellationToken);
@@ -89,8 +90,8 @@ public sealed class ConfirmationGate(
                 "ReceiveChatMessage",
                 agentName,
                 approved
-                    ? $"Approved — proceeding with: {summary}."
-                    : $"Declined (no reply within {_timeout.TotalSeconds:0}s) — not executed: {summary}.",
+                    ? $"Approved: {summary}."
+                    : $"Not executed (declined or no reply within {_timeout.TotalSeconds:0}s): {summary}.",
                 sw.Elapsed.TotalSeconds,
                 promptCorrelationId,
                 CancellationToken.None);
@@ -123,7 +124,7 @@ public sealed class ConfirmationGate(
             await hub.Clients.All.SendAsync(
                 "ReceiveChatMessage",
                 current.AgentName,
-                $"Sorry, I didn't catch that as yes or no. Still waiting on approval: {current.Summary} — reply \"yes\" or \"no\".",
+                $"Sorry, I didn't catch that as yes or no. Approve {current.Summary}?",
                 0d,
                 current.PromptCorrelationId,
                 cancellationToken);
@@ -151,7 +152,15 @@ public sealed class ConfirmationGate(
             return "no arguments";
         }
 
-        return string.Join(", ", properties.Select(p => $"{p.Name}: {FormatValue(p.Value)}"));
+        return string.Join(", ", properties.Select(p => $"{Humanize(p.Name).ToLowerInvariant()}: {FormatValue(p.Value)}"));
+    }
+
+    /// <summary>"StartMission" → "Start mission", "tailNumber" → "Tail number".</summary>
+    private static string Humanize(string identifier)
+    {
+        var words = Regex.Split(identifier, "(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])");
+        var text = string.Join(' ', words.Select((w, i) => i == 0 ? w : w.ToLowerInvariant()));
+        return text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
     }
 
     private static string FormatValue(JsonElement value) => value.ValueKind switch

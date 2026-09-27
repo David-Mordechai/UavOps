@@ -17,7 +17,8 @@ namespace UavOps.MockFleetClient
             var hubUrl = args.Length > 0 ? args[0] : "http://localhost:5262/uavCommandHub";
             Console.WriteLine("UavOps.MockFleetClient - connecting to " + hubUrl);
 
-            var connection = new FleetClientConnection(hubUrl, new EmptyCommandHandler());
+            var handler = new EmptyCommandHandler();
+            var connection = new FleetClientConnection(hubUrl, handler);
             connection.Connected += id => Console.WriteLine("Connected (connectionId={0})", id);
             connection.Disconnected += ex => Console.WriteLine("Disconnected: {0}", ex != null ? ex.Message : "(no error)");
             connection.Reconnecting += ex => Console.WriteLine("Reconnecting: {0}", ex != null ? ex.Message : "(no error)");
@@ -37,7 +38,7 @@ namespace UavOps.MockFleetClient
 
             if (!Console.IsInputRedirected)
             {
-                StartPushToTalkKey(connection, exitSignal);
+                StartKeyCommands(connection, handler, exitSignal);
             }
 
             exitSignal.Wait();
@@ -46,16 +47,20 @@ namespace UavOps.MockFleetClient
         }
 
         /// <summary>
-        /// Stands in for a joystick talk button: a console can't see a key being *released*, so
-        /// the T key toggles instead - first press = button down, second press = button up.
-        /// Only when a real console is attached (see the Ctrl+C comment above).
+        /// Keys, only when a real console is attached (see the Ctrl+C comment above):
+        /// T stands in for a joystick talk button - a console can't see a key being *released*,
+        /// so it toggles instead: first press = button down, second press = button up.
+        /// D reports a fake search detection (a white van inside ZoneA, or whatever the last
+        /// search target was), to exercise the host's detection handling without UavOps.Simulator.
         /// </summary>
-        private static void StartPushToTalkKey(FleetClientConnection connection, ManualResetEventSlim exitSignal)
+        private static void StartKeyCommands(FleetClientConnection connection, EmptyCommandHandler handler, ManualResetEventSlim exitSignal)
         {
             Console.WriteLine("Press T to hold the push-to-talk button, T again to release it.");
+            Console.WriteLine("Press D to report a fake search detection.");
             var thread = new Thread(() =>
             {
                 var pressed = false;
+                var detections = 0;
                 while (!exitSignal.IsSet)
                 {
                     if (!Console.KeyAvailable)
@@ -63,22 +68,36 @@ namespace UavOps.MockFleetClient
                         Thread.Sleep(50);
                         continue;
                     }
-                    if (Console.ReadKey(intercept: true).Key != ConsoleKey.T)
-                    {
-                        continue;
-                    }
 
-                    pressed = !pressed;
-                    try
+                    var key = Console.ReadKey(intercept: true).Key;
+                    if (key == ConsoleKey.T)
                     {
-                        var handled = connection.SetPushToTalkAsync(pressed).GetAwaiter().GetResult();
-                        Console.WriteLine("Push-to-talk {0}{1}", pressed ? "PRESSED" : "RELEASED",
-                            handled ? "" : " (no chat tab acted on it)");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine("Push-to-talk failed: {0}", ex.Message);
                         pressed = !pressed;
+                        try
+                        {
+                            var handled = connection.SetPushToTalkAsync(pressed).GetAwaiter().GetResult();
+                            Console.WriteLine("Push-to-talk {0}{1}", pressed ? "PRESSED" : "RELEASED",
+                                handled ? "" : " (no chat tab acted on it)");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine("Push-to-talk failed: {0}", ex.Message);
+                            pressed = !pressed;
+                        }
+                    }
+                    else if (key == ConsoleKey.D)
+                    {
+                        // Each press is ~200 m further north, so the host's dedupe doesn't drop it.
+                        var report = handler.FakeDetection(offsetMeters: 200 * detections++);
+                        try
+                        {
+                            connection.ReportDetectionAsync(report).GetAwaiter().GetResult();
+                            Console.WriteLine("Reported detection: {0} at {1:F5}, {2:F5} by {3}", report.Prompt, report.Lat, report.Lng, report.TailNumber);
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine("Reporting the detection failed: {0}", ex.Message);
+                        }
                     }
                 }
             })

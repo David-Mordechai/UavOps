@@ -91,10 +91,13 @@ public sealed class TailNumberDisambiguationTool : AIFunction
     private readonly string _agentName;
     private readonly string _correlationId;
     private readonly string _operatorText;
+    private readonly OperatorUavContext _uavContext;
 
     public TailNumberDisambiguationTool(AIFunction inner, Func<CancellationToken, Task<OperationResult>> listFleet, OperatorPromptGate promptGate,
-        TailNumberResolutionScope scope, FleetGroupMemory groupMemory, string agentName, string correlationId, string operatorText)
+        TailNumberResolutionScope scope, FleetGroupMemory groupMemory, string agentName, string correlationId, string operatorText,
+        OperatorUavContext? uavContext = null)
     {
+        _uavContext = uavContext ?? new OperatorUavContext();
         _inner = inner;
         _listFleet = listFleet;
         _promptGate = promptGate;
@@ -139,6 +142,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
                 return await InvokeForAllUavsAndRecordGroupAsync(arguments, cancellationToken, knownTails: null);
             }
 
+            _uavContext.Set(resolved);
             var confirmedSingle = new AIFunctionArguments(arguments) { ["tailNumber"] = resolved };
             var confirmedSingleResult = await _inner.InvokeAsync(confirmedSingle, cancellationToken);
             return BuildConfirmedTargetNote(resolved) + confirmedSingleResult;
@@ -178,6 +182,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
                 {
                     var subsetKey = string.Join(",", validTails.OrderBy(t => t, StringComparer.OrdinalIgnoreCase));
                     var subsetResult = await _scope.GetOrFanOutAsync($"{Name}:{subsetKey}", () => InvokeForExplicitSubsetAsync(arguments, cancellationToken, validTails));
+                    _uavContext.Clear();
                     _groupMemory.RecordFullGroup(validTails);
                     return subsetResult;
                 }
@@ -190,6 +195,17 @@ public sealed class TailNumberDisambiguationTool : AIFunction
         // number - same substring-match reasoning AskOperatorChoiceTool.TryAutoResolve already
         // uses to skip a redundant prompt when the answer was already given.
         if (string.IsNullOrEmpty(guessed) || _operatorText.Contains(guessed, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrEmpty(guessed))
+            {
+                await RememberIfOnlyUavNamedAsync(guessed, cancellationToken);
+            }
+            return await _inner.InvokeAsync(arguments, cancellationToken);
+        }
+
+        // Not named this turn, but it's the UAV the operator already named or picked earlier in
+        // the conversation (and this message isn't about a group) - see OperatorUavContext.
+        if (_uavContext.Grounds(guessed, _operatorText))
         {
             return await _inner.InvokeAsync(arguments, cancellationToken);
         }
@@ -224,10 +240,12 @@ public sealed class TailNumberDisambiguationTool : AIFunction
                     {
                         var completionNote = await _scope.GetOrFanOutAsync($"{Name}:autocomplete",
                             () => CompleteMissingMembersAsync(arguments, missingFromGroup, cancellationToken));
+                        _uavContext.Clear();
                         _groupMemory.RecordFullGroup(siblingGuesses.Concat(missingFromGroup).ToList());
                         return completionNote + await _inner.InvokeAsync(arguments, cancellationToken);
                     }
 
+                    _uavContext.Clear();
                     _groupMemory.RecordFullGroup(siblingGuesses);
                     return await _inner.InvokeAsync(arguments, cancellationToken);
                 }
@@ -260,6 +278,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
                 return await InvokeForAllUavsAndRecordGroupAsync(arguments, cancellationToken, knownTails: tails);
             }
 
+            _uavContext.Set(chosen);
             var resolved = new AIFunctionArguments(arguments) { ["tailNumber"] = chosen };
             var result = await _inner.InvokeAsync(resolved, cancellationToken);
 
@@ -277,6 +296,26 @@ public sealed class TailNumberDisambiguationTool : AIFunction
         // Fleet lookup failed, or there's only one (or zero) known UAV - nothing to disambiguate,
         // so fall through to the model's own value rather than block on a guard that can't help.
         return await _inner.InvokeAsync(arguments, cancellationToken);
+    }
+
+    /// <summary>The operator named this UAV and no other known one (other numbers, like a speed,
+    /// don't count): it's now the one they're working with - see <see cref="OperatorUavContext"/>.</summary>
+    private async Task RememberIfOnlyUavNamedAsync(string named, CancellationToken cancellationToken)
+    {
+        var fleet = await _listFleet(cancellationToken);
+        if (!fleet.Success || fleet.Value is not List<UavSummary> tails)
+        {
+            return;
+        }
+
+        var namedTails = tails
+            .Select(t => t.TailNumber)
+            .Where(t => Regex.IsMatch(_operatorText, $@"\b{Regex.Escape(t)}\b"))
+            .ToList();
+        if (namedTails.Count == 1 && string.Equals(namedTails[0], named, StringComparison.OrdinalIgnoreCase))
+        {
+            _uavContext.Set(namedTails[0]);
+        }
     }
 
     /// <summary>Resolves a model-emitted <see cref="AllSentinel"/> to the real fleet. Fleet count
@@ -363,6 +402,7 @@ public sealed class TailNumberDisambiguationTool : AIFunction
 
         if (fleetForMemory is not null)
         {
+            _uavContext.Clear();
             _groupMemory.RecordFullGroup(fleetForMemory.Select(u => u.TailNumber).ToList());
         }
         return result;

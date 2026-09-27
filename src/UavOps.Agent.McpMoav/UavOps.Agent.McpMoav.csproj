@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\UavOps.Agent.Contracts\UavOps.Agent.Contracts.csproj" />
+    <ProjectReference Include="..\UavOps.Agent.Mission\UavOps.Agent.Mission.csproj" />
   </ItemGroup>
 
   <ItemGroup>

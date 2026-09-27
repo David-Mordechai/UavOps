@@ -10,6 +10,13 @@ serverInstructions: |
     GdtControlAgent-style tools (GetLinkStatus, SetTrackingMode), which are the ground-side antenna/
     datalink equipment - GetLinkStatus/SetTrackingMode are placeholder mock tools today.
 
+  AOI search missions:
+  - 'Search zone X for Y' / 'enter AOI zone X and search for Y' is PrepareAoiSearch, one call. It
+    only prepares; call StartMission only once the operator says to start, and never ask them
+    whether to start.
+  - When the UAV's onboard agent spots the target, the operator gets a message with its location
+    automatically; never claim something was found unless such a message said so.
+
   Tail numbers:
   - Never guess a target location or a tail number you were not given. If you don't already know the
     fleet's real tail numbers this turn, call ListFleet first; if a command doesn't name a UAV and
@@ -241,3 +248,112 @@ tools:
       tailNumber: >-
         The tail number of the UAV to command, e.g. '997'. Must be one of the known UAVs - never
         guess one.
+
+  # ----- AOI search missions -----
+  # PrepareAoiSearch exists because a four-step dependent chain (plan, upload, set target, then
+  # ask to start) is the worst case for this model: in live testing it reliably makes the first
+  # call of a multi-call request and drops the rest (6/8 failures on "bring the rest home"). The
+  # granular tools below stay for piecemeal requests ("tell 997 to look for a red car").
+  # tailNumber is single-UAV on every mission tool: an 'ALL' fan-out would send the same route over
+  # the same zone to every UAV. Zone parameters are named zoneName, never location, so
+  # LocationCanonicalizationTool (keyed on a 'location' property) leaves them alone.
+  # The operator's own "start the mission" is the one approval: StartMission is not destructive
+  # (no ConfirmationGate prompt) and the model never asks "Start the mission?" either. Having both
+  # a question and a gate prompt meant approving twice. "Tell the operator the search is ready" is
+  # only in PrepareAoiSearch's result (nextStep), never here: phrased here, the model replied
+  # "Search prepared... ready to start on command" without calling the tool (2/8 live).
+
+  - operation: PrepareAoiSearch
+    description: >-
+      Prepare one UAV to search a named AOI zone for something: plans a search route covering the
+      zone, uploads it to the UAV, and tells the UAV's onboard agent what to look for. Use for
+      requests like 'enter AOI zone ZoneA and search for a white van' or 'search zone B for a red
+      car'. It does NOT start flying; StartMission does that, only once the operator says to start
+      - never ask whether to start. 'Enter a zone' here means search it - do not use Navigate for a
+      zone name; Navigate only flies to a known point like 'alpha'.
+    destructive: false
+    parameters:
+      # "Call it now even if no UAV was named": the operator's usual phrasing names no UAV, and
+      # retrieval doesn't offer ListFleet for it (nothing in "Enter AOI zone ZoneA and search for
+      # white van" is about UAVs). Live-reproduced 2/8 under load: the model said "first, let me
+      # check which UAVs are available", had no ListFleet to call, and ended the turn with nothing
+      # prepared. TailNumberDisambiguationTool asks the operator before anything runs, so calling
+      # with a known tail number here is safe.
+      tailNumber: >-
+        The tail number of the ONE UAV to search with, e.g. '997' - never 'ALL' or several UAVs:
+        each search route is for a single UAV. If the operator didn't name a UAV, call this tool
+        right away anyway with any UAV's tail number you know: the operator is asked which UAV to
+        use before anything happens. Don't stop to list the fleet first.
+      zoneName: >-
+        Name of the AOI zone to search, as the operator said it, e.g. 'ZoneA'. Call ListAoiZones
+        if you need the valid names.
+      targetDescription: >-
+        What to look for, in the operator's own words, e.g. 'white van'. This is the object to
+        find, not a location.
+
+  - operation: StartMission
+    description: >-
+      Start a UAV flying the search route already uploaded to it (by PrepareAoiSearch or
+      UploadRoute) - what 'start the mission', 'go', or 'begin the search' means after a search
+      was prepared. Not for the training simulator or its lessons, and not for watchdog services.
+    destructive: false
+    parameters:
+      tailNumber: >-
+        The tail number of the UAV whose mission to start, e.g. '997'. Must be one of the known
+        UAVs - never guess one.
+
+  - operation: ListAoiZones
+    description: >-
+      List the named AOI (area of interest) zones that can be searched, with each zone's area and
+      centre point.
+    readOnly: true
+
+  - operation: GetAoiZone
+    description: >-
+      Get details of one AOI zone: its area, centre point, and bounds. Only for questions about a
+      zone; searching a zone does not need this first.
+    readOnly: true
+    parameters:
+      zoneName: >-
+        Name of the AOI zone, e.g. 'ZoneA'.
+
+  - operation: PlanSearchRoute
+    description: >-
+      Plan a search route over an AOI zone for one UAV, without uploading it or setting what to
+      look for. Only when the operator asks just to plan; for 'search zone X for Y' use
+      PrepareAoiSearch instead.
+    destructive: false
+    parameters:
+      tailNumber: >-
+        The tail number of the ONE UAV the route is for, e.g. '997'. Must be one of the known UAVs
+        - never guess one, and never 'ALL' or several UAVs.
+      zoneName: >-
+        Name of the AOI zone to cover, e.g. 'ZoneA'.
+      altitudeFt: >-
+        Search altitude in feet, only if the operator stated one; leave it out otherwise. Higher
+        means wider lanes and a shorter route. Never convert from meters.
+
+  - operation: UploadRoute
+    description: >-
+      Upload a UAV's most recently planned search route to it. Does not start flying. Use this
+      after PlanSearchRoute; use UploadWaypoints instead only when the operator gives explicit
+      coordinates.
+    destructive: false
+    parameters:
+      tailNumber: >-
+        The tail number of the UAV whose planned route to upload, e.g. '997'. Must be one of the
+        known UAVs - never guess one.
+
+  - operation: SetSearchTarget
+    description: >-
+      Tell a UAV's onboard agent what to look for, e.g. 'tell 997 to look for a red car'. When it
+      spots it, the operator is told where automatically. Only this one step; for 'search zone X
+      for Y' use PrepareAoiSearch instead.
+    destructive: false
+    parameters:
+      tailNumber: >-
+        The tail number of the UAV to set the search target on, e.g. '997'. Must be one of the
+        known UAVs - never guess one.
+      targetDescription: >-
+        What to look for, in the operator's own words, e.g. 'red car'. This is the object to find,
+        not a location like 'target alpha'.

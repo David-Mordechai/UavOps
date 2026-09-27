@@ -33,10 +33,11 @@ public class ChatHubRelayTests
         var toolLogger = new ToolInvocationLogger(NullLogger<ToolInvocationLogger>.Instance, hub);
 
         // MainAgentOrchestrator/AgentFactory are never touched by any Relay* method (only
-        // PushLessonOutcome touches AgentFactory) - null! is fine here since they're only
+        // the Post*/AddHistoryNote methods touch AgentFactory) - null! is fine here since they're only
         // constructor dependencies of ChatHub, never invoked by the methods under test.
         var chatHub = new ChatHub(null!, confirmationGate, operatorPromptGate, toolLogger, broker, hub, null!,
-            new PushToTalkRouter(hub, NullLogger<PushToTalkRouter>.Instance), NullLogger<ChatHub>.Instance);
+            new PushToTalkRouter(hub, NullLogger<PushToTalkRouter>.Instance), new ProactiveHistoryJournal(),
+            NullLogger<ChatHub>.Instance);
         return (chatHub, operatorPromptGate);
     }
 
@@ -127,6 +128,40 @@ public class ChatHubRelayTests
         var result = await sut.RelaySetTrackingMode("997", "Manual");
 
         result.Should().Be("Error: Moav command client did not respond in time.");
+    }
+
+    [Fact]
+    public async Task RelayStartMission_CallsStartMissionOnTheProxy_AndReturnsTheStatus()
+    {
+        var broker = Substitute.For<IRemoteOperationBroker>();
+        var proxy = Substitute.For<IOperationClientProxy>();
+        Func<IOperationClientProxy, string, Task>? capturedInvoke = null;
+        broker.SendAsync<MissionStatus>(Arg.Do<Func<IOperationClientProxy, string, Task>>(invoke => capturedInvoke = invoke), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OperationResult.Ok(new MissionStatus("Searching", 12, 0, "m1", "white van"))));
+        var (sut, _) = CreateSut(broker);
+
+        var result = await sut.RelayStartMission("997");
+
+        result.Should().Contain("\"mode\":\"Searching\"").And.Contain("\"searchPrompt\":\"white van\"");
+        _ = capturedInvoke!(proxy, "corr1");
+        _ = proxy.Received(1).StartMission("corr1", "997");
+    }
+
+    [Fact]
+    public async Task RelaySetSearchTarget_PassesTheRequestThrough()
+    {
+        var broker = Substitute.For<IRemoteOperationBroker>();
+        var proxy = Substitute.For<IOperationClientProxy>();
+        Func<IOperationClientProxy, string, Task>? capturedInvoke = null;
+        broker.SendAsync<MissionStatus>(Arg.Do<Func<IOperationClientProxy, string, Task>>(invoke => capturedInvoke = invoke), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(OperationResult.Ok(new MissionStatus("Orbiting", 12))));
+        var (sut, _) = CreateSut(broker);
+        var request = new SearchTargetRequest("m1", "ZoneA", "white van", 0.5);
+
+        await sut.RelaySetSearchTarget("997", request);
+
+        _ = capturedInvoke!(proxy, "corr1");
+        _ = proxy.Received(1).SetSearchTarget("corr1", "997", request);
     }
 
     // ----- Generic operator-prompt relay half -----

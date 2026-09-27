@@ -25,4 +25,9 @@ public interface IOperationClientProxy
     Task GetMissionStatus(string correlationId, string tailNumber);
     Task GetLinkStatus(string correlationId, string tailNumber);
     Task SetTrackingMode(string correlationId, string tailNumber, string mode);
+
+    // AOI search missions. A fleet app opts into these via UavOps.FleetClient's optional
+    // IUavMissionHandler; FleetClientConnection fails them fast for one that hasn't.
+    Task StartMission(string correlationId, string tailNumber);
+    Task SetSearchTarget(string correlationId, string tailNumber, SearchTargetRequest request);
 }

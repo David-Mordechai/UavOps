@@ -60,7 +60,9 @@ else
 // chosen lesson to completion is orthogonal to whether VM control is Real or Fake.
 var hostChatHubUrl = builder.Configuration["HostChatHubUrl"]
     ?? throw new InvalidOperationException("Missing 'HostChatHubUrl' configuration.");
-var hubConnection = new HubConnectionBuilder().WithUrl(hostChatHubUrl).WithAutomaticReconnect().Build();
+// "?client=relay" marks this as an MCP server's own connection, which ChatHub requires before it
+// accepts an operator message from it (see ChatHub.PostPhrasedOperatorMessage).
+var hubConnection = new HubConnectionBuilder().WithUrl($"{hostChatHubUrl}?client=relay").WithAutomaticReconnect().Build();
 builder.Services.AddSingleton(hubConnection);
 builder.Services.AddSingleton<ILessonOutcomeNotifier, HubLessonOutcomeNotifier>();
 builder.Services.AddSingleton<ISimulatorLessonJobQueue, SimulatorLessonJobQueue>();

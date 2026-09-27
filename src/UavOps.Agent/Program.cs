@@ -198,6 +198,8 @@ builder.Services.AddSingleton<AgentFactory>(sp =>
     ));
 
 builder.Services.AddSingleton<MainAgentOrchestrator>();
+// Owned by AgentFactory (the orchestrator drains it); ChatHub fills it from MCP servers.
+builder.Services.AddSingleton(sp => sp.GetRequiredService<AgentFactory>().ProactiveJournal);
 
 var app = builder.Build();
 

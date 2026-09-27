@@ -1,5 +1,6 @@
-STATUS (2026-09-24): planned and agreed, NOT started. Resume from Phase 0.
+STATUS (2026-09-26): DONE. All phases implemented; 353 fast tests pass; full live suite 8/8 on every class (incl. new AoiSearchMission and NavigateToDetection); retrieval-lab aoi-search 8/8. Not committed.
 Branch when written: split-agents-domains.
+UPDATE (2026-09-27): section 4 moved out of the host for domain separation. Detection/mission-event handling and the detection-name registry now live in McpMoav (MissionEventService, DetectionPointRegistry); the host only forwards fleet reports and delivers messages via generic ChatHub methods. See CLAUDE.md "AOI search missions".
 
 # AOI search mission: "Enter AOI zone ZoneA and search for white van"
 

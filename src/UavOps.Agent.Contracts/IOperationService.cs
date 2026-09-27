@@ -13,7 +13,7 @@ namespace UavOps.Agent.Contracts;
 ///
 /// This interface (and the hub/broker/tool machinery around it) is intentionally domain-agnostic
 /// in naming — <c>UavOps.Agent</c> is a general agentic tool-calling framework that currently has
-/// a UAV domain plugged into it via these 12 method signatures, not a UAV-specific system. The
+/// a UAV domain plugged into it via these method signatures, not a UAV-specific system. The
 /// method names/parameters themselves stay UAV-flavored on purpose: they're domain data, not
 /// infrastructure, and <c>Hubs.IOperationClientProxy</c>'s matching method names are additionally
 /// pinned by the (unchanged) net47 client's wire contract.
@@ -32,4 +32,9 @@ public interface IOperationService
     Task<OperationResult> GetMissionStatus(string tailNumber, CancellationToken cancellationToken);
     Task<OperationResult> GetLinkStatus(string tailNumber, CancellationToken cancellationToken);
     Task<OperationResult> SetTrackingMode(string tailNumber, string mode, CancellationToken cancellationToken);
+
+    // AOI search missions. The route itself goes up with UploadWaypoints, which never starts
+    // flight; StartMission does. Both return a MissionStatus.
+    Task<OperationResult> StartMission(string tailNumber, CancellationToken cancellationToken);
+    Task<OperationResult> SetSearchTarget(string tailNumber, SearchTargetRequest request, CancellationToken cancellationToken);
 }

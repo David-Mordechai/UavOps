@@ -1,6 +1,6 @@
 # UavOps.FleetClient
 
-A .NET Framework 4.7 class library that connects to `UavOps.Agent`'s operation hub
+A class library (.NET Framework 4.7, plus .NET 8 for `UavOps.Simulator` and the tests) that connects to `UavOps.Agent`'s operation hub
 (`/uavCommandHub`) as a SignalR client and relays every incoming operation to an
 [`IUavCommandHandler`](IUavCommandHandler.cs) you implement. This is the artifact a real
 fleet-commanding application references — it has no SignalR/JSON/correlation-id code of its own
@@ -17,6 +17,44 @@ to write.
 3. That's it — `FleetClientConnection` registers a handler for every command, invokes your
    `IUavCommandHandler` implementation (on a background thread, so a slow/blocking call doesn't
    stall the connection), and replies to `UavOps.Agent` with the result.
+
+### Locations
+
+`Navigate` and `PointPayload` receive a `location` string that is either a named point (`home`,
+`alpha`, `bravo`) or a `"lat,lng"` literal in decimal degrees, invariant culture, e.g.
+`"31.81382,34.66519"`. The host sends the literal for a position that has no name, such as a
+search detection the operator said to fly to ("send 998 to the white van"). Accept both.
+
+### AOI search missions (optional)
+
+To support search missions, also implement [`IUavMissionHandler`](IUavMissionHandler.cs) on the
+same handler object; `FleetClientConnection` picks it up automatically. An app that doesn't
+implement it keeps compiling and working unchanged, and the host gets an immediate "does not
+support AOI search missions" failure for these commands.
+
+A mission arrives in steps, each a separate command:
+
+1. `UploadWaypoints` — the search route (a lawnmower sweep planned on the ground). This must
+   **not** start flight.
+2. `SetSearchTarget(tailNumber, SearchTargetRequest)` — hand the onboard agent what to look for
+   (`Prompt`, e.g. "white van", with a `MissionId`, `ZoneName` and `MinConfidence`).
+3. `StartMission(tailNumber)` — start flying the uploaded route; `Mode` becomes `"Searching"`.
+   The operator confirms this step before it's sent.
+
+Both return a `MissionStatus`; fill in its optional `CurrentWaypointIndex`, `ActiveMissionId` and
+`SearchPrompt` so the host can see mission state.
+
+Then report back, unprompted:
+
+- `ReportDetectionAsync(DetectionReport)` when the onboard agent spots the target. The operator
+  gets a chat message with the location and can send another UAV there. Reporting the same object
+  again is harmless: the host ignores repeats within 100 m in the same mission. Keep searching
+  afterwards; what happens next is the operator's call.
+- `ReportMissionEventAsync(MissionEventReport)` with `Kind` = `MissionEventKinds.Completed` when
+  the route has been flown to its end, or `Aborted` when a `Navigate`/`ReturnToLaunch`/new upload
+  cut it short.
+
+The host accepts these two calls only from the fleet connection (`/uavCommandHub`).
 
 ### Push-to-talk (joystick talk button)
 
@@ -38,13 +76,14 @@ the chat window then shows a notice asking the operator to click it once.
 
 See `UavOps.MockFleetClient` (in this repo) for a minimal, complete example — it implements
 `IUavCommandHandler` with stub logic only (no real fleet-state tracking), specifically to prove
-this plumbing works end to end during development.
+this plumbing works end to end during development; its **D** key sends a fake detection.
+`UavOps.Simulator` is the full example: it flies the UAVs and plays the onboard detector.
 
 ## Notes
 
 - Uses `Newtonsoft.Json` internally to serialize `CommandResult<T>.Value` for the reply — callers
   of `IUavCommandHandler` never see JSON directly.
-- The DTOs here (`Waypoint`, `TelemetrySnapshot`, `GdtLinkStatus`, `MissionStatus`, `UavSummary`)
-  are net47-side copies of `UavOps.Agent.Agents.MoavAgent.Operations`'s models (no common TFM between net47 and
-  net8 worth introducing). Property names must stay in sync by convention if that side ever
-  changes shape.
+- The DTOs here (`Waypoint`, `TelemetrySnapshot`, `MissionStatus`, `SearchTargetRequest`,
+  `DetectionReport`, ...) are copies of `UavOps.Agent.Contracts`'s `OperationModels`, and command
+  names mirror the host's `IOperationClientProxy`. `FleetContractDriftTests` in
+  `UavOps.Agent.Tests` fails if either side changes without the other.

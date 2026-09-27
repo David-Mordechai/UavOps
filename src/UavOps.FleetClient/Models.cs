@@ -1,10 +1,12 @@
+using System;
 using System.Collections.Generic;
 
 namespace UavOps.FleetClient
 {
-    // Net47-side copies of UavOps.Agent.Agents.MoavAgent.Operations's models — no common TFM worth introducing for a
-    // handful of tiny records. JSON property names must match UavOps.Agent's (camelCase)
-    // by convention; FleetClientConnection is the only place that serializes/deserializes these.
+    // Net47-side copies of UavOps.Agent.Contracts's OperationModels — no common TFM worth
+    // introducing for a handful of tiny records. Property names must match Contracts' (JSON is
+    // camelCase on the wire); FleetContractDriftTests in UavOps.Agent.Tests checks they do.
+    // FleetClientConnection is the only place that serializes/deserializes these.
 
     public sealed class Waypoint
     {
@@ -42,6 +44,57 @@ namespace UavOps.FleetClient
     {
         public string Mode { get; set; }
         public int WaypointCount { get; set; }
+
+        // AOI search missions only; leave null otherwise.
+        public int? CurrentWaypointIndex { get; set; }
+        public string ActiveMissionId { get; set; }
+        public string SearchPrompt { get; set; }
+    }
+
+    /// <summary>What the onboard agent should look for while flying a search mission.</summary>
+    public sealed class SearchTargetRequest
+    {
+        public string MissionId { get; set; }
+        public string ZoneName { get; set; }
+        public string Prompt { get; set; }
+        public double MinConfidence { get; set; }
+    }
+
+    /// <summary>Sent to the host with <see cref="FleetClientConnection.ReportDetectionAsync"/>
+    /// when the onboard agent spots a search target.</summary>
+    public sealed class DetectionReport
+    {
+        public string TailNumber { get; set; }
+        public string MissionId { get; set; }
+        public string ZoneName { get; set; }
+        public string Prompt { get; set; }
+        public string Label { get; set; }
+        public double Confidence { get; set; }
+        public double Lat { get; set; }
+        public double Lng { get; set; }
+        public DateTime DetectedAtUtc { get; set; }
+        public string TrackId { get; set; }
+    }
+
+    /// <summary>Sent to the host with <see cref="FleetClientConnection.ReportMissionEventAsync"/>
+    /// when a search mission ends.</summary>
+    public sealed class MissionEventReport
+    {
+        public string TailNumber { get; set; }
+        public string MissionId { get; set; }
+        public string ZoneName { get; set; }
+
+        /// <summary>One of <see cref="MissionEventKinds"/>.</summary>
+        public string Kind { get; set; }
+    }
+
+    public static class MissionEventKinds
+    {
+        /// <summary>The route was flown to its end.</summary>
+        public const string Completed = "Completed";
+
+        /// <summary>The mission was cut short, e.g. by a Navigate or ReturnToLaunch.</summary>
+        public const string Aborted = "Aborted";
     }
 
     /// <summary>A command outcome an <see cref="IUavCommandHandler"/> implementation reports back

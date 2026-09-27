@@ -16,8 +16,8 @@ using OpenAI.Embeddings;
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
 var model = GetOption(args, "--model") ?? "nvidia/Qwen3.6-35B-A3B-NVFP4";
-var host = GetOption(args, "--host") ?? "http://10.10.77.57:8000";
-var embedHost = GetOption(args, "--embed-host") ?? "http://10.10.77.57:8001";
+var host = GetOption(args, "--host") ?? "http://192.168.1.152:8000";
+var embedHost = GetOption(args, "--embed-host") ?? "http://192.168.1.152:8001";
 var embedModel = GetOption(args, "--embed-model") ?? "Qwen/Qwen3-Embedding-8B";
 var temperature = float.TryParse(GetOption(args, "--temperature"), out var t) ? t : 0f;
 var totalTools = int.TryParse(GetOption(args, "--total-tools"), out var tt) ? tt : 30;

@@ -38,11 +38,38 @@ public static class KnownPoints
             : trimmed;
     }
 
+    /// <summary>A known point's name, or a <c>"lat,lng"</c> literal in decimal degrees (e.g.
+    /// <c>"31.81234,34.66123"</c>) - how the host passes a position that has no name here, such as
+    /// a search detection the operator asked to fly to. A real fleet app must accept both.</summary>
     public static bool TryResolve(string name, out double lat, out double lng)
     {
         if (Points.TryGetValue(Canonicalize(name), out var p))
         {
             (lat, lng) = p;
+            return true;
+        }
+
+        if (TryParseLatLng(name, out lat, out lng))
+        {
+            return true;
+        }
+
+        lat = 0;
+        lng = 0;
+        return false;
+    }
+
+    private static readonly Regex LatLngPattern = new(
+        @"^\s*(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*$", RegexOptions.Compiled);
+
+    public static bool TryParseLatLng(string text, out double lat, out double lng)
+    {
+        var match = LatLngPattern.Match(text);
+        if (match.Success &&
+            double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out lat) &&
+            double.TryParse(match.Groups[2].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out lng) &&
+            lat is >= -90 and <= 90 && lng is >= -180 and <= 180)
+        {
             return true;
         }
 

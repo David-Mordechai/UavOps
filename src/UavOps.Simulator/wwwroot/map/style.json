@@ -1,0 +1,101 @@
+{
+  "version": 8,
+  "name": "UavOps dark (offline)",
+  "glyphs": "map/glyphs/{fontstack}/{range}.pbf",
+  "sources": {
+    "openmaptiles": {
+      "type": "vector",
+      "url": "pmtiles://map/israel.pmtiles",
+      "attribution": "© OpenStreetMap contributors, OpenMapTiles"
+    }
+  },
+  "layers": [
+    { "id": "background", "type": "background", "paint": { "background-color": "#15171a" } },
+
+    { "id": "landcover-wood", "type": "fill", "source": "openmaptiles", "source-layer": "landcover",
+      "filter": ["in", ["get", "class"], ["literal", ["wood", "forest"]]],
+      "paint": { "fill-color": "#16231a", "fill-opacity": 0.8 } },
+    { "id": "landcover-grass", "type": "fill", "source": "openmaptiles", "source-layer": "landcover",
+      "filter": ["in", ["get", "class"], ["literal", ["grass", "farmland", "wetland"]]],
+      "paint": { "fill-color": "#181f19", "fill-opacity": 0.7 } },
+    { "id": "landcover-sand", "type": "fill", "source": "openmaptiles", "source-layer": "landcover",
+      "filter": ["==", ["get", "class"], "sand"],
+      "paint": { "fill-color": "#221f18", "fill-opacity": 0.7 } },
+    { "id": "landuse-residential", "type": "fill", "source": "openmaptiles", "source-layer": "landuse",
+      "filter": ["in", ["get", "class"], ["literal", ["residential", "suburb", "neighbourhood"]]],
+      "paint": { "fill-color": "#1c1e22", "fill-opacity": 0.9 } },
+    { "id": "landuse-industrial", "type": "fill", "source": "openmaptiles", "source-layer": "landuse",
+      "filter": ["in", ["get", "class"], ["literal", ["industrial", "commercial", "retail", "railway"]]],
+      "paint": { "fill-color": "#1f1e24", "fill-opacity": 0.9 } },
+    { "id": "park", "type": "fill", "source": "openmaptiles", "source-layer": "park",
+      "paint": { "fill-color": "#172419", "fill-opacity": 0.8 } },
+
+    { "id": "water", "type": "fill", "source": "openmaptiles", "source-layer": "water",
+      "paint": { "fill-color": "#0c1d2b" } },
+    { "id": "waterway", "type": "line", "source": "openmaptiles", "source-layer": "waterway",
+      "paint": { "line-color": "#0f2638", "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.5, 14, 2] } },
+
+    { "id": "aeroway-runway", "type": "line", "source": "openmaptiles", "source-layer": "aeroway",
+      "filter": ["==", ["get", "class"], "runway"],
+      "paint": { "line-color": "#2c2e33", "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 10, 1, 16, 30] } },
+
+    { "id": "building", "type": "fill", "source": "openmaptiles", "source-layer": "building", "minzoom": 13,
+      "paint": { "fill-color": "#23262b", "fill-outline-color": "#2c2f35" } },
+
+    { "id": "road-minor", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
+      "filter": ["in", ["get", "class"], ["literal", ["minor", "service", "track"]]], "minzoom": 12,
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": { "line-color": "#2b2d32", "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 12, 0.5, 18, 8] } },
+    { "id": "road-secondary", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
+      "filter": ["in", ["get", "class"], ["literal", ["secondary", "tertiary"]]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": { "line-color": "#35373d", "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 8, 0.5, 18, 12] } },
+    { "id": "road-primary", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
+      "filter": ["in", ["get", "class"], ["literal", ["primary", "trunk"]]],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": { "line-color": "#48494f", "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 6, 0.5, 18, 16] } },
+    { "id": "road-motorway", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
+      "filter": ["==", ["get", "class"], "motorway"],
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": { "line-color": "#5e5236", "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 5, 0.5, 18, 18] } },
+    { "id": "rail", "type": "line", "source": "openmaptiles", "source-layer": "transportation",
+      "filter": ["==", ["get", "class"], "rail"],
+      "paint": { "line-color": "#3a3b40", "line-width": 1, "line-dasharray": [3, 3] } },
+
+    { "id": "boundary", "type": "line", "source": "openmaptiles", "source-layer": "boundary",
+      "filter": ["<=", ["get", "admin_level"], 4],
+      "paint": { "line-color": "#4a4b52", "line-width": 1, "line-dasharray": [4, 2] } },
+
+    { "id": "road-name", "type": "symbol", "source": "openmaptiles", "source-layer": "transportation_name", "minzoom": 13,
+      "layout": {
+        "symbol-placement": "line",
+        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 11
+      },
+      "paint": { "text-color": "#8a8b91", "text-halo-color": "#15171a", "text-halo-width": 1.5 } },
+    { "id": "water-name", "type": "symbol", "source": "openmaptiles", "source-layer": "water_name",
+      "layout": {
+        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 12
+      },
+      "paint": { "text-color": "#4f7390", "text-halo-color": "#0c1d2b", "text-halo-width": 1 } },
+    { "id": "place-minor", "type": "symbol", "source": "openmaptiles", "source-layer": "place",
+      "filter": ["in", ["get", "class"], ["literal", ["village", "hamlet", "suburb", "neighbourhood", "quarter"]]], "minzoom": 11,
+      "layout": {
+        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 11
+      },
+      "paint": { "text-color": "#8a8b91", "text-halo-color": "#15171a", "text-halo-width": 1.5 } },
+    { "id": "place-major", "type": "symbol", "source": "openmaptiles", "source-layer": "place",
+      "filter": ["in", ["get", "class"], ["literal", ["city", "town"]]],
+      "layout": {
+        "text-field": ["coalesce", ["get", "name"], ["get", "name:latin"]],
+        "text-font": ["Noto Sans Medium"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 8, 11, 14, 16]
+      },
+      "paint": { "text-color": "#c4c5ca", "text-halo-color": "#15171a", "text-halo-width": 1.5 } }
+  ]
+}

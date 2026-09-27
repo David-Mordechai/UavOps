@@ -35,6 +35,9 @@ public class BuildToolsForTurnLiveTests(ITestOutputHelper output)
             // of top-K before RetrievalClauseSplitter (see ReturnAllHomeWithSessionSummaryLiveTests
             // for the full conversation, replayed end to end).
             ("bring them all home and give me full summary of today session", "ReturnToLaunch"),
+            // AOI search: "enter" must not leave the composite tool behind Navigate.
+            ("Enter AOI zone ZoneA and search for white van", "PrepareAoiSearch"),
+            ("start the mission", "StartMission"),
         };
 
         foreach (var (text, expectedTool) in cases)

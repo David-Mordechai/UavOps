@@ -46,7 +46,8 @@ public class TailNumberDisambiguationToolTests
     /// OperationToolTests's CreateSutWithConfirmation, since this tool needs to exercise
     /// InvokeCoreAsync itself, including its own ask-and-wait round trip.</summary>
     private static (TailNumberDisambiguationTool Tool, FakeInnerTool Inner, Func<CancellationToken, Task<OperationResult>> ListFleet, IClientProxy Proxy) CreateSut(
-        List<UavSummary>? fleet, string? chatReply, string operatorText = "", TailNumberResolutionScope? scope = null, FleetGroupMemory? groupMemory = null, string toolName = "SetSpeed")
+        List<UavSummary>? fleet, string? chatReply, string operatorText = "", TailNumberResolutionScope? scope = null, FleetGroupMemory? groupMemory = null, string toolName = "SetSpeed",
+        OperatorUavContext? uavContext = null)
     {
         var replySent = false;
         OperatorPromptGate? promptGate = null;
@@ -73,7 +74,7 @@ public class TailNumberDisambiguationToolTests
         var inner = new FakeInnerTool(toolName);
         var tool = new TailNumberDisambiguationTool(
             inner, ListFleet, promptGate, scope ?? new TailNumberResolutionScope(), groupMemory ?? new FleetGroupMemory(),
-            "FlightControlAgent", "corr1", operatorText);
+            "FlightControlAgent", "corr1", operatorText, uavContext);
 
         return (tool, inner, ListFleet, proxy);
     }
@@ -449,5 +450,92 @@ public class TailNumberDisambiguationToolTests
 
         firstInner.InvokedTailNumbers.Should().BeEquivalentTo(["998", "999"]);
         secondInner.InvokedTailNumbers.Should().BeEquivalentTo(["997", "999"]);
+    }
+
+    // ----- OperatorUavContext: a UAV the operator chose earlier grounds a later unnamed follow-up -----
+
+    private static AIFunctionArguments Tail(string tailNumber) =>
+        new(new Dictionary<string, object?> { ["tailNumber"] = tailNumber });
+
+    [Fact]
+    public async Task UavPickedAtThePrompt_GroundsTheNextTurnsUnnamedCommand_WithoutAskingAgain()
+    {
+        var context = new OperatorUavContext();
+        var (firstTurn, _, _, _) = CreateSut(ThreeUavFleet(), chatReply: "997", operatorText: "Enter AOI zone ZoneA and search for white van", uavContext: context);
+        await firstTurn.InvokeAsync(Tail("998"), CancellationToken.None);
+
+        var (nextTurn, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "start the mission", uavContext: context, toolName: "StartMission");
+        await nextTurn.InvokeAsync(Tail("997"), CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().Equal("997");
+        await proxy.DidNotReceive().SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task UavNamedByTheOperator_GroundsTheNextTurnsUnnamedCommand()
+    {
+        var context = new OperatorUavContext();
+        var (firstTurn, _, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "set 998 speed to 200", uavContext: context);
+        await firstTurn.InvokeAsync(Tail("998"), CancellationToken.None);
+
+        var (nextTurn, inner, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "and altitude 3000", uavContext: context, toolName: "SetAltitude");
+        await nextTurn.InvokeAsync(Tail("998"), CancellationToken.None);
+
+        inner.InvokedTailNumbers.Should().Equal("998");
+    }
+
+    [Fact]
+    public async Task ADifferentGuess_StillAsks()
+    {
+        var context = new OperatorUavContext();
+        context.Set("997");
+        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "999", operatorText: "start the mission", uavContext: context, toolName: "StartMission");
+
+        await tool.InvokeAsync(Tail("998"), CancellationToken.None);
+
+        await proxy.Received().SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+        inner.InvokedTailNumbers.Should().Equal("999");
+        context.Current.Should().Be("999", "the operator's answer is now the UAV they're working with");
+    }
+
+    [Theory]
+    [InlineData("bring the rest home")]
+    [InlineData("bring them home")]
+    [InlineData("send all of them to alpha")]
+    [InlineData("the other ones too")]
+    public async Task AGroupReference_NeverResolvesToTheLastSingleUav(string operatorText)
+    {
+        // "bring 997 home", then "bring the rest home": a guess of 997 must not run unasked.
+        var context = new OperatorUavContext();
+        context.Set("997");
+        var (tool, inner, _, proxy) = CreateSut(ThreeUavFleet(), chatReply: "998", operatorText: operatorText, uavContext: context, toolName: "ReturnToLaunch");
+
+        await tool.InvokeAsync(Tail("997"), CancellationToken.None);
+
+        await proxy.Received().SendCoreAsync("ReceiveChoices", Arg.Any<object?[]>(), Arg.Any<CancellationToken>());
+        inner.InvokedTailNumbers.Should().Equal("998");
+    }
+
+    [Fact]
+    public async Task AGroupAction_ClearsTheSingleUavContext()
+    {
+        var context = new OperatorUavContext();
+        context.Set("997");
+        var (tool, _, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "fly all of them to alpha", uavContext: context, toolName: "Navigate");
+
+        await tool.InvokeAsync(Tail("ALL"), CancellationToken.None);
+
+        context.Current.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task NamingTwoUavs_DoesNotPickEitherAsTheCurrentOne()
+    {
+        var context = new OperatorUavContext();
+        var (tool, _, _, _) = CreateSut(ThreeUavFleet(), chatReply: null, operatorText: "set 997 and 998 speed to 200", uavContext: context);
+
+        await tool.InvokeAsync(Tail("997"), CancellationToken.None);
+
+        context.Current.Should().BeNull();
     }
 }

@@ -48,7 +48,8 @@ public sealed class SettingsStore(IConfiguration hostConfiguration, IHostEnviron
         "mcpServers.simulator.settings.Simulator.VmrunExecutablePath",
         "mcpServers.simulator.settings.Simulator.SimulatorVmxPath",
         "mcpServers.simulator.settings.Simulator.LessonsFolder",
-        "mcpServers.watchdog.settings.Watchdog.ServiceConfigBasePath"
+        "mcpServers.watchdog.settings.Watchdog.ServiceConfigBasePath",
+        "mcpServers.moav.settings.Mission.AoiDatabasePath"
     ];
 
     public async Task<JsonObject> GetEffectiveSettingsAsync()

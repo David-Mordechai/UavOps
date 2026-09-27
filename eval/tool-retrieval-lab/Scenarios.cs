@@ -86,6 +86,21 @@ static class Scenarios
             ],
             state => state.Fleet.Values.All(s => s.Mode == "ReturningToLaunch")),
 
+        // AOI search (997 named directly, since this lab has no "which UAV?" prompt to answer):
+        // "enter" is a trap word that could pull Navigate, and the mission must not start until
+        // the operator says so in a later turn.
+        new Scenario(
+            "aoi-search",
+            [
+                Greeting,
+                new ScenarioTurn("Enter AOI zone ZoneA with 997 and search for white van", ["PrepareAoiSearch"]),
+                new ScenarioTurn("start the mission", ["StartMission"]),
+            ],
+            state =>
+                state.Fleet["997"].SearchPrompt?.Contains("white van", StringComparison.OrdinalIgnoreCase) == true &&
+                state.Fleet["997"].MissionStarted &&
+                state.Fleet["998"].Mode == "Orbiting" && state.Fleet["999"].Mode == "Orbiting"),
+
         new Scenario(
             "watchdog-restart",
             [

@@ -40,4 +40,21 @@ public class KnownPointsTests
     [InlineData("no location mentioned here", "no location mentioned here")]
     public void CanonicalizeText_StripsTargetPrefixWhereverItAppearsInFreeText(string given, string expected) =>
         KnownPoints.CanonicalizeText(given).Should().Be(expected);
+
+    [Theory]
+    [InlineData("31.81234,34.66123", 31.81234, 34.66123)]
+    [InlineData(" -31.5 , 120 ", -31.5, 120)]
+    public void TryResolve_AcceptsALatLngLiteral(string text, double lat, double lng)
+    {
+        KnownPoints.TryResolve(text, out var parsedLat, out var parsedLng).Should().BeTrue();
+        parsedLat.Should().Be(lat);
+        parsedLng.Should().Be(lng);
+    }
+
+    [Theory]
+    [InlineData("91,34")]
+    [InlineData("31.8,181")]
+    [InlineData("31.8 34.6")]
+    public void TryResolve_RejectsAnOutOfRangeOrMalformedLatLng(string text) =>
+        KnownPoints.TryResolve(text, out _, out _).Should().BeFalse();
 }

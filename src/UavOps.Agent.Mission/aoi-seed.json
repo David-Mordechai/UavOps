@@ -1,0 +1,25 @@
+[
+  {
+    "name": "ZoneA",
+    "description": "1.5 x 1 km U-shape opening north, around target alpha (which sits in its notch). Concave on purpose: upper search lanes cross both arms.",
+    "polygon": {
+      "type": "Polygon",
+      "coordinates": [[
+        [34.65200, 31.80750], [34.66786, 31.80750], [34.66786, 31.81649], [34.66257, 31.81649],
+        [34.66257, 31.81065], [34.65729, 31.81065], [34.65729, 31.81649], [34.65200, 31.81649],
+        [34.65200, 31.80750]
+      ]]
+    }
+  },
+  {
+    "name": "ZoneB",
+    "description": "Skewed quadrilateral, roughly 900 x 600 m, around target bravo.",
+    "polygon": {
+      "type": "Polygon",
+      "coordinates": [[
+        [34.62550, 31.78700], [34.63400, 31.78800], [34.63450, 31.79350], [34.62500, 31.79250],
+        [34.62550, 31.78700]
+      ]]
+    }
+  }
+]

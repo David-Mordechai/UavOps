@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Dev-only stand-in for the real fleet app: connects to UavOps.Agent's fleet hub exactly
+       where the real app does (through UavOps.FleetClient), flies the UAVs, plays the onboard
+       detector, and shows it all on an offline map. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\UavOps.FleetClient\UavOps.FleetClient.csproj" />
+    <ProjectReference Include="..\UavOps.Agent.Mission\UavOps.Agent.Mission.csproj" />
+    <!-- Only for KnownPoints (named locations + "lat,lng" literals). Its Waypoint and other
+         models clash with FleetClient's by name, so its namespace is never imported wholesale. -->
+    <ProjectReference Include="..\UavOps.Agent.Contracts\UavOps.Agent.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

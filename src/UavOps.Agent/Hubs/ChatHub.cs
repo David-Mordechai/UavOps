@@ -37,8 +37,10 @@ namespace UavOps.Agent.Hubs;
 /// friends) needed a single, obvious place to relay Moav operations through as a SignalR client
 /// of its own, alongside the real Moav client it's relaying to. <c>UavOps.Agent.McpSimulator</c>
 /// uses this same "connect back for the one host-only capability" pattern via
-/// <see cref="PushLessonOutcome"/> below, for a different capability entirely (BrainAgent's own
-/// persona/model, not a physical hardware connection).
+/// <see cref="PostPhrasedOperatorMessage"/>/<see cref="RelayAskOperatorChoice"/> below, for a
+/// different capability entirely (the chat and BrainAgent's own persona/model, not a physical
+/// hardware connection). Every such capability here is domain-agnostic: the calling MCP server
+/// decides what to say or ask, the host only delivers it.
 /// </summary>
 public sealed class ChatHub(
     MainAgentOrchestrator orchestrator,
@@ -49,6 +51,7 @@ public sealed class ChatHub(
     IHubContext<ChatHub> hubContext,
     AgentFactory agentFactory,
     PushToTalkRouter pushToTalkRouter,
+    ProactiveHistoryJournal proactiveJournal,
     ILogger<ChatHub> logger) : Hub<IOperationClientProxy>
 {
     public async Task SendMessage(string user, string text, string correlationId)
@@ -117,14 +120,26 @@ public sealed class ChatHub(
         }
     }
 
-    public override Task OnConnectedAsync()
+    /// <summary>An MCP server's own connection back to this hub (McpMoav's relay client at
+    /// <c>/uavCommandHub</c>, McpSimulator's at <c>/chatHub</c>), marked <c>?client=relay</c>.</summary>
+    private bool IsMcpServerConnection => Context.GetHttpContext()?.Request.Query["client"].ToString() == "relay";
+
+    /// <summary>McpMoav's relay connection(s): where <see cref="ReportDetection"/> and
+    /// <see cref="ReportMissionEvent"/> are forwarded. A group, so a reconnect just rejoins it.</summary>
+    private const string MoavRelayGroup = "moav-relay";
+
+    public override async Task OnConnectedAsync()
     {
         if (IsMoavCommandEndpoint)
         {
             broker.RegisterConnection(Context.ConnectionId);
         }
+        else if (IsMcpServerConnection && Context.GetHttpContext()?.Request.Path == "/uavCommandHub")
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, MoavRelayGroup);
+        }
 
-        return base.OnConnectedAsync();
+        await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
@@ -220,45 +235,96 @@ public sealed class ChatHub(
     public async Task<string> RelaySetTrackingMode(string tailNumber, string mode) =>
         ToResultText(await broker.SendAsync<GdtLinkStatus>((proxy, correlationId) => proxy.SetTrackingMode(correlationId, tailNumber, mode), CancellationToken.None));
 
-    // ----- UavOps.Agent.McpSimulator lesson-outcome half -----
+    public async Task<string> RelayStartMission(string tailNumber) =>
+        ToResultText(await broker.SendAsync<MissionStatus>((proxy, correlationId) => proxy.StartMission(correlationId, tailNumber), CancellationToken.None));
 
-    /// <summary>
-    /// Called by McpSimulator's own SignalR client (<c>HubLessonOutcomeNotifier</c>) once its
-    /// background <c>SimulatorLessonJobProcessor</c> finishes running a lesson - the "how to say
-    /// it" step (building the "simple terms" sentence in BrainAgent's own voice) that only this
-    /// process can do, since it alone holds the persistent model session. Builds a tools-stripped
-    /// instance of BrainAgent (<see cref="AgentFactory.BuildPersonaOnlyAgent"/> — same persona/
-    /// voice as the real agent, but structurally unable to call any tool again) and runs it once
-    /// with a synthetic instruction summarizing the concise outcome McpSimulator already decided,
-    /// then pushes the result as an ordinary <c>ReceiveChatMessage</c> under a fresh correlationId
-    /// — the chat UI already renders any such message as a new bubble the first time it sees that
-    /// correlationId, so this appears as a new, unprompted message in the thread with no frontend
-    /// changes needed.
-    /// </summary>
-    public async Task PushLessonOutcome(string lessonName, string outcome, string? detail, double durationSeconds)
+    public async Task<string> RelaySetSearchTarget(string tailNumber, SearchTargetRequest request) =>
+        ToResultText(await broker.SendAsync<MissionStatus>((proxy, correlationId) => proxy.SetSearchTarget(correlationId, tailNumber, request), CancellationToken.None));
+
+    // ----- Fleet app -> McpMoav (unprompted) -----
+    //
+    // The only calls the fleet app makes on its own. It can only reach this hub, so they land
+    // here, but what a detection or a finished mission means is the Moav domain's call: each is
+    // forwarded unchanged to McpMoav's relay connection (MissionEventService there), which posts
+    // any operator message back through PostOperatorMessage below. Accepted only from the real
+    // fleet connection, since what they lead to is text in front of the operator and a
+    // targetable point in the model's hands.
+
+    /// <summary>The onboard agent spotted a search target (<c>FleetClientConnection.ReportDetectionAsync</c>).</summary>
+    public Task ReportDetection(DetectionReport report) =>
+        ForwardFleetEventAsync(nameof(ReportDetection), HostHubContract.FleetEvents.Detection, report);
+
+    /// <summary>A search mission ended (<c>FleetClientConnection.ReportMissionEventAsync</c>).</summary>
+    public Task ReportMissionEvent(MissionEventReport report) =>
+        ForwardFleetEventAsync(nameof(ReportMissionEvent), HostHubContract.FleetEvents.MissionEvent, report);
+
+    private Task ForwardFleetEventAsync(string method, string fleetEvent, object report)
     {
-        var parsedOutcome = Enum.TryParse<LessonOutcome>(outcome, out var o) ? o : LessonOutcome.Failed;
-        var instruction = BuildSummaryInstruction(lessonName, parsedOutcome, detail, TimeSpan.FromSeconds(durationSeconds));
-        var summaryAgent = agentFactory.BuildPersonaOnlyAgent();
-        var response = await summaryAgent.RunAsync(instruction);
+        if (!IsMoavCommandEndpoint)
+        {
+            logger.LogWarning("Rejected {Method} from connection {ConnectionId}: not the fleet app's connection.", method, Context.ConnectionId);
+            throw new HubException($"{method} is only accepted from the fleet app's connection.");
+        }
 
-        var proactiveCorrelationId = Guid.NewGuid().ToString("N")[..8];
-        await hubContext.Clients.All.SendAsync("ReceiveChatMessage", AgentFactory.RootAgentName, response.Text, durationSeconds, proactiveCorrelationId);
+        // An empty group (McpMoav on OperationBackend: Simulated) means nobody is listening;
+        // SignalR drops it, and that backend has no fleet app to report anything anyway.
+        return hubContext.Clients.Group(MoavRelayGroup).SendAsync(fleetEvent, report);
     }
 
-    private static string BuildSummaryInstruction(string lessonName, LessonOutcome outcome, string? detail, TimeSpan duration)
-    {
-        var outcomeText = outcome switch
-        {
-            LessonOutcome.Succeeded => "Succeeded, no problems detected.",
-            LessonOutcome.SucceededWithWarnings => $"Succeeded, but with a warning: {detail}",
-            LessonOutcome.Failed => $"Failed: {detail}",
-            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, null)
-        };
+    // ----- MCP server -> operator (unprompted) -----
+    //
+    // Domain-agnostic: an MCP server (McpMoav's MissionEventService, McpSimulator's lesson
+    // pipeline) decides what to say; these only deliver it. Accepted only from an MCP server's own
+    // connection (the "?client=relay" marker), since a history note speaks to the model as the
+    // system - a chat tab must not be able to write one.
 
-        return $"You just finished running lesson '{lessonName}' in the background (it took {duration.TotalSeconds:0.#}s). " +
-               $"Outcome: {outcomeText} Tell the operator this outcome in one or two short, plain sentences. " +
-               "Do not invent anything beyond what's given here, and do not mention tool or operation names.";
+    /// <summary>Shows <paramref name="message"/> to the operator as-is, as a new unprompted
+    /// message; with a <paramref name="historyNote"/>, both also join BrainAgent's history before
+    /// its next turn (<see cref="ProactiveHistoryJournal"/>), so a follow-up can refer to it.</summary>
+    public async Task PostOperatorMessage(string message, string? historyNote)
+    {
+        RequireMcpServerConnection(nameof(PostOperatorMessage));
+        if (historyNote is not null)
+        {
+            proactiveJournal.Add(historyNote, message);
+        }
+        await PushUnpromptedAsync(message, 0d);
+    }
+
+    /// <summary>Adds <paramref name="note"/> and <paramref name="message"/> to BrainAgent's history
+    /// only, shown to no one - for something the operator already knows.</summary>
+    public void AddHistoryNote(string note, string message)
+    {
+        RequireMcpServerConnection(nameof(AddHistoryNote));
+        proactiveJournal.Add(note, message);
+    }
+
+    /// <summary>
+    /// For a message worth saying in BrainAgent's own voice (e.g. McpSimulator's background lesson
+    /// outcome): builds a tools-stripped BrainAgent (<see cref="AgentFactory.BuildPersonaOnlyAgent"/>
+    /// - same persona, structurally unable to call a tool), runs it once on the caller's
+    /// <paramref name="instruction"/>, and shows the reply as a new unprompted message. The caller
+    /// decides what the instruction says, including what not to invent.
+    /// </summary>
+    public async Task PostPhrasedOperatorMessage(string instruction, double elapsedSeconds)
+    {
+        RequireMcpServerConnection(nameof(PostPhrasedOperatorMessage));
+        var response = await agentFactory.BuildPersonaOnlyAgent().RunAsync(instruction);
+        await PushUnpromptedAsync(response.Text, elapsedSeconds);
+    }
+
+    // A fresh correlationId: the chat UI renders a message with a correlationId it hasn't seen as
+    // a new bubble, so this needs no frontend support.
+    private Task PushUnpromptedAsync(string message, double elapsedSeconds) =>
+        hubContext.Clients.All.SendAsync("ReceiveChatMessage", AgentFactory.RootAgentName, message, elapsedSeconds, Guid.NewGuid().ToString("N")[..8]);
+
+    private void RequireMcpServerConnection(string method)
+    {
+        if (!IsMcpServerConnection)
+        {
+            logger.LogWarning("Rejected {Method} from connection {ConnectionId}: not an MCP server's connection.", method, Context.ConnectionId);
+            throw new HubException($"{method} is only accepted from an MCP server's connection.");
+        }
     }
 
     // ----- Generic operator-prompt relay half -----
@@ -269,7 +335,7 @@ public sealed class ChatHub(
     /// deterministic auto-resolve can't settle on exactly one choice) to run the in-chat
     /// "ask an open question, read back the answer" round-trip - a thin wrapper over the existing
     /// <see cref="OperatorPromptGate.RequestChoiceAsync"/>, the same host-only chat-hub
-    /// infrastructure <see cref="PushLessonOutcome"/> above already reuses for a different
+    /// infrastructure <see cref="PostOperatorMessage"/> above already reuses for a different
     /// capability. Deliberately domain-agnostic (no lesson/simulator knowledge here at all) so any
     /// future MCP server needing an open-ended operator prompt can call this same method - the
     /// deciding of *what* to ask, and *whether* asking is even needed, stays entirely with the

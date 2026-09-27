@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>UavOps Simulator</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="vendor/maplibre-gl.css" />
+  <link rel="stylesheet" href="sim.css" />
+</head>
+<body>
+  <div class="layout">
+    <div id="map" class="map" aria-label="Map"></div>
+
+    <aside class="panel">
+      <header class="panel-header">
+        <div class="brand">UavOps Simulator</div>
+        <div class="pills">
+          <span id="hostStatus" class="pill pill-wait" title="Connection to UavOps.Agent's fleet hub">host: connecting…</span>
+          <span id="mapStatus" class="pill" title="Base map">map: …</span>
+        </div>
+      </header>
+
+      <section class="section">
+        <div class="section-title">Time</div>
+        <div class="controls">
+          <div class="segmented" id="timeScale" role="group" aria-label="Simulation speed">
+            <button type="button" data-scale="0" title="Pause">❚❚</button>
+            <button type="button" data-scale="1">1×</button>
+            <button type="button" data-scale="5">5×</button>
+            <button type="button" data-scale="10">10×</button>
+            <button type="button" data-scale="30">30×</button>
+          </div>
+          <button type="button" id="resetFleet" class="btn" title="Every UAV back to its start point; missions and detections cleared">↺ Reset</button>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Fleet</div>
+        <div id="uavList" class="cards"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">Detections <span id="detectionCount" class="count"></span></div>
+        <div id="detectionList" class="list"><div class="empty">None yet.</div></div>
+      </section>
+
+      <section class="section">
+        <div class="section-title">
+          Objects on the ground
+          <button type="button" id="placeObject" class="link-btn">+ Place</button>
+        </div>
+        <div id="placeHint" class="hint" hidden>
+          <input id="objectLabel" type="text" placeholder="What is it? e.g. white van" autocomplete="off" />
+          <span>then click the map. <button type="button" id="cancelPlace" class="link-btn">Cancel</button></span>
+        </div>
+        <div id="objectList" class="list"></div>
+      </section>
+    </aside>
+  </div>
+
+  <script src="vendor/signalr.min.js"></script>
+  <script src="vendor/maplibre-gl.js"></script>
+  <script src="vendor/pmtiles.js"></script>
+  <script src="sim.js"></script>
+</body>
+</html>

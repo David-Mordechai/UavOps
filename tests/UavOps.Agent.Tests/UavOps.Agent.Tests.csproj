@@ -45,6 +45,9 @@
     <ProjectReference Include="..\..\src\UavOps.Agent.McpWatchdog\UavOps.Agent.McpWatchdog.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.Simulator.Fake\UavOps.Agent.Simulator.Fake.csproj" />
     <ProjectReference Include="..\..\src\UavOps.Agent.Watchdog.Fake\UavOps.Agent.Watchdog.Fake.csproj" />
+    <ProjectReference Include="..\..\src\UavOps.FleetClient\UavOps.FleetClient.csproj" />
+    <ProjectReference Include="..\..\src\UavOps.Agent.Mission\UavOps.Agent.Mission.csproj" />
+    <ProjectReference Include="..\..\src\UavOps.Simulator\UavOps.Simulator.csproj" />
   </ItemGroup>
 
 </Project>

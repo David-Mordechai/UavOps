@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pure AOI search-mission logic (zone storage, search-route planning), with no MCP, SignalR or
+       host dependency, so McpMoav, UavOps.Simulator and the tests can all share it. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- No ORM: one table, read by name. Pulls in the native e_sqlite3 library, which lands in
+         runtimes/ on build and publish. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Embedded rather than copied, so every process that opens the database seeds it the same
+         way regardless of its own output folder. -->
+    <EmbeddedResource Include="aoi-seed.json" LogicalName="UavOps.Agent.Mission.aoi-seed.json" />
+  </ItemGroup>
+
+</Project>

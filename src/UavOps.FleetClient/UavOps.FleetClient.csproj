@@ -1,14 +1,25 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net47</TargetFramework>
+    <!-- net47 for the real fleet app; net8.0 so UavOps.Simulator can reuse FleetClientConnection
+         and UavOps.Agent.Tests can check the wire contract against the host's. -->
+    <TargetFrameworks>net47;net8.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net47'">
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.10" />
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
+  </ItemGroup>
+
+  <!-- Same SignalR client version as the other net8 projects, so a net8 consumer doesn't get
+       pulled onto 10.x Microsoft.Extensions.* packages. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.11" />
   </ItemGroup>
 
 </Project>
