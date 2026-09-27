@@ -17,6 +17,24 @@ Still open
     PrepareAoiSearch (the load-related pattern already recorded in McpMoav's ToolsConfig.yaml).
     Harmless (the operator answers and it proceeds), but visible under load.
 
+14. (New, 2026-09-28) A typed search target that isn't a word can be turned into a different
+    word by the model before it reaches the tools: a ZoneB search went out as "breach" (no voice
+    involved; probably a misspelled "bridge"). The detector then searched for exactly that. Not
+    changed: the tool passes the operator's own words on purpose.
+
+15. (New, note) Structure searches (anything not a vehicle) were measured on one photo (ZoneB): 2
+    pylons, 1 overpass, 10 look-alikes. The second look at a different width is what keeps false
+    hits out; a new kind of structure or scene may need its own check. A tall pole seen obliquely
+    was sometimes a "utility pole" (not counted as a pylon).
+
+Done 2026-09-28
+---------------
+- ZoneB "power grid antenna" / "road bridges" not found: the detector's prompts only proposed
+  vehicles, and a match needed the target's words in a colour + vehicle-type description. Anything
+  that isn't a vehicle now has its own path (interpret, describe without the target, compare, second
+  look). Live: both pylons and the overpass found, nothing false; vehicle searches unchanged
+  (red car found, 95%).
+
 Done 2026-09-27
 ---------------
 1. Live tests at 8 repeats: PayloadZoom 8/8 (new), NavigateToDetection 8/8, FlyAllFleetWide 8/8,

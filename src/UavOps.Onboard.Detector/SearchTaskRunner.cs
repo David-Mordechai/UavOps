@@ -23,7 +23,10 @@ public sealed class SearchTaskRunner(
     IZoomCamera? zoom = null)
 {
     private readonly ConcurrentDictionary<long, byte> _inFlight = new();
-    private readonly List<(GeoPoint Position, ObjectDescription Description)> _examined = [];
+    private readonly List<(GeoPoint Position, ObjectDescription Description, bool IsTarget)> _examined = [];
+    private readonly bool _vehicle = TargetKind.IsVehicle(task.Prompt);
+    private readonly ConcurrentDictionary<string, Task<bool>> _meansCache = new(StringComparer.Ordinal);
+    private Task<string>? _meant;
     private long _lastPulledSeq;
     private int _framesAnalyzed;
     private int _detections;
@@ -117,8 +120,9 @@ public sealed class SearchTaskRunner(
     /// <summary>
     /// One frame, in two questions (see <see cref="DetectionPrompt"/>): which objects in the frame
     /// could be the target, then, for each, what a close-up of it actually is. Only a candidate whose
-    /// description matches the target (<see cref="TargetMatcher"/>) is placed on the ground and, if
-    /// it's new, reported.
+    /// description is the target (<see cref="IsTargetAsync"/>) is placed on the ground and, if it's
+    /// new, reported. A structure needs a second look at the other close-up width to say so too
+    /// (<see cref="ConfirmStructureAsync"/>).
     /// </summary>
     public async Task AnalyzeAsync(CameraFrame frame, CancellationToken cancellationToken)
     {
@@ -127,7 +131,10 @@ public sealed class SearchTaskRunner(
         long latency;
         try
         {
-            var answer = await model.AskAsync(frame.Jpeg, DetectionPrompt.Candidates(task.Prompt), cancellationToken);
+            var question = _vehicle
+                ? DetectionPrompt.Candidates(task.Prompt)
+                : DetectionPrompt.StructureCandidates(task.Prompt, await MeantAsync(cancellationToken));
+            var answer = await model.AskAsync(frame.Jpeg, question, cancellationToken);
             candidates = DetectionParser.Parse(answer.Text, minConfidence: 0).Take(options.MaxCandidatesPerFrame).ToList();
             latency = answer.LatencyMs;
         }
@@ -150,20 +157,30 @@ public sealed class SearchTaskRunner(
                 // Seen up close already (overlapping frames): same answer, no second look.
                 var position = camera.NormalizedToGeo(candidate.Box.CenterX, candidate.Box.CenterY);
                 if (Examined(position) is { } known)
-                    return (candidate, description: (ObjectDescription?)known, LatencyMs: 0L);
+                    return (candidate, description: (ObjectDescription?)known.Description, isTarget: known.IsTarget, LatencyMs: 0L);
 
-                var (closeUp, metersAcross) = await CloseUpAsync(frame, camera, candidate, cancellationToken);
-                var answer = await model.AskAsync(closeUp, DetectionPrompt.Describe(metersAcross), cancellationToken);
-                var description = DetectionParser.ParseDescription(answer.Text);
+                var (closeUp, metersAcross) = await CloseUpAsync(frame, camera, candidate, null, cancellationToken);
+                var answer = await model.AskAsync(closeUp,
+                    _vehicle ? DetectionPrompt.Describe(metersAcross) : DetectionPrompt.DescribeObject(metersAcross), cancellationToken);
+                var description = _vehicle ? DetectionParser.ParseDescription(answer.Text) : DetectionParser.ParseWhat(answer.Text);
+                var latency = answer.LatencyMs;
+                var isTarget = description is not null && description.Confidence >= task.MinConfidence &&
+                               await IsTargetAsync(description, cancellationToken);
+                if (isTarget && !_vehicle)
+                {
+                    var (confirmed, confirmLatency) = await ConfirmStructureAsync(frame, camera, candidate, metersAcross, cancellationToken);
+                    isTarget = confirmed;
+                    latency += confirmLatency;
+                }
                 if (description is not null)
                     lock (_examined)
-                        _examined.Add((position, description));
-                return (candidate, description, answer.LatencyMs);
+                        _examined.Add((position, description, isTarget));
+                return (candidate, description, isTarget, LatencyMs: latency);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
                 logger.LogWarning("Close-up check failed on {Tail} frame {Seq}: {Message}", task.TailNumber, seq, ex.Message);
-                return (candidate, description: (ObjectDescription?)null, LatencyMs: 0L);
+                return (candidate, description: (ObjectDescription?)null, isTarget: false, LatencyMs: 0L);
             }
         }));
         latency += checks.Length == 0 ? 0 : checks.Max(c => c.LatencyMs);
@@ -174,9 +191,9 @@ public sealed class SearchTaskRunner(
         logger.LogInformation("{Tail} frame {Seq}: {Candidates} candidate(s) [{Descriptions}] in {Ms} ms.", task.TailNumber, seq, candidates.Count,
             string.Join(", ", checks.Select(c => c.description?.Text ?? "?")), latency);
 
-        foreach (var (candidate, description, _) in checks)
+        foreach (var (candidate, description, isTarget, _) in checks)
         {
-            if (description is null || description.Confidence < task.MinConfidence || !TargetMatcher.Matches(task.Prompt, description.Text))
+            if (!isTarget || description is null)
                 continue;
 
             var position = camera.NormalizedToGeo(candidate.Box.CenterX, candidate.Box.CenterY);
@@ -201,10 +218,90 @@ public sealed class SearchTaskRunner(
         }
     }
 
-    private ObjectDescription? Examined(GeoPoint position)
+    /// <summary>
+    /// A second look at a structure that the first close-up said is the target, at the other end of
+    /// the structure close-up range (30 m if the first was wider, else 40 m): it's the target only if
+    /// this one says so too. Measured on ZoneB's real photo: the false hits changed their answer
+    /// between the two widths (a drainage channel called a road bridge at 40 m, bare cables called an
+    /// electricity pylon at 40 m and a power line at 30 m, a highway a bridge at 30 m and a sign gantry
+    /// at 40 m), while both pylons, the mast and the bridge gave the same answer at both.
+    /// </summary>
+    private async Task<(bool Confirmed, long LatencyMs)> ConfirmStructureAsync(
+        CameraFrame frame, CameraModel camera, FrameHit candidate, double firstMetersAcross, CancellationToken cancellationToken)
+    {
+        var middle = (options.MinStructureZoomWidthMeters + options.MaxStructureZoomWidthMeters) / 2;
+        var width = firstMetersAcross > middle ? options.MinStructureZoomWidthMeters : options.MaxStructureZoomWidthMeters;
+        var (closeUp, metersAcross) = await CloseUpAsync(frame, camera, candidate, width, cancellationToken);
+        var answer = await model.AskAsync(closeUp, DetectionPrompt.DescribeObject(metersAcross), cancellationToken);
+        var second = DetectionParser.ParseWhat(answer.Text);
+        var confirmed = second is not null && second.Confidence >= task.MinConfidence && await IsTargetAsync(second, cancellationToken);
+        if (!confirmed)
+            logger.LogInformation("{Tail}: second look at {Meters:F0} m saw '{Second}', not the target; dropped.",
+                task.TailNumber, metersAcross, second?.Text ?? "?");
+        return (confirmed, answer.LatencyMs);
+    }
+
+    /// <summary>A vehicle by its words (colour and type); anything else by asking the model whether
+    /// what was seen is what the operator means, once per distinct name.</summary>
+    private async Task<bool> IsTargetAsync(ObjectDescription description, CancellationToken cancellationToken)
+    {
+        if (_vehicle)
+            return TargetMatcher.Matches(task.Prompt, description.Text);
+        // No word-match shortcut here: "bridge" is in "road leading onto a bridge".
+        var meant = await MeantAsync(cancellationToken);
+        return await _meansCache.GetOrAdd(description.Text, async seen =>
+        {
+            try
+            {
+                var answer = await model.AskTextAsync(DetectionPrompt.SameKind(task.Prompt, meant, seen), cancellationToken);
+                return DetectionParser.ParseField(answer.Text, "match") == "true";
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning("Couldn't compare '{Seen}' with '{Prompt}': {Message}", seen, task.Prompt, ex.Message);
+                _meansCache.TryRemove(seen, out _);
+                return false;
+            }
+        });
+    }
+
+    /// <summary>What the operator most likely means by a non-vehicle target, asked once per search;
+    /// their own words if the model can't be asked.</summary>
+    private Task<string> MeantAsync(CancellationToken cancellationToken)
+    {
+        if (_meant is { IsCompletedSuccessfully: true } or { IsCompleted: false })
+            return _meant;
+        return _meant = InterpretAsync(cancellationToken);
+    }
+
+    private async Task<string> InterpretAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var answer = await model.AskTextAsync(DetectionPrompt.Interpret(task.Prompt), cancellationToken);
+            var meant = DetectionParser.ParseField(answer.Text, "object");
+            if (!string.IsNullOrWhiteSpace(meant))
+            {
+                logger.LogInformation("{Tail}'s search for '{Prompt}' looks for: {Meant}.", task.TailNumber, task.Prompt, meant);
+                return meant;
+            }
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning("Couldn't interpret '{Prompt}': {Message}", task.Prompt, ex.Message);
+        }
+        return task.Prompt;
+    }
+
+    private (ObjectDescription Description, bool IsTarget)? Examined(GeoPoint position)
     {
         lock (_examined)
-            return _examined.FirstOrDefault(e => GeoProjection.DistanceMeters(e.Position, position) <= options.SameObjectMeters).Description;
+        {
+            foreach (var e in _examined)
+                if (GeoProjection.DistanceMeters(e.Position, position) <= options.SameObjectMeters)
+                    return (e.Description, e.IsTarget);
+            return null;
+        }
     }
 
     /// <summary>
@@ -212,13 +309,16 @@ public sealed class SearchTaskRunner(
     /// payload allows) when the aircraft offers a zoom; otherwise, or if the zoom can't reach it,
     /// the candidate is cropped out of the survey frame and scaled up.
     /// </summary>
-    private async Task<(byte[] Jpeg, double MetersAcross)> CloseUpAsync(CameraFrame frame, CameraModel camera, FrameHit candidate, CancellationToken cancellationToken)
+    private async Task<(byte[] Jpeg, double MetersAcross)> CloseUpAsync(
+        CameraFrame frame, CameraModel camera, FrameHit candidate, double? metersAcross, CancellationToken cancellationToken)
     {
         if (zoom is not null && task.ZoomUrl is { } zoomUrl)
         {
             var box = candidate.Box;
             var sizeMeters = Math.Max((box.X2 - box.X1) / 1000 * camera.GroundWidthMeters, (box.Y2 - box.Y1) / 1000 * camera.GroundHeightMeters);
-            var width = Math.Clamp(sizeMeters * 2.5, options.MinZoomWidthMeters, options.MaxZoomWidthMeters);
+            var width = metersAcross ?? (_vehicle
+                ? Math.Clamp(sizeMeters * 2.5, options.MinZoomWidthMeters, options.MaxZoomWidthMeters)
+                : Math.Clamp(sizeMeters * 1.5, options.MinStructureZoomWidthMeters, options.MaxStructureZoomWidthMeters));
             var center = camera.NormalizedToGeo(box.CenterX, box.CenterY);
             try
             {
@@ -230,8 +330,8 @@ public sealed class SearchTaskRunner(
                 logger.LogDebug("Zoom unavailable for {Tail} ({Message}); cropping the frame instead.", task.TailNumber, ex.Message);
             }
         }
-        var crop = FrameCropper.Crop(frame.Jpeg, candidate.Box, camera.MetersPerPixel, out var metersAcross);
-        return (crop, metersAcross);
+        var crop = FrameCropper.Crop(frame.Jpeg, candidate.Box, camera.MetersPerPixel, out var croppedMeters);
+        return (crop, croppedMeters);
     }
 
     private static async Task Delay(TimeSpan delay, CancellationToken cancellationToken)

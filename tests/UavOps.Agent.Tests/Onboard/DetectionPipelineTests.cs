@@ -123,12 +123,108 @@ public class DetectionPipelineTests
         zoom.Captures.Should().Be(2, "each candidate is zoomed on once; the second frame reuses what was seen");
     }
 
-    private sealed class ScriptedModel(string candidates, Func<bool, string> describe) : IVisionModel
+    [Theory]
+    [InlineData("white van", true)]
+    [InlineData("red cars", true)]
+    [InlineData("black SUV", true)]
+    [InlineData("power grid antenna", false)]
+    [InlineData("road bridge", false)]
+    [InlineData("building", false)]
+    public void TargetKind_TellsVehiclesFromEverythingElse(string target, bool vehicle) =>
+        TargetKind.IsVehicle(target).Should().Be(vehicle);
+
+    [Theory]
+    [InlineData("```json\n{\"what\": \"Electricity pylon\", \"confidence\": 0.95}\n```", "electricity pylon")]
+    [InlineData("{\"what\": \"road bridge\"}", "road bridge")]
+    public void ParseWhat_ReadsAStructureAnswer(string answer, string expected) =>
+        DetectionParser.ParseWhat(answer)!.Text.Should().Be(expected);
+
+    [Fact]
+    public async Task Runner_ForAStructure_DescribesWithoutTheTarget_AndComparesToWhatTheOperatorMeans()
+    {
+        // "power grid antenna": the model reads it as a transmission tower; the close-up at the
+        // centre is an electricity pylon (a match), the other a road sign gantry (not one). Seen
+        // from ZoneB's real photo, where the gantry was taken for the target when the model was
+        // told the target while looking.
+        var telemetry = new FrameTelemetry(3, DateTime.UtcNow, 31.81, 34.66, 4000, 0, 4.7, 1280, 960, "m1");
+        var model = new ScriptedModel(
+            candidates: "[{\"label\": \"tower\", \"bbox_2d\": [480, 480, 520, 520]}, {\"label\": \"frame\", \"bbox_2d\": [100, 100, 160, 160]}]",
+            describe: centre => centre ? "{\"what\": \"electricity pylon\", \"confidence\": 0.95}" : "{\"what\": \"road sign gantry\", \"confidence\": 0.95}",
+            text: question => question.Contains("most likely mean", StringComparison.Ordinal)
+                ? "{\"object\": \"transmission tower\"}"
+                : $"{{\"match\": {(question.Contains("\"electricity pylon\"", StringComparison.Ordinal) ? "true" : "false")}}}");
+        var zoom = new RecordingZoom();
+        var sink = new RecordingSink();
+        var task = new SearchTask("999", "m1", "ZoneB", "power grid antenna", 0.5, "frames", 0, "callback", "zoom");
+        var runner = new SearchTaskRunner(task, null!, model, sink, new DetectionTracker(25), new DetectorOptions(), NullLogger.Instance, zoom);
+
+        await runner.AnalyzeAsync(new CameraFrame(telemetry, [0xFF]), CancellationToken.None);
+
+        var detection = sink.Sent.Should().ContainSingle().Subject;
+        detection.Label.Should().Be("electricity pylon");
+        model.Questions.Should().Contain(q => q.StartsWith("Search target: \"power grid antenna\" (that is, a transmission tower)", StringComparison.Ordinal));
+        model.Questions.Where(q => q.StartsWith("A close-up", StringComparison.Ordinal))
+            .Should().OnlyContain(q => !q.Contains("power grid antenna", StringComparison.Ordinal), "the close-up is described without the target");
+        model.TextQuestions.Count(q => q.Contains("most likely mean", StringComparison.Ordinal)).Should().Be(1, "interpreted once per search");
+        zoom.Widths.Should().OnlyContain(w => w >= new DetectorOptions().MinStructureZoomWidthMeters);
+    }
+
+    [Theory]
+    [InlineData(true, 1)]   // both looks say pylon
+    [InlineData(false, 0)]  // the second look sees a power line: dropped
+    public async Task Runner_ForAStructure_ReportsOnlyWhatASecondLookAtTheOtherWidthConfirms(bool secondAgrees, int reported)
+    {
+        // Bare cables on ZoneB's photo: "electricity pylon" at 40 m across, "power line" at 30 m.
+        var telemetry = new FrameTelemetry(3, DateTime.UtcNow, 31.81, 34.66, 4000, 0, 4.7, 1280, 960, "m1");
+        var zoom = new WidthTaggingZoom();
+        var model = new ScriptedModel(
+            // ~30 m across in a 100 m frame: the first look is 40 m (1.5x, capped), the second 30 m.
+            candidates: "[{\"label\": \"tower\", \"bbox_2d\": [350, 350, 650, 650]}]",
+            describe: wide => wide || secondAgrees ? "{\"what\": \"electricity pylon\", \"confidence\": 0.95}" : "{\"what\": \"power line\", \"confidence\": 0.9}",
+            text: question => question.Contains("most likely mean", StringComparison.Ordinal)
+                ? "{\"object\": \"transmission tower\"}"
+                : $"{{\"match\": {(question.Contains("\"electricity pylon\"", StringComparison.Ordinal) ? "true" : "false")}}}");
+        var sink = new RecordingSink();
+        var task = new SearchTask("999", "m1", "ZoneB", "power grid antenna", 0.5, "frames", 0, "callback", "zoom");
+        var runner = new SearchTaskRunner(task, null!, model, sink, new DetectionTracker(25), new DetectorOptions(), NullLogger.Instance, zoom);
+
+        await runner.AnalyzeAsync(new CameraFrame(telemetry, [0xFF]), CancellationToken.None);
+
+        sink.Sent.Should().HaveCount(reported);
+        var options = new DetectorOptions();
+        zoom.Widths.Should().Equal(options.MaxStructureZoomWidthMeters, options.MinStructureZoomWidthMeters);
+    }
+
+    /// <summary>Close-ups tagged 1 when wider than 35 m, so the model can answer by width.</summary>
+    private sealed class WidthTaggingZoom : IZoomCamera
+    {
+        public List<double> Widths { get; } = [];
+
+        public Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken)
+        {
+            lock (Widths)
+                Widths.Add(widthMeters);
+            return Task.FromResult<byte[]?>([(byte)(widthMeters > 35 ? 1 : 2)]);
+        }
+    }
+
+    private sealed class ScriptedModel(string candidates, Func<bool, string> describe, Func<string, string>? text = null) : IVisionModel
     {
         private int _describes;
+        public List<string> Questions { get; } = [];
+        public List<string> TextQuestions { get; } = [];
+
+        public Task<VisionAnswer> AskTextAsync(string question, CancellationToken cancellationToken)
+        {
+            lock (TextQuestions)
+                TextQuestions.Add(question);
+            return Task.FromResult(new VisionAnswer(text?.Invoke(question) ?? "{}", 3));
+        }
 
         public Task<VisionAnswer> AskAsync(byte[] jpeg, string question, CancellationToken cancellationToken)
         {
+            lock (Questions)
+                Questions.Add(question);
             if (question.StartsWith("Search target", StringComparison.Ordinal))
                 return Task.FromResult(new VisionAnswer(candidates, 10));
             // Zoom images are tagged by RecordingZoom: 1 = the centre candidate.
@@ -142,10 +238,13 @@ public class DetectionPipelineTests
     {
         private int _captures;
         public int Captures => _captures;
+        public List<double> Widths { get; } = [];
 
         public Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken)
         {
             Interlocked.Increment(ref _captures);
+            lock (Widths)
+                Widths.Add(widthMeters);
             var centre = GeoProjection.DistanceMeters(new GeoPoint(lat, lng), new GeoPoint(31.81, 34.66)) < 5;
             return Task.FromResult<byte[]?>([(byte)(centre ? 1 : 2)]);
         }

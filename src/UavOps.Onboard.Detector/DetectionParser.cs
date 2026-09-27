@@ -67,7 +67,29 @@ public static partial class DetectionParser
     }
 
     /// <summary>Reads <c>{"colour", "type", "confidence"}</c>; null if the answer isn't that.</summary>
-    public static ObjectDescription? ParseDescription(string answer)
+    /// <summary>A structure close-up's answer, <c>{"what", "confidence"}</c>, as a description
+    /// with no colour.</summary>
+    public static ObjectDescription? ParseWhat(string answer) =>
+        ReadObject(answer) is { } root && Str(root, "what") is { Length: > 0 } what
+            ? new ObjectDescription("", what.ToLowerInvariant(), Confidence(root))
+            : null;
+
+    /// <summary>The value of <paramref name="field"/> in a JSON object answer: a string, or a bool
+    /// as "true"/"false"; null if it isn't there.</summary>
+    public static string? ParseField(string answer, string field)
+    {
+        if (ReadObject(answer) is not { } root || !root.TryGetProperty(field, out var value))
+            return null;
+        return value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString()!.Trim(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            _ => null
+        };
+    }
+
+    private static JsonElement? ReadObject(string answer)
     {
         var fenced = Fence().Match(answer);
         var text = fenced.Success ? fenced.Groups[1].Value : answer;
@@ -78,23 +100,29 @@ public static partial class DetectionParser
         try
         {
             using var doc = JsonDocument.Parse(text[start..(end + 1)]);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object)
-                return null;
-            string Str(string name) => root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()!.Trim() : "";
-            var colour = Str("colour");
-            if (colour.Length == 0)
-                colour = Str("color");
-            var type = Str("type");
-            if (type.Length == 0)
-                return null;
-            var confidence = root.TryGetProperty("confidence", out var c) && c.ValueKind == JsonValueKind.Number ? Math.Clamp(c.GetDouble(), 0, 1) : 0.5;
-            return new ObjectDescription(colour.ToLowerInvariant(), type.ToLowerInvariant(), confidence);
+            return doc.RootElement.ValueKind == JsonValueKind.Object ? doc.RootElement.Clone() : null;
         }
         catch (JsonException)
         {
             return null;
         }
+    }
+
+    private static string Str(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()!.Trim() : "";
+
+    private static double Confidence(JsonElement root) =>
+        root.TryGetProperty("confidence", out var c) && c.ValueKind == JsonValueKind.Number ? Math.Clamp(c.GetDouble(), 0, 1) : 0.5;
+
+    public static ObjectDescription? ParseDescription(string answer)
+    {
+        if (ReadObject(answer) is not { } root)
+            return null;
+        var colour = Str(root, "colour");
+        if (colour.Length == 0)
+            colour = Str(root, "color");
+        var type = Str(root, "type");
+        return type.Length == 0 ? null : new ObjectDescription(colour.ToLowerInvariant(), type.ToLowerInvariant(), Confidence(root));
     }
 
     private static bool TryBox(JsonElement item, out BoundingBox box)

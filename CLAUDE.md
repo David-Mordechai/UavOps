@@ -956,8 +956,14 @@ in and `DetectionReport` out as before.
   target word by word. Both were measured, not guessed: asked directly for "white van", the model
   boxed white trucks and buses and missed the van; asked for "things like the target" it proposed
   one candidate and stopped (the white pickup 1/5); from crops of the survey frame it named pickups
-  "car" (0/6), from zoom close-ups correctly (6/6). See its README for the numbers and the Jetson
-  notes. These close-ups are the **onboard computer's own payload control** during a search (on a
+  "car" (0/6), from zoom close-ups correctly (6/6). **Anything that isn't a vehicle** (a pylon, a
+  road bridge - `TargetKind`) goes another way, since it has no colour and many names: the model
+  first interprets what the operator means ("power grid antenna" -> transmission tower), names each
+  close-up **without** being told the target (told it, it saw the target in a sign gantry and a
+  road), a text-only question compares that name with the interpretation, and a second close-up at
+  the other width must agree. On ZoneB's real photo it finds both pylons and the overpass with no
+  false hits; the vehicle prompts found none of them. See its README for the numbers and the
+  Jetson notes. These close-ups are the **onboard computer's own payload control** during a search (on a
   real UAV, the Jetson slewing and zooming the payload itself), deliberately not a ground command:
   the rule that the payload moves only by tool (`PointPayload`, `SetPayloadZoom`) is about the
   ground side. Kept because crops of the survey frame measurably misidentified vehicles.

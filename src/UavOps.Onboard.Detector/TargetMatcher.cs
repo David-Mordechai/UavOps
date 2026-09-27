@@ -35,3 +35,21 @@ public static class TargetMatcher
             .Select(w => Synonyms.GetValueOrDefault(w, w))
             .Select(w => w.Length > 3 && w.EndsWith('s') && !w.EndsWith("ss") && !w.EndsWith("us") ? w[..^1] : w);
 }
+
+/// <summary>
+/// Which way a target is searched for. Vehicles keep the colour-first candidates and word-matched
+/// close-ups measured on vehicles (see <see cref="DetectionPrompt"/>); anything else - a pylon, a
+/// bridge, a building - has no colour to filter by and many names for the same thing, so it gets
+/// the structure prompts and a model comparison instead.
+/// </summary>
+public static class TargetKind
+{
+    private static readonly HashSet<string> VehicleWords =
+        ["car", "van", "minivan", "pickup", "truck", "lorry", "bus", "motorcycle", "motorbike", "vehicle", "suv", "jeep", "taxi", "sedan", "hatchback"];
+
+    public static bool IsVehicle(string target) =>
+        target.ToLowerInvariant()
+            .Split([' ', ',', '.', '-', '/', '\t', '\n', '(', ')', '"', '\''], StringSplitOptions.RemoveEmptyEntries)
+            .Select(w => w.Length > 3 && w.EndsWith('s') && !w.EndsWith("ss") && !w.EndsWith("us") ? w[..^1] : w)
+            .Any(VehicleWords.Contains);
+}

@@ -32,6 +32,13 @@ public sealed class DetectorOptions
     public double MinZoomWidthMeters { get; set; } = 14;
     public double MaxZoomWidthMeters { get; set; } = 40;
 
+    /// <summary>For a structure (not a vehicle): 1.5× its size, within these bounds. Kept small on
+    /// purpose, measured on ZoneB's real photo: at 30-40 m across the model named pylons, a sign
+    /// gantry and a road bridge (seen in part) right; at 100-180 m it named whatever stood out in
+    /// view instead - both pylons and the gantry became "road bridge".</summary>
+    public double MinStructureZoomWidthMeters { get; set; } = 30;
+    public double MaxStructureZoomWidthMeters { get; set; } = 40;
+
     /// <summary>Close-up size asked of the zoom. A vehicle still fills ~120 px at 320, and the
     /// model's image cost grows with pixels.</summary>
     public int ZoomPixels { get; set; } = 320;

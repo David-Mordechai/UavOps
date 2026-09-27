@@ -13,6 +13,9 @@ public sealed record VisionAnswer(string Text, long LatencyMs);
 public interface IVisionModel
 {
     Task<VisionAnswer> AskAsync(byte[] jpeg, string question, CancellationToken cancellationToken);
+
+    /// <summary>A question with no image (interpreting and comparing names).</summary>
+    Task<VisionAnswer> AskTextAsync(string question, CancellationToken cancellationToken);
 }
 
 /// <summary>
@@ -23,30 +26,36 @@ public interface IVisionModel
 /// </summary>
 public sealed class OpenAiVisionModel(HttpClient http, VlmOptions options) : IVisionModel
 {
-    public async Task<VisionAnswer> AskAsync(byte[] jpeg, string question, CancellationToken cancellationToken)
+    public Task<VisionAnswer> AskAsync(byte[] jpeg, string question, CancellationToken cancellationToken) =>
+        SendAsync(new JsonArray
+        {
+            new JsonObject { ["role"] = "system", ["content"] = DetectionPrompt.System },
+            new JsonObject
+            {
+                ["role"] = "user",
+                ["content"] = new JsonArray
+                {
+                    new JsonObject
+                    {
+                        ["type"] = "image_url",
+                        ["image_url"] = new JsonObject { ["url"] = "data:image/jpeg;base64," + Convert.ToBase64String(jpeg) }
+                    },
+                    new JsonObject { ["type"] = "text", ["text"] = question }
+                }
+            }
+        }, cancellationToken);
+
+    public Task<VisionAnswer> AskTextAsync(string question, CancellationToken cancellationToken) =>
+        SendAsync(new JsonArray { new JsonObject { ["role"] = "user", ["content"] = question } }, cancellationToken);
+
+    private async Task<VisionAnswer> SendAsync(JsonArray messages, CancellationToken cancellationToken)
     {
         var body = new JsonObject
         {
             ["model"] = options.Model,
             ["temperature"] = 0,
             ["max_tokens"] = options.MaxTokens,
-            ["messages"] = new JsonArray
-            {
-                new JsonObject { ["role"] = "system", ["content"] = DetectionPrompt.System },
-                new JsonObject
-                {
-                    ["role"] = "user",
-                    ["content"] = new JsonArray
-                    {
-                        new JsonObject
-                        {
-                            ["type"] = "image_url",
-                            ["image_url"] = new JsonObject { ["url"] = "data:image/jpeg;base64," + Convert.ToBase64String(jpeg) }
-                        },
-                        new JsonObject { ["type"] = "text", ["text"] = question }
-                    }
-                }
-            }
+            ["messages"] = messages
         };
         if (options.DisableThinking)
             body["chat_template_kwargs"] = new JsonObject { ["enable_thinking"] = false };
@@ -129,4 +138,57 @@ public static class DetectionPrompt
             "a short hood, a windshield and one long flat roof to the back; a pickup (about 5.3 m) a short cab and, behind it, an open cargo bed - a dark tray between light side walls, about a third of its length; a truck (8 m or " +
             "more) a cab and a long cargo box; a bus (about 12 m) one long roof. For anything else, a short noun.\n" +
             "Answer with JSON only: {\"colour\": \"...\", \"type\": \"...\", \"confidence\": 0.0-1.0}";
+
+    // ---- Anything that isn't a vehicle (a pylon, a bridge, a building): see TargetKind ----
+    // Measured on Route 443's real photo (ZoneB) with the GX10's Qwen3.6. Told the target while
+    // looking at a close-up, the model called a road sign gantry both a "power grid antenna" and a
+    // "road bridge", and a plain road a "road bridge" - it saw what it was told to look for. Asked
+    // what the object is without the target, it named all six test spots right (electricity pylon
+    // x2, road bridge, road sign gantry, car x2). Comparing that name to the operator's words is then
+    // a question with no image: taken literally ("is an electricity pylon a power grid antenna?")
+    // it said no, so the operator's words are first interpreted as the object they most likely mean
+    // (Interpret: "power grid antenna" -> "transmission tower") and names are compared to that
+    // (SameKind). A first live run over ZoneB found both real pylons and a mast, and also took the
+    // pylons' "power line" cables for the target; with the connected-things rule, 131/132 right over
+    // 11 phrasings x 12 seen objects ("cell tower" and cables included, correctly no match; the one
+    // miss: "bridge" vs "road leading onto a bridge").
+    // From straight above, a stretch of highway reads as a bridge: a live "road bridges" search
+    // reported the real overpass and three stretches of road. DescribeObject therefore says what a
+    // bridge is, and a structure needs two close-ups to agree (SearchTaskRunner.ConfirmStructureAsync).
+    // Scored on 15 spots of ZoneB checked by eye (2 pylons, a mast, 2 points on the overpass, and 10
+    // look-alikes: cables, a drainage channel, highway, road, a photo seam, a sign gantry...): both
+    // pylons and the overpass found, 0 false hits (without the bridge sentence: 1 false hit).
+
+    /// <summary>Once per search: what the operator most likely means, by its usual name.</summary>
+    public static string Interpret(string target) =>
+        $"A UAV operator asked its camera to find: \"{target}\". Operators use loose, informal names. What object do they " +
+        "most likely mean, by its usual specific name, as it would be seen on the ground from above? Keep any colour they " +
+        "gave. Answer with JSON only: {\"object\": \"<usual specific name>\"}";
+
+    /// <summary>First pass for a structure: anything that could be it, of any colour; a large one
+    /// may run off the frame.</summary>
+    public static string StructureCandidates(string target, string meant) =>
+        $"Search target: \"{target}\" (that is, a {meant}).\n" +
+        "This is the first pass of a two-pass search. List EVERY object in this frame that could be the search target, or " +
+        "part of one (a large structure may extend beyond the frame edge) - each is checked up close afterwards, so when in " +
+        "doubt include it. Leave out things that clearly are something else.\n" +
+        "Answer with a JSON array only, no other text: [{\"label\": \"<what it is>\", \"bbox_2d\": [x1, y1, x2, y2]}] " +
+        "with coordinates normalized to 0-1000 (x to the right, y down); [] if there is none.";
+
+    /// <summary>Second pass for a structure: what it is, without being told the target.</summary>
+    public static string DescribeObject(double metersAcross) =>
+        "A close-up of one spot from the payload camera, looking straight down; this image is " +
+        metersAcross.ToString("F0", CultureInfo.InvariantCulture) + " m across. What is the object or structure at the " +
+        "centre? Be specific about what it is for (e.g. a road sign gantry, an electricity pylon, a road bridge, a building, " +
+        "a car). A road bridge carries a road over something else - another road, a river, a valley - that you can see " +
+        "passing under it; a road on the ground, a wall or a kerb is not a bridge. " +
+        "Answer with JSON only: {\"what\": \"<short specific noun phrase>\", \"confidence\": 0.0-1.0}";
+
+    /// <summary>With no image: is what was seen the object the operator means?</summary>
+    public static string SameKind(string target, string meant, string seen) =>
+        $"A UAV operator is searching for \"{target}\", meaning: \"{meant}\". The onboard camera saw: \"{seen}\".\n" +
+        "Is what was seen that object - the same kind of thing, judged by what it is and what it is for, not by the exact " +
+        "words? Something that only looks similar, or a different thing next to it or connected to it (such as the cables " +
+        "strung from a tower, or the road leading onto a bridge), is not a match. " +
+        "Answer with JSON only: {\"match\": true/false}";
 }
