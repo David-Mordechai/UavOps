@@ -11,9 +11,14 @@ serverInstructions: |
     datalink equipment - GetLinkStatus/SetTrackingMode are placeholder mock tools today.
 
   AOI search missions:
-  - 'Search zone X for Y' / 'enter AOI zone X and search for Y' is PrepareAoiSearch, one call. It
-    only prepares; call StartMission only once the operator says to start, and never ask them
-    whether to start.
+  - 'Search zone X for Y' / 'enter AOI zone X and search for Y' is PrepareAoiSearch, one call - also
+    with several UAVs ('send 998 and 999 to search ZoneA for a red car'): every UAV goes in that
+    one call, and the zone is split between them. It only prepares; call StartMission only once
+    the operator says to start, and never ask them whether to start.
+  - PrepareAoiSearch's tailNumbers is always a list of real tail numbers, never 'ALL' (the 'ALL'
+    rules below are for tailNumber only). For 'all UAVs' / 'the whole fleet', call ListFleet and
+    list every tail number it returns. No UAV named: call it with an empty list; the tool asks the
+    operator which UAV (this replaces asking in text).
   - When the UAV's onboard agent spots the target, the operator gets a message with its location
     automatically; never claim something was found unless such a message said so.
 
@@ -274,8 +279,10 @@ tools:
   # ask to start) is the worst case for this model: in live testing it reliably makes the first
   # call of a multi-call request and drops the rest (6/8 failures on "bring the rest home"). The
   # granular tools below stay for piecemeal requests ("tell 997 to look for a red car").
-  # tailNumber is single-UAV on every mission tool: an 'ALL' fan-out would send the same route over
-  # the same zone to every UAV. Zone parameters are named zoneName, never location, so
+  # tailNumber is single-UAV on every other mission tool: an 'ALL' fan-out would send the same
+  # route over the same zone to every UAV. PrepareAoiSearch instead takes tailNumbers, a JSON
+  # array the host grounds and passes through in ONE call (TailNumbersGroundingTool, no fan-out),
+  # so McpMoav can split the zone between them. Zone parameters are named zoneName, never location, so
   # LocationCanonicalizationTool (keyed on a 'location' property) leaves them alone.
   # The operator's own "start the mission" is the one approval: StartMission is not destructive
   # (no ConfirmationGate prompt) and the model never asks "Start the mission?" either. Having both
@@ -285,26 +292,33 @@ tools:
 
   - operation: PrepareAoiSearch
     description: >-
-      Prepare one UAV to search a named AOI zone for something: plans a search route covering the
-      zone, zooms the UAV's payload camera for the search, uploads the route to the UAV, and tells
-      the UAV's onboard agent what to look for. The route is flown at the UAV's current altitude. Use for
-      requests like 'enter AOI zone ZoneA and search for a white van' or 'search zone B for a red
-      car'. It does NOT start flying; StartMission does that, only once the operator says to start
-      - never ask whether to start. 'Enter a zone' here means search it - do not use Navigate for a
-      zone name; Navigate only flies to a known point like 'alpha'.
+      Prepare one or more UAVs to search a named AOI zone for something: plans search routes
+      covering the zone (split between the UAVs when there are several, so each searches its own
+      part), zooms each UAV's payload camera for the search, uploads each route, and tells each
+      UAV's onboard agent what to look for. Each UAV keeps its current altitude. Use for requests
+      like 'enter AOI zone ZoneA and search for a white van', 'search zone B for a red car', or
+      'send 998 and 999 to search ZoneA for a red car'. It does NOT start flying; StartMission
+      does that, only once the operator says to start - never ask whether to start. 'Enter a zone'
+      or 'send UAVs to search a zone' means this tool - do not use Navigate for a zone name;
+      Navigate only flies to a known point like 'alpha'.
     destructive: false
     parameters:
       # "Call it now even if no UAV was named": the operator's usual phrasing names no UAV, and
       # retrieval doesn't offer ListFleet for it (nothing in "Enter AOI zone ZoneA and search for
       # white van" is about UAVs). Live-reproduced 2/8 under load: the model said "first, let me
       # check which UAVs are available", had no ListFleet to call, and ended the turn with nothing
-      # prepared. TailNumberDisambiguationTool asks the operator before anything runs, so calling
-      # with a known tail number here is safe.
-      tailNumber: >-
-        The tail number of the ONE UAV to search with, e.g. '997' - never 'ALL' or several UAVs:
-        each search route is for a single UAV. If the operator didn't name a UAV, call this tool
-        right away anyway with any UAV's tail number you know: the operator is asked which UAV to
-        use before anything happens. Don't stop to list the fleet first.
+      # prepared. With a list, "call it with any UAV you know" stopped working (the model asked
+      # "Which UAV?" in text, AoiSearchMissionLiveTests 6/8 alone), so an empty list now means
+      # "not named": the host asks the operator which UAV (TailNumbersGroundingTool).
+      # A list, not a comma-separated string, and never 'ALL' (operator's decision, 2026-09-29):
+      # the model works out which UAVs were meant (ListFleet for 'all'); the host only checks the
+      # list against the fleet and the operator's words (TailNumbersGroundingTool).
+      tailNumbers: >-
+        The UAVs to search with, as a list of real tail numbers: ['997'] for one UAV,
+        ['998', '999'] for several - all in this ONE call, never one call per UAV. If the operator
+        didn't name any UAV, call this tool right away with an empty list []: the operator is then
+        asked which UAV to use - don't ask in text or list the fleet first. Never 'ALL': for
+        'all UAVs' call ListFleet and list them.
       zoneName: >-
         Name of the AOI zone to search, as the operator said it, e.g. 'ZoneA'. Call ListAoiZones
         if you need the valid names.

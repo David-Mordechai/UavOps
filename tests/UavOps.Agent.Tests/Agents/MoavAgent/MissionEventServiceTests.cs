@@ -171,6 +171,80 @@ public class MissionEventServiceTests
         _notifier.Posted.Should().BeEmpty();
         _notifier.HistoryNotes.Should().ContainSingle();
     }
+
+    // ----- Team searches: one zone split between 997 (mission a) and 998 (mission b) -----
+
+    private void RememberTeam() => _sut.RememberTeam("t1", [("997", "a"), ("998", "b")]);
+
+    private static DetectionReport Car(string tail, string missionId, double lat = 31.81234) =>
+        new(tail, missionId, "ZoneA", "red car", "car", 0.9, lat, 34.66123, DateTime.UtcNow, "t");
+
+    [Fact]
+    public async Task Team_TheSameObjectSeenByTwoMembers_IsReportedOnce()
+    {
+        RememberTeam();
+
+        (await _sut.HandleDetectionAsync(Car("997", "a"))).Should().BeTrue();
+        (await _sut.HandleDetectionAsync(Car("998", "b"))).Should().BeFalse();
+
+        _notifier.Posted.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Team_TheIndividualMessagesAreCountedPerTeam_NotPerUav()
+    {
+        RememberTeam();
+
+        // Four different cars (~300 m apart), two per UAV: the first 3 of the TEAM are posted.
+        await _sut.HandleDetectionAsync(Car("997", "a", 31.810));
+        await _sut.HandleDetectionAsync(Car("998", "b", 31.813));
+        await _sut.HandleDetectionAsync(Car("997", "a", 31.816));
+        await _sut.HandleDetectionAsync(Car("998", "b", 31.819));
+
+        _notifier.Posted.Should().HaveCount(3);
+        _notifier.Voices.Select(v => v!.Group).Should().AllBe("detections:team:t1");
+    }
+
+    [Fact]
+    public async Task Team_AMemberFinishingFirst_GetsAShortMessage_AndTheLastOneTheTeamSummary()
+    {
+        RememberTeam();
+        await _sut.HandleDetectionAsync(Car("998", "b"));
+
+        await _sut.HandleMissionEventAsync(new MissionEventReport("997", "a", "ZoneA", MissionEventKinds.Completed));
+        _notifier.Posted.Select(p => p.Message).Last().Should().Be("997 finished its part of the ZoneA search; 998 is still searching.");
+
+        await _sut.HandleMissionEventAsync(new MissionEventReport("998", "b", "ZoneA", MissionEventKinds.Completed));
+        _notifier.Posted.Select(p => p.Message).Last().Should().Be(
+            "The team search of ZoneA (997 and 998) finished - 1 detection of red car, the last at 31.81234, 34.66123.");
+    }
+
+    [Fact]
+    public async Task Team_AMemberThatStoppedEarly_IsANoteThen_TheSummarySaysItsPartWasNotFinished()
+    {
+        _sut.RememberTeam("t1", [("997", "a"), ("998", "b")]);
+        _sut.RememberSearchTarget(new SearchTargetRequest("b", "ZoneA", "red car", 0.5));
+
+        await _sut.HandleMissionEventAsync(new MissionEventReport("997", "a", "ZoneA", MissionEventKinds.Aborted));
+        _notifier.Posted.Should().BeEmpty();
+        _notifier.HistoryNotes.Should().ContainSingle().Which.Note.Should().Contain("not fully searched").And.Contain("Nothing was re-planned");
+
+        await _sut.HandleMissionEventAsync(new MissionEventReport("998", "b", "ZoneA", MissionEventKinds.Completed));
+        _notifier.Posted.Should().ContainSingle().Which.Message.Should().Be(
+            "The team search of ZoneA (997 and 998) finished - no red car found. 997's part was not finished, so the zone is not fully searched.");
+    }
+
+    [Fact]
+    public async Task Team_EveryMemberStoppedEarly_OnlyNotesIt()
+    {
+        RememberTeam();
+
+        await _sut.HandleMissionEventAsync(new MissionEventReport("997", "a", "ZoneA", MissionEventKinds.Aborted));
+        await _sut.HandleMissionEventAsync(new MissionEventReport("998", "b", "ZoneA", MissionEventKinds.Aborted));
+
+        _notifier.Posted.Should().BeEmpty();
+        _notifier.HistoryNotes.Should().HaveCount(2);
+    }
 }
 
 /// <summary>Records what McpMoav would have posted to the host.</summary>

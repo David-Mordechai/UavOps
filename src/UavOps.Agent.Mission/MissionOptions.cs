@@ -17,6 +17,13 @@ public sealed class MissionOptions
     public double SideOverlap { get; set; } = 0.2;
     public int MaxWaypoints { get; set; } = 300;
 
+    /// <summary>The most UAVs one search can split a zone between.</summary>
+    public int MaxTeamSize { get; set; } = 6;
+
+    /// <summary>Team members searching at altitudes closer than this are pointed out to the
+    /// operator (their strips are side by side). A search never changes anyone's altitude.</summary>
+    public int TeamAltitudeSeparationFt { get; set; } = 200;
+
     /// <summary>Used for the route's time estimate when the UAV reports no speed.</summary>
     public double DefaultSpeedKts { get; set; } = 100;
 

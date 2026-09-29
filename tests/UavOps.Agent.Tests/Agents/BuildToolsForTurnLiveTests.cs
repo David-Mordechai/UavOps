@@ -38,6 +38,11 @@ public class BuildToolsForTurnLiveTests(ITestOutputHelper output)
             // AOI search: "enter" must not leave the composite tool behind Navigate.
             ("Enter AOI zone ZoneA and search for white van", "PrepareAoiSearch"),
             ("start the mission", "StartMission"),
+            // Team search: "send" must not leave the search behind Navigate, and "all UAVs" needs
+            // ListFleet offered too - PrepareAoiSearch takes real tail numbers, never 'ALL'.
+            ("send 998 and 999 to search for a red car in ZoneA", "PrepareAoiSearch"),
+            ("search ZoneA for a red car with all UAVs", "PrepareAoiSearch"),
+            ("search ZoneA for a red car with all UAVs", "ListFleet"),
         };
 
         foreach (var (text, expectedTool) in cases)

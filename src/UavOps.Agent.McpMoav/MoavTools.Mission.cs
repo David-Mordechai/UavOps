@@ -16,6 +16,12 @@ public static partial class MoavTools
 {
     private static readonly JsonSerializerOptions ReadValueOptions = new(JsonSerializerDefaults.Web);
 
+    private static readonly JsonSerializerOptions TeamResultOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+    };
+
     public static async Task<string> ListAoiZones(IAoiZoneStore zones, CancellationToken cancellationToken)
     {
         var all = await zones.ListAsync(cancellationToken);
@@ -89,7 +95,190 @@ public static partial class MoavTools
         return ToResultText(result);
     }
 
+    /// <summary>
+    /// Prepares one UAV, or a team, to search a zone: zooms each payload for the search, plans,
+    /// uploads each UAV's route and sets its target. Never starts. A team splits the zone
+    /// (<see cref="SearchRoutePlanner.PlanTeam"/>): one call with every UAV, since one call per UAV
+    /// would plan the whole zone for each. The list is always real tail numbers; which UAVs the
+    /// operator meant is the model's call, grounded by the host before this runs.
+    /// </summary>
     public static async Task<string> PrepareAoiSearch(
+        IOperationService moav,
+        IAoiZoneStore zones,
+        IRouteStore routes,
+        MissionOptions options,
+        MissionEventService missionEvents,
+        string[] tailNumbers,
+        string zoneName,
+        string targetDescription,
+        CancellationToken cancellationToken)
+    {
+        var tails = (tailNumbers ?? [])
+            .Select(t => t?.Trim() ?? "")
+            .Where(t => t.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (tails.Count == 0)
+            return "Error: No UAV given. Pass the tail numbers of the UAVs to search with.";
+        if (tails.Any(t => string.Equals(t, "ALL", StringComparison.OrdinalIgnoreCase)))
+            return "Error: 'ALL' is not a tail number. Call ListFleet and pass every UAV's tail number. Nothing was sent to any UAV.";
+        if (tails.Count > options.MaxTeamSize)
+            return $"Error: A search team is at most {options.MaxTeamSize} UAVs. Nothing was sent to any UAV.";
+        if (tails.Count == 1)
+            return await PrepareSingleSearchAsync(moav, zones, routes, options, missionEvents, tails[0], zoneName, targetDescription, cancellationToken);
+
+        // Everything that can fail without touching a UAV is checked first: telemetry, the zone,
+        // and each UAV's search zoom.
+        var zone = await zones.GetAsync(zoneName, cancellationToken);
+        if (zone is null)
+            return await UnknownZoneAsync(zones, zoneName, cancellationToken);
+        var before = new List<(string Tail, TelemetrySnapshot Telemetry, double Zoom)>();
+        foreach (var tail in tails)
+        {
+            var telemetry = await TelemetryAsync(moav, tail, cancellationToken);
+            if (telemetry.Error is not null)
+                return $"{telemetry.Error} ({tail}.) Nothing was sent to any UAV.";
+            var zoom = SearchZoom(telemetry.Value!, options);
+            if (zoom.Error is not null)
+                return $"{zoom.Error} ({tail}.) Nothing was sent to any UAV.";
+            before.Add((tail, telemetry.Value!, zoom.Value));
+        }
+
+        // Who takes part is decided before any payload moves, from where each UAV is and the
+        // ground width the search zooms to: a UAV that would only slow the team (too far away) is
+        // left out and its camera left alone.
+        var members = before.Select(b => new SearchTeamMember(
+            b.Tail,
+            new GeoPoint(b.Telemetry.Lat, b.Telemetry.Lng),
+            b.Telemetry.AltitudeFt,
+            b.Telemetry.SpeedKts > 0 ? b.Telemetry.SpeedKts : options.DefaultSpeedKts)).ToList();
+        List<string> taking;
+        List<string> leftOut;
+        try
+        {
+            var expected = SearchRoutePlanner.PlanTeam(zone, members, options.SearchGroundWidthMeters * (1 - options.SideOverlap), options.MaxWaypoints);
+            taking = tails.Where(t => expected.Routes.Any(r => r.TailNumber == t)).ToList();
+            leftOut = expected.UnusedTails.ToList();
+        }
+        catch (SearchPlanException ex)
+        {
+            return $"Error: {ex.Message} Nothing was sent to any UAV.";
+        }
+
+        var zoomed = new List<(string Tail, TelemetrySnapshot Telemetry)>();
+        foreach (var (tail, _, zoom) in before.Where(b => taking.Contains(b.Tail)))
+        {
+            var result = await ReadTelemetryAsync(await moav.SetPayloadZoom(tail, zoom, cancellationToken));
+            if (result.Error is not null)
+                return $"{result.Error} (Setting {tail}'s payload zoom failed; nothing was planned or started" +
+                       $"{(zoomed.Count > 0 ? $", though {string.Join(" and ", zoomed.Select(z => z.Tail))} already zoomed in" : "")}.)";
+            zoomed.Add((tail, result.Value!));
+        }
+
+        // One set of lanes for the whole team, spaced for the narrowest footprint the payloads
+        // actually took, so every UAV's strip is fully seen. Each UAV keeps its own altitude.
+        var spacing = zoomed.Min(z => new SearchPlanParameters(z.Telemetry.AltitudeFt, z.Telemetry.PayloadHfovDeg, options.SideOverlap,
+            options.MaxWaypoints, options.DefaultSpeedKts).LaneSpacingMeters);
+        TeamSearchPlan plan;
+        try
+        {
+            plan = SearchRoutePlanner.PlanTeam(zone, members.Where(m => taking.Contains(m.TailNumber)).ToList(), spacing, options.MaxWaypoints);
+        }
+        catch (SearchPlanException ex)
+        {
+            return $"Error: {ex.Message} Nothing was uploaded or started.";
+        }
+        leftOut.AddRange(plan.UnusedTails);
+        // Reported in the order the UAVs were given, not the order of their strips.
+        var planned = plan.Routes.OrderBy(r => tails.IndexOf(r.TailNumber)).ToList();
+        foreach (var route in planned)
+            routes.Save(route);
+        if (planned.Count > 1)
+            missionEvents.RememberTeam(plan.TeamId, planned.Select(r => (r.TailNumber, r.RouteId)).ToList());
+
+        var ready = new List<object>();
+        var readyTails = new List<string>();
+        var failed = new List<string>();
+        foreach (var route in planned)
+        {
+            var uploaded = await UploadAsync(moav, routes, route.TailNumber, cancellationToken);
+            if (uploaded.Error is not null)
+            {
+                failed.Add($"{route.TailNumber}: the route didn't upload ({uploaded.Error})");
+                continue;
+            }
+            var target = await SetTargetAsync(moav, routes, options, missionEvents, route.TailNumber, targetDescription, cancellationToken);
+            if (!target.Success)
+            {
+                failed.Add($"{route.TailNumber}: the route was uploaded but setting the search target failed ({target.ErrorMessage})");
+                continue;
+            }
+            var telemetry = zoomed.Single(z => z.Tail == route.TailNumber).Telemetry;
+            var transit = GeoProjection.DistanceMeters(new GeoPoint(telemetry.Lat, telemetry.Lng), route.Waypoints[0]);
+            var speed = Math.Max(members.Single(m => m.TailNumber == route.TailNumber).SpeedKts, 1) * SearchPlanParameters.MetersPerSecondPerKnot;
+            readyTails.Add(route.TailNumber);
+            ready.Add(new
+            {
+                route.TailNumber,
+                route.LaneCount,
+                waypointsUploaded = route.Waypoints.Count,
+                route.AltitudeFt,
+                payloadZoom = telemetry.PayloadZoom,
+                lengthKm = Math.Round(route.LengthMeters / 1000, 1),
+                estimatedMinutesUntilDone = Math.Round((transit / speed + route.EstimatedDuration.TotalSeconds) / 60, 1)
+            });
+        }
+
+        // What the operator must hear goes into nextStep itself, word for word: a separate
+        // "mention this" field was dropped from the reply in the live demo.
+        var laneTotal = plan.Routes.Sum(r => r.LaneCount);
+        var notUsed = leftOut.Count == 0
+            ? null
+            : $"{JoinAnd(leftOut)} {(leftOut.Count == 1 ? "was" : "were")} left out of the search: " +
+              (laneTotal < taking.Count + leftOut.Count && plan.UnusedTails.Count > 0
+                  ? $"the zone has only {laneTotal} search lanes."
+                  : $"{(leftOut.Count == 1 ? "it is" : "they are")} too far away - the other UAVs finish the zone sooner without {(leftOut.Count == 1 ? "it" : "them")}.");
+        var altitudeNote = CloseAltitudes(planned, options.TeamAltitudeSeparationFt);
+        var mustSay = string.Join(" ", new[] { notUsed, altitudeNote }.Where(n => n is not null));
+        return JsonSerializer.Serialize(new
+        {
+            zoneName = zone.Name,
+            searchTarget = targetDescription,
+            teamSearch = planned.Count > 1,
+            zoneSplitBetween = ready,
+            notReady = failed.Count > 0 ? failed : null,
+            notUsed,
+            altitudeNote,
+            started = false,
+            nextStep = readyTails.Count == 0
+                ? "Nothing is ready; tell the operator what failed."
+                : $"Tell the operator the search is ready for {JoinAnd(readyTails)}{(failed.Count > 0 ? ", and what failed for the others" : "")}" +
+                  $"{(mustSay.Length > 0 ? $", and also tell them: \"{mustSay}\"" : "")}. " +
+                  $"Don't ask whether to start: when the operator says to start, call StartMission once with tailNumber '{string.Join(",", readyTails)}'."
+        }, TeamResultOptions);
+    }
+
+    /// <summary>"998", "998 and 999", "997, 998 and 999".</summary>
+    private static string JoinAnd(IReadOnlyList<string> items) =>
+        items.Count <= 1 ? string.Join("", items) : string.Join(", ", items.Take(items.Count - 1)) + " and " + items[^1];
+
+    /// <summary>UAVs searching neighbouring strips within <paramref name="separationFt"/> of each
+    /// other's altitude. Altitudes are never changed for a search; the operator is told instead.</summary>
+    private static string? CloseAltitudes(IReadOnlyList<SearchRoute> routes, int separationFt)
+    {
+        var close = new List<string>();
+        for (var i = 0; i < routes.Count; i++)
+        for (var j = i + 1; j < routes.Count; j++)
+        {
+            if (Math.Abs(routes[i].AltitudeFt - routes[j].AltitudeFt) < separationFt)
+                close.Add($"{routes[i].TailNumber} ({routes[i].AltitudeFt} ft) and {routes[j].TailNumber} ({routes[j].AltitudeFt} ft)");
+        }
+        return close.Count == 0
+            ? null
+            : $"{string.Join("; ", close)} search at altitudes less than {separationFt} ft apart, side by side; their altitudes were not changed.";
+    }
+
+    private static async Task<string> PrepareSingleSearchAsync(
         IOperationService moav,
         IAoiZoneStore zones,
         IRouteStore routes,

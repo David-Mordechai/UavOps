@@ -1,0 +1,214 @@
+STATUS (2026-09-29): DONE (see CLAUDE.md "Team searches" for as-built). Was: IN PROGRESS. Open questions answered: 1 = option A (report the unsearched
+part only, no re-planning); 2 = keep each UAV's altitude as is (flag close altitudes only).
+Branch when written: aoi-search-missions.
+
+# Team AOI search: "send 998 and 999 to search for a red car in ZoneA"
+
+## Context
+Today a search is for one UAV. PrepareAoiSearch's tailNumber is "never ALL or several UAVs", and if
+the model passes "998,999" anyway, the host's TailNumberDisambiguationTool fans out one call per UAV.
+Each call then plans a lawnmower over the WHOLE zone, so both UAVs fly the same lanes. That's twice
+the work, not a team.
+
+The goal: one command splits the zone between the named UAVs. Each UAV gets its own route over its
+own part, sized so they all finish at about the same time. Detections from any member are reported
+once. When everyone is done, the operator gets one summary.
+
+What doesn't change:
+- The wire contract (FleetClient, ChatHub.Relay*, SearchTargetRequest, DetectionReport). Each UAV
+  still gets an ordinary UploadWaypoints + SetSearchTarget + StartMission. The team exists only on
+  the ground, in McpMoav.
+- UavOps.Simulator and UavOps.Onboard.Detector. They already handle several UAVs searching at once:
+  SimFleet works per UAV, and the detector runs one task per tail.
+- The rule that the aircraft changes altitude only when a command says so.
+- The single-UAV search path. A team of one must give exactly today's route.
+
+## 1. Planner: split one sweep between N UAVs (src/UavOps.Agent.Mission)
+Refactor SearchRoutePlanner.Plan into two steps:
+  a. BuildLanes(zone, spacing) -> the rotated frame plus lanes and segments (today's steps 1-4).
+  b. ChainBand(lanes subset, uav position) -> a route (today's Variants/Chain, restricted to a band).
+
+New: `SearchRoutePlanner.PlanTeam(zone, members, spacing, overlap, maxWaypoints)`, where each member
+is (tail, position, altitudeFt, speedKts). It returns `TeamSearchPlan(TeamId, ZoneName, Routes,
+UnusedTails)`.
+- **One lane set for the whole team.** Every member searches with the zoom that makes its frame
+  about SearchGroundWidthMeters (100 m) across, so footprints are nearly equal. Lane spacing is the
+  smallest member's footprint times (1 - overlap), so coverage holds for every member.
+- **Bands are contiguous runs of lanes.** Split along the minimum-width direction and each part is a
+  simple strip: the boundary between two UAVs is one lane gap, so there are no holes and no double
+  coverage. Concave zones need nothing special: a band can hold several segments per lane, and
+  Chain already handles that.
+- **Balance by finish time, not by area.** A member's finish time is (transit from where it is now
+  to its band's entry + its band's path length) / its speed. Choose the cut points and the
+  UAV-to-band assignment that minimise the latest finish. Brute force is enough at this size:
+  N! assignments (6 for 3 UAVs) x cut positions (tens of lanes). This makes the UAV nearest a band
+  take it, and gives a faster or closer UAV more lanes.
+- **More UAVs than lanes:** the extras aren't used. They're listed in UnusedTails, and the tool says
+  so.
+- **MaxWaypoints** is checked per route. A team can cover a zone that one UAV can't.
+- Route ids are `{zone}-{team6}-{tail}`. The team id is shared by every member.
+- **Team of one:** PlanTeam with one member must give exactly today's Plan. Plan becomes a thin call
+  to it, so the existing planner tests keep guarding the single-UAV path.
+
+## 2. McpMoav tool: PrepareAoiSearch takes a set of UAVs
+Decided (operator, 2026-09-29): ONE tool, called ONCE, with `tailNumber` replaced by a real list
+parameter `string[] tailNumbers`. The JSON schema says `type: array`, e.g. ["997"] or
+["998","999"]. It is not a comma-separated string.
+Always real tail numbers, never an "ALL" sentinel (operator, 2026-09-29). Working out which UAVs the
+operator meant is the agent's job. For "all UAVs" / "the whole fleet", it calls ListFleet and passes
+every tail it returns. One UAV is a list of one. With an array, the schema itself tells the model that
+this tool takes the whole set in one call, and it has no single-UAV value to "loop" over. A comma
+string relies on the description alone, and it looks like a single value.
+Rejected alternative: a second PrepareTeamAoiSearch. The model would have to choose between two
+near-identical tools on every search. Worse, picking the single one with "998,999" silently fans
+out into two full-zone sweeps, which is the bug this plan fixes.
+
+Flow (MoavTools.Mission.cs):
+1. Get every member's telemetry. If any member fails, stop before anything is sent.
+2. Zoom each member (SearchZoom, per UAV, same as today), and read back its reported HFOV and zoom.
+3. PlanTeam. Save each route in IRouteStore (still per tail), and save the team in a new
+   ITeamSearchStore: team id, zone, target, members.
+4. Upload each route, then set the target on each. Each member gets its own SearchTargetRequest
+   (its own mission id), and MissionEventService.RememberSearchTarget records the team id with it.
+5. Result: per UAV, its part (lanes, length, minutes) plus estimated team time. Also list any unused
+   UAVs and flag members flying within `Mission:TeamAltitudeSeparationFt` (default 200) of each
+   other. Their bands are adjacent and they fly at their own current altitudes, so the operator
+   should know. Altitudes are never changed automatically.
+   nextStep: "Tell the operator the search is ready. When the operator says start, call
+   StartMission ONCE with tailNumber '998,999'." (StartMission's existing subset fan-out already
+   starts each member.)
+6. Partial failure (e.g. upload fails on 999 after 998 succeeded): nothing is started. The result
+   says exactly which UAVs are ready and which aren't, so the operator can retry or go on with fewer.
+
+PlanSearchRoute, UploadRoute, SetSearchTarget and StartMission stay single-UAV.
+
+ToolsConfig.yaml: rewrite PrepareAoiSearch's description and the tailNumbers parameter:
+- "several UAVs -> ONE call with all of them, never one call per UAV";
+- "send/use 998 and 999 to search..." is this tool, not Navigate.
+- Only real tail numbers. For "all UAVs" / "the fleet", call ListFleet first and pass every tail.
+  Never "ALL".
+Retrieval: "search ZoneA with all UAVs" must offer ListFleet as well as PrepareAoiSearch. Without
+ListFleet in the offered set, the agent can't expand "all". The existing YAML comment records that
+ListFleet isn't offered for the usual search phrasing ("nothing in it is about UAVs"). With "all
+UAVs" in the text it should rank, but that is measured (section 5), not assumed.
+Keep the existing "call it right away even if no UAV was named" rule (and its comment). Run the
+tool-description-review skill on the edit.
+
+## 3. Host: generic grounding for a `tailNumbers` parameter (src/UavOps.Agent/Tooling)
+The host stays domain-agnostic. The signal comes from the schema, the same way `tailNumber` and
+`location` work today: a tool whose schema declares `tailNumbers` takes a set of UAVs in ONE call.
+Its tail numbers are grounded, and it is then invoked once with the resolved list. No fan-out.
+
+- AS BUILT: TailNumberDisambiguationTool was NOT refactored (no risk to its live-tested
+  behavior); TailNumbersGroundingTool reuses OperatorUavContext, FleetGroupMemory, the prompt gate
+  and the resolution scope directly. Original idea, kept for reference:
+- Pull the shared parts out of TailNumberDisambiguationTool into a `TailNumberResolver`: fleet
+  validation, the text/OperatorUavContext trust check, and the ask prompt.
+  TailNumberDisambiguationTool keeps its ALL and fan-out behavior on top of it, unchanged. A new,
+  thin TailNumbersGroundingTool uses the resolver and then passes the list through. It has no ALL
+  path at all.
+- The agent decides the set; the host only checks it against the real fleet and against what the
+  operator said:
+  - "ALL" (or any value that isn't a real tail number) in the list: not executed. The result tells
+    the agent to pass real tail numbers and to call ListFleet for "all". Nothing is guessed.
+  - One tail: today's single-UAV path. It's trusted if named this turn or in the operator's UAV
+    context; otherwise the operator is asked "Which UAV?". The choices are the known tails only,
+    with no ALL.
+  - Two or more tails: trusted when the operator's message backs a group. Either every tail is
+    named in it ("998 and 999"), or it uses a group word ("all", "every", "both", "the fleet",
+    "them", "the rest", "the others"). Otherwise the operator is asked to confirm that exact set
+    ("Search with 997, 998 and 999?", Yes/No; No means nothing runs). This keeps the old
+    protection against a model turning an unspecified "search ZoneA" into "every UAV". That failure
+    was observed before, and the ALL-confirmation existed for it. Without a sentinel, "the model
+    called ListFleet and passed everything" would otherwise slip through unasked.
+  - Unknown tails in a list are dropped, and the result says which.
+  - The wrapper reads the argument as a JSON array. It also accepts a bare string or a
+    comma-separated string and normalises it to an array: a small model sometimes sends a string
+    where the schema asks for an array. It replaces the argument with the resolved array before
+    invoking.
+- A multi-UAV resolution records the group in FleetGroupMemory and clears OperatorUavContext, as
+  today, so "start them" / "bring them home" afterwards find the team.
+- AgentFactory.BuildAllTools gets one more schema check (`tailNumbers`) next to the existing two.
+- AgentGraphProjector needs nothing: it reads the tool's schema.
+
+## 4. Mission events for a team (McpMoav MissionEventService)
+Ground-only. The mission id -> team id mapping comes from RememberSearchTarget.
+- **Dedupe across the team:** key detections by team id (falling back to mission id), so a red car
+  on the boundary seen by both 998 and 999 is reported once.
+- **Batching and voice group per team:** the "first 3 individually, then summaries every 30 s" rule
+  counts per team, not per member, so a team doesn't double the chat or voice traffic. Detection
+  numbering stays global. The message still names the UAV that saw it ("... by 999, team search of
+  ZoneA").
+- **A member completes while others are still searching:** history note plus a short message
+  ("998 finished its part of ZoneA; 999 still searching").
+- **The last member completes:** one team summary. It gives the total detections, flushes anything
+  held, and says who covered what.
+- **A member aborts** (typically the operator sent it to a detection): history note stating that its
+  part is now unsearched. The team summary then says "998's part was not finished". Nothing is
+  re-planned automatically (see open question 1).
+
+## 5. Tests
+Unit (fast):
+- Planner:
+  - The bands' lanes are exactly the single-sweep lanes: no gaps, no duplicates.
+  - The makespan is balanced.
+  - A team of one gives today's route.
+  - The nearer UAV gets the nearer band.
+  - A faster UAV gets more lanes.
+  - More UAVs than lanes.
+  - A concave zone.
+  - MaxWaypoints is checked per member.
+- Tools (SimulatedUavOperationService):
+  - "998,999" -> two uploaded, disjoint routes, targets set with one team id, nothing started.
+  - One member without telemetry -> nothing sent.
+  - An upload failure midway -> the result names who is ready.
+- Host: TailNumbersGroundingTool, each rule in section 3; it never fans out. "ALL" is refused;
+  an unbacked set of several tails asks the operator to confirm it; a named pair or a group word
+  doesn't ask.
+- MissionEventService:
+  - A boundary detection seen by two members is reported once.
+  - Per-team batching.
+  - Member-done, team-done and member-aborted messages.
+
+Live (8 repeats):
+- New TeamAoiSearchLiveTests:
+  - "send 998 and 999 to search for a red car in ZoneA": ONE PrepareAoiSearch call, two disjoint
+    routes in real fleet state, targets set.
+  - Then "start the mission": both UAVs Searching.
+  - Also "search ZoneA with all UAVs": ListFleet is called, then ONE PrepareAoiSearch with every
+    tail, and never "ALL".
+  - "search ZoneA for a white van" (no UAV named): asks which UAV, and never takes the whole
+    fleet unasked.
+- Re-run AoiSearchMissionLiveTests (single-UAV path, must stay 8/8).
+- Re-run the tail-number suites the refactor touches: ReturnRemainingFleet, FlyAllFleetWide,
+  PointPayloadFollowUp, NavigateToDetection.
+- BuildToolsForTurnLiveTests: the team phrasing offers PrepareAoiSearch, since "send" could pull
+  toward Navigate. "all UAVs" phrasing offers ListFleet too.
+- eval/tool-retrieval-lab: new `team-aoi-search` scenario.
+
+End to end (chat UI + simulator + detector): the two UAVs sweep their own halves on the map; the red
+car is found once; the team summary appears after both finish. Also watch detector throughput.
+Two UAVs means twice the frames on one model server, and throughput is already the limit (~2 s per
+frame). Record how far detections trail the aircraft.
+
+## 6. Docs
+CLAUDE.md: the AOI search section (teams, the planner split, per-team events), and the tail-number
+section (the `tailNumbers` schema signal).
+
+## Open questions for the operator
+1. Re-planning when a member leaves. v1 only reports the unsearched part. Should a later command
+   like "have 999 finish ZoneA" re-plan the leftover lanes for the remaining UAVs? Not built unless
+   you want it.
+2. Altitude. v1 keeps each UAV at its current altitude and only flags members flying close to each
+   other's altitude. Alternative: when the operator gives none, stack them automatically. That
+   would break the "altitude only by command" rule.
+
+## Risks
+- The model makes one PrepareAoiSearch call per UAV (["998"], then ["999"]) instead of one call with
+  both. Each call would then sweep the whole zone. The array parameter makes this much less likely
+  but doesn't rule it out: the model can still send a one-element list twice. The live test asserts
+  exactly one PrepareAoiSearch call carrying both UAVs. If splits still show up, add a guard in
+  McpMoav: a second single-UAV search of the same zone and target, prepared but not started, asks
+  whether to join the team.
+- The refactor of TailNumberDisambiguationTool touches the most safety-relevant host code. It must
+  be a pure extraction, validated by the existing live suites before any new behavior is added on top.

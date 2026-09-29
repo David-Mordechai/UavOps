@@ -298,6 +298,13 @@ public sealed class AgentFactory(
                 wrappedTool = new TailNumberDisambiguationTool((AIFunction)wrappedTool, ListRealMoavFleetAsync, operatorPromptGate, tailNumberScope, _fleetGroupMemory, RootAgentName, correlationId, operatorText, _operatorUavContext);
             }
 
+            // A "tailNumbers" list is a tool acting on several UAVs in one call: grounded as a
+            // set and passed through once, never fanned out - see TailNumbersGroundingTool.
+            if (SchemaHasProperty(mcpTool, TailNumbersGroundingTool.PropertyName))
+            {
+                wrappedTool = new TailNumbersGroundingTool((AIFunction)wrappedTool, ListRealMoavFleetAsync, operatorPromptGate, tailNumberScope, _fleetGroupMemory, _operatorUavContext, RootAgentName, correlationId, operatorText);
+            }
+
             tools.Add(wrappedTool);
         }
 

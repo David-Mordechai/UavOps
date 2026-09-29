@@ -31,6 +31,19 @@ public sealed record SearchRoute(
 
 public sealed class SearchPlanException(string message) : Exception(message);
 
+/// <summary>One UAV of a team search: where it is now, the altitude it searches at (its own - a
+/// search never changes a UAV's altitude) and its speed.</summary>
+public sealed record SearchTeamMember(string TailNumber, GeoPoint? Position, int AltitudeFt, double SpeedKts);
+
+/// <summary>A zone split between UAVs: one route per UAV over its own band of lanes. Every route's id
+/// ends in <see cref="TeamId"/>. <see cref="UnusedTails"/> are members left out because the zone
+/// has fewer lanes than the team has UAVs.</summary>
+public sealed record TeamSearchPlan(
+    string TeamId,
+    string ZoneName,
+    IReadOnlyList<SearchRoute> Routes,
+    IReadOnlyList<string> UnusedTails);
+
 /// <summary>
 /// Plans a lawnmower (boustrophedon) sweep over a polygon: parallel lanes one camera footprint
 /// apart (less the side overlap), flown back and forth.
@@ -43,12 +56,38 @@ public static class SearchRoutePlanner
         GeoPoint? uavPosition,
         SearchPlanParameters parameters)
     {
-        if (zone.Vertices.Count < 3)
-            throw new SearchPlanException($"Zone '{zone.Name}' has {zone.Vertices.Count} vertices; a search area needs at least 3.");
-        if (parameters.AltitudeFt <= 0)
-            throw new SearchPlanException("Search altitude must be above 0 ft.");
         if (parameters.SideOverlap is < 0 or >= 1)
             throw new SearchPlanException("Side overlap must be at least 0 and less than 1.");
+
+        // One UAV is a team of one: the band is the whole zone.
+        var member = new SearchTeamMember(tailNumber, uavPosition, parameters.AltitudeFt, parameters.SpeedKts);
+        return PlanTeam(zone, [member], parameters.LaneSpacingMeters, parameters.MaxWaypoints).Routes[0];
+    }
+
+    /// <summary>
+    /// Splits one sweep of the zone between the team. The lanes are those of a single search at
+    /// <paramref name="laneSpacingMeters"/>, cut into contiguous bands, one per UAV: two UAVs'
+    /// bands meet one lane spacing apart, so nothing is left out and nothing is searched twice.
+    /// The cuts and which UAV takes which band minimise the time until the last UAV is done
+    /// (getting to its band plus flying it, at its own speed), so the nearer UAV takes the nearer
+    /// band and a faster one takes more lanes. A UAV is left out when the zone is done sooner without
+    /// it (e.g. it is so far away that the others finish before it could arrive), and with more UAVs
+    /// than lanes the extras aren't used.
+    /// </summary>
+    public static TeamSearchPlan PlanTeam(
+        AoiZone zone,
+        IReadOnlyList<SearchTeamMember> members,
+        double laneSpacingMeters,
+        int maxWaypoints)
+    {
+        if (zone.Vertices.Count < 3)
+            throw new SearchPlanException($"Zone '{zone.Name}' has {zone.Vertices.Count} vertices; a search area needs at least 3.");
+        if (members.Count == 0)
+            throw new SearchPlanException("A search needs at least one UAV.");
+        if (members.Any(m => m.AltitudeFt <= 0))
+            throw new SearchPlanException("Search altitude must be above 0 ft.");
+        if (laneSpacingMeters <= 0)
+            throw new SearchPlanException("Lane spacing must be above 0 m.");
 
         var projection = GeoProjection.Around(zone.Vertices);
         var ring = zone.Vertices.Select(projection.ToLocal).ToList();
@@ -58,34 +97,178 @@ public static class SearchRoutePlanner
         // Rotate so lanes run along the x axis in the direction that needs the fewest of them.
         var angle = MinimumWidthAngle(ring);
         var rotated = ring.Select(p => Rotate(p, -angle)).ToList();
-        var spacing = parameters.LaneSpacingMeters;
-        var lanes = LaneOffsets(rotated.Min(p => p.Y), rotated.Max(p => p.Y), spacing)
+        var lanes = LaneOffsets(rotated.Min(p => p.Y), rotated.Max(p => p.Y), laneSpacingMeters)
             .Select((y, index) => Scanline(rotated, y).Select(s => s with { Lane = index }).ToList())
+            .Where(l => l.Count > 0)
             .ToList();
+        if (lanes.Count == 0)
+            throw new SearchPlanException($"Zone '{zone.Name}' has no area.");
 
-        var uavLocal = uavPosition is { } position ? Rotate(projection.ToLocal(position), -angle) : (Vec2?)null;
-        var best = Variants(lanes)
-            .Select(path => (path, cost: PathLength(path) + (uavLocal is { } u ? Vec2.Distance(u, path[0]) : 0)))
-            .MinBy(v => v.cost)
-            .path;
+        var positions = members
+            .Select(m => m.Position is { } p ? Rotate(projection.ToLocal(p), -angle) : (Vec2?)null)
+            .ToList();
+        var (order, bands) = SplitIntoBands(lanes, members, positions, laneSpacingMeters);
 
-        if (best.Count > parameters.MaxWaypoints)
-            throw new SearchPlanException(
-                $"Zone '{zone.Name}' needs {best.Count} waypoints at {parameters.AltitudeFt} ft, over the limit of " +
-                $"{parameters.MaxWaypoints}. Search from a higher altitude, or split the zone.");
+        var teamId = Guid.NewGuid().ToString("N")[..6];
+        var routes = new List<SearchRoute>();
+        for (var b = 0; b < bands.Count; b++)
+        {
+            var member = members[order[b]];
+            var uavLocal = positions[order[b]];
+            var bandLanes = lanes.GetRange(bands[b].First, bands[b].Count);
+            var best = Variants(bandLanes)
+                .Select(path => (path, cost: PathLength(path) + (uavLocal is { } u ? Vec2.Distance(u, path[0]) : 0)))
+                .MinBy(v => v.cost)
+                .path;
 
-        var length = PathLength(best);
-        var speed = Math.Max(parameters.SpeedKts, 1) * SearchPlanParameters.MetersPerSecondPerKnot;
-        return new SearchRoute(
-            RouteId: $"{zone.Name}-{tailNumber}-{Guid.NewGuid().ToString("N")[..6]}",
-            TailNumber: tailNumber,
-            ZoneName: zone.Name,
-            Waypoints: best.Select(p => projection.ToGeo(Rotate(p, angle))).ToList(),
-            AltitudeFt: parameters.AltitudeFt,
-            LengthMeters: Math.Round(length),
-            EstimatedDuration: TimeSpan.FromSeconds(Math.Round(length / speed)),
-            LaneCount: lanes.Count(l => l.Count > 0),
-            LaneSpacingMeters: Math.Round(spacing, 1));
+            if (best.Count > maxWaypoints)
+            {
+                var what = members.Count == 1 ? $"Zone '{zone.Name}'" : $"{member.TailNumber}'s part of zone '{zone.Name}'";
+                throw new SearchPlanException(
+                    $"{what} needs {best.Count} waypoints at {member.AltitudeFt} ft, over the limit of " +
+                    $"{maxWaypoints}. Search from a higher altitude, or split the zone.");
+            }
+
+            var length = PathLength(best);
+            var speed = Math.Max(member.SpeedKts, 1) * SearchPlanParameters.MetersPerSecondPerKnot;
+            routes.Add(new SearchRoute(
+                RouteId: $"{zone.Name}-{member.TailNumber}-{teamId}",
+                TailNumber: member.TailNumber,
+                ZoneName: zone.Name,
+                Waypoints: best.Select(p => projection.ToGeo(Rotate(p, angle))).ToList(),
+                AltitudeFt: member.AltitudeFt,
+                LengthMeters: Math.Round(length),
+                EstimatedDuration: TimeSpan.FromSeconds(Math.Round(length / speed)),
+                LaneCount: bandLanes.Count,
+                LaneSpacingMeters: Math.Round(laneSpacingMeters, 1)));
+        }
+
+        var used = order.Take(bands.Count).ToHashSet();
+        var unused = members.Where((_, i) => !used.Contains(i)).Select(m => m.TailNumber).ToList();
+        return new TeamSearchPlan(teamId, zone.Name, routes, unused);
+    }
+
+    /// <summary>
+    /// Which member flies which contiguous run of lanes (band b goes to member order[b]). Every
+    /// ordering of the members over the bands is tried, and for each the cuts that minimise the
+    /// latest finish (dynamic programming over the lanes); the tie-break is the total time. Fewer
+    /// bands than members are tried too: a smaller team wins only when it finishes sooner (by more
+    /// than a second), so every UAV the operator named is used unless it would only slow the team
+    /// down - a UAV 25 minutes away given one lane of a zone the others finish in two. A band's
+    /// time is estimated, not chained: its segments' length plus one spacing per lane change, plus
+    /// the way from the UAV to the nearest end of its first or last lane. Teams are a handful of
+    /// UAVs and zones tens of lanes, so this is cheap.
+    /// </summary>
+    private static (int[] Order, List<(int First, int Count)> Bands) SplitIntoBands(
+        List<List<Segment>> lanes,
+        IReadOnlyList<SearchTeamMember> members,
+        IReadOnlyList<Vec2?> positions,
+        double spacing)
+    {
+        var laneCount = lanes.Count;
+        var laneLength = new double[laneCount + 1];
+        for (var i = 0; i < laneCount; i++)
+            laneLength[i + 1] = laneLength[i] + lanes[i].Sum(s => s.MaxX - s.MinX);
+
+        double BandSeconds(int member, int first, int last)
+        {
+            var length = laneLength[last + 1] - laneLength[first] + (last - first) * spacing;
+            if (positions[member] is { } u)
+            {
+                var ends = new[] { lanes[first], lanes[last] }
+                    .SelectMany(l => new[] { new Vec2(l.Min(s => s.MinX), l[0].Y), new Vec2(l.Max(s => s.MaxX), l[0].Y) });
+                length += ends.Min(e => Vec2.Distance(u, e));
+            }
+            return length / (Math.Max(members[member].SpeedKts, 1) * SearchPlanParameters.MetersPerSecondPerKnot);
+        }
+
+        (int[] Order, List<(int, int)> Bands, (double Max, double Sum) Cost)? chosen = null;
+        for (var bandCount = Math.Min(members.Count, laneCount); bandCount >= 1; bandCount--)
+        {
+            var split = BestSplit(bandCount);
+            // Largest team first: a smaller one has to finish strictly sooner to replace it.
+            if (chosen is null || split.Cost.Max < chosen.Value.Cost.Max - 1)
+                chosen = split;
+        }
+        return (chosen!.Value.Order, chosen.Value.Bands);
+
+        (int[] Order, List<(int, int)> Bands, (double Max, double Sum) Cost) BestSplit(int bandCount)
+        {
+            int[]? bestOrder = null;
+            List<(int, int)>? bestBands = null;
+            var bestCost = (Max: double.MaxValue, Sum: double.MaxValue);
+            foreach (var order in Arrangements(members.Count, bandCount))
+            {
+                // cost[b, end]: best (latest finish, total) with bands 0..b covering lanes 0..end.
+                var cost = new (double Max, double Sum)[bandCount, laneCount];
+                var cut = new int[bandCount, laneCount];
+                for (var b = 0; b < bandCount; b++)
+                {
+                    for (var end = b; end < laneCount - (bandCount - 1 - b); end++)
+                    {
+                        cost[b, end] = (double.MaxValue, double.MaxValue);
+                        for (var first = b == 0 ? 0 : b; first <= end; first++)
+                        {
+                            if (b == 0 && first != 0)
+                                break;
+                            var own = BandSeconds(order[b], first, end);
+                            var before = b == 0 ? (Max: 0.0, Sum: 0.0) : cost[b - 1, first - 1];
+                            var candidate = (Max: Math.Max(before.Max, own), Sum: before.Sum + own);
+                            if (Better(candidate, cost[b, end]))
+                            {
+                                cost[b, end] = candidate;
+                                cut[b, end] = first;
+                            }
+                        }
+                    }
+                }
+
+                var total = cost[bandCount - 1, laneCount - 1];
+                if (!Better(total, bestCost))
+                    continue;
+                bestCost = total;
+                bestOrder = order;
+                bestBands = [];
+                for (int b = bandCount - 1, end = laneCount - 1; b >= 0; b--)
+                {
+                    var first = cut[b, end];
+                    bestBands.Insert(0, (first, end - first + 1));
+                    end = first - 1;
+                }
+            }
+            return (bestOrder!, bestBands!, bestCost);
+        }
+
+        // Within a second on the latest finish counts as equal; then the lower total wins.
+        static bool Better((double Max, double Sum) a, (double Max, double Sum) b) =>
+            a.Max < b.Max - 1 || (Math.Abs(a.Max - b.Max) <= 1 && a.Sum < b.Sum);
+    }
+
+    /// <summary>Every ordered choice of <paramref name="k"/> of <paramref name="n"/> member indices.</summary>
+    private static IEnumerable<int[]> Arrangements(int n, int k)
+    {
+        var chosen = new int[k];
+        var used = new bool[n];
+        return Next(0);
+
+        IEnumerable<int[]> Next(int position)
+        {
+            if (position == k)
+            {
+                yield return (int[])chosen.Clone();
+                yield break;
+            }
+            for (var i = 0; i < n; i++)
+            {
+                if (used[i])
+                    continue;
+                used[i] = true;
+                chosen[position] = i;
+                foreach (var arrangement in Next(position + 1))
+                    yield return arrangement;
+                used[i] = false;
+            }
+        }
     }
 
     /// <summary>Lane positions across the zone. A zone no wider than one lane gets a single

@@ -44,5 +44,9 @@ public sealed class OperatorUavContext
     public bool Grounds(string guessed, string operatorText) =>
         Current is { } current &&
         string.Equals(current, guessed, StringComparison.OrdinalIgnoreCase) &&
-        !GroupReference.IsMatch(operatorText);
+        !RefersToGroup(operatorText);
+
+    /// <summary>Whether the operator's message refers to several UAVs as a group ("all", "both",
+    /// "the rest", "them"...).</summary>
+    public static bool RefersToGroup(string operatorText) => GroupReference.IsMatch(operatorText);
 }

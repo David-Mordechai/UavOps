@@ -308,8 +308,11 @@ design is what BrainAgent itself sees or calls).
   property gets wrapped in `LocationCanonicalizationTool`; any tool whose schema declares a
   `tailNumber` property gets wrapped in `TailNumberDisambiguationTool` (see "Tail-number
   disambiguation" below) — in that order, so a fan-out re-invocation inside the tail-number wrapper
-  also sees the canonicalized location. This is why the host needs zero per-domain branching: it
-  never has to know "this tool is a Moav tool" to decide how to wrap it.
+  also sees the canonicalized location. A tool whose schema declares a `tailNumbers` list (acts
+  on several UAVs together in ONE call, e.g. a team search) gets `TailNumbersGroundingTool`
+  instead: the list is checked and passed through once, never fanned out. This is why the host
+  needs zero per-domain branching: it never has to know "this tool is a Moav tool" to decide how
+  to wrap it.
 - **Concurrent tool calls**: `FunctionInvokingChatClient(inner) { AllowConcurrentInvocation = true
   }` plus `ChatOptions.AllowMultipleToolCalls = true` lets one model turn batch several tool calls
   (e.g. `SetSpeed` + `SetAltitude`, or a fleet-wide fan-out across several UAVs) and run them
@@ -857,8 +860,40 @@ the white van").
   the model is told not to ask "start?" after preparing, so starting takes one step, not two). The composite
   exists because the model reliably drops later calls of a multi-call request (see
   `ToolsConfig.yaml`'s comment). Planned routes live per tail in `IRouteStore`, so the model never
-  copies a route id or waypoint list. Every mission tool's `tailNumber` is single-UAV, and zones are
-  `zoneName`, never `location`. Settings: McpMoav's `Mission` section.
+  copies a route id or waypoint list. Every other mission tool's `tailNumber` is single-UAV, and
+  zones are `zoneName`, never `location`. Settings: McpMoav's `Mission` section.
+- **Team searches** ("send 998 and 999 to search for a red car in ZoneA"): `PrepareAoiSearch`
+  takes `tailNumbers`, a JSON array, one call with every UAV. It is never 'ALL': for "all UAVs"
+  the model lists the fleet itself. `SearchRoutePlanner.PlanTeam` cuts the single-search lanes
+  into one contiguous band per UAV, so bands meet one lane spacing apart, with no gap and no lane
+  flown twice. The cuts and which UAV takes which band minimise the time until the last one is
+  done, counting the flight to the band. A UAV is left out when the team finishes sooner without
+  it: in the first demo, 999 was 25 minutes away from ZoneA and got one lane, while 998 did the
+  rest in 2 minutes. It is left out before any payload moves, and the reply says so. Each UAV keeps
+  its own altitude; members within `Mission:TeamAltitudeSeparationFt` of each other are only
+  pointed out. What the operator must hear (left out, altitudes) is written into the result's
+  `nextStep` word for word, since a separate note field was dropped from the reply. A team of one
+  is exactly the single-UAV route. Host side, `TailNumbersGroundingTool` checks the list:
+  - "ALL" is refused, and unknown tails are dropped.
+  - An empty list means the operator named no UAV: the operator is asked which one. With the
+    single-UAV "call it with any UAV you know" wording, the model asked "Which UAV?" in plain text
+    instead of calling anything (`AoiSearchMissionLiveTests` 6/8 alone; 8/8 with `[]`).
+  - One UAV is grounded like `tailNumber`, asking "Which UAV?" with no ALL choice.
+  - Several run directly only when the operator named them all or used a group word ("all",
+    "both", "them"...). Otherwise the operator confirms the exact set first.
+
+  `MissionEventService.RememberTeam` groups the members' missions:
+  - Dedupe and the "first 3, then summaries" count are per team.
+  - A member finishing early gets a short message.
+  - The last one to finish brings one team summary.
+  - A member that stopped early (redirected) leaves its strip unsearched. This is reported,
+    never re-planned.
+
+  Live tests check that all members share one team id in real mission state; two single calls
+  would each carry their own:
+  - `TeamAoiSearchLiveTests`: 997 and 998, the altitude note told, then "start the mission".
+  - `TeamAoiSearchAllUavsLiveTests`: "all UAVs" gives a team of 997 and 998, 999 is left out
+    untouched, and the reply says so.
 - **Wire**: the route goes up through the existing `UploadWaypoints`; `StartMission` and
   `SetSearchTarget` are new host→fleet commands (through every layer: `IOperationService`,
   `SimulatedUavOperationService` bookkeeping, `MoavRelayService`, `ChatHub.Relay*`,
