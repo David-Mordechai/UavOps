@@ -65,6 +65,33 @@ declared as one C# interface (`IOperationService`, in `UavOps.Agent.Contracts`) 
 in-process (inside `UavOps.Agent.McpMoav`) or relayed over SignalR to a real fleet client — never
 HTTP, and never routed back through the host beyond that one relay hop.
 
+## Working on this project
+
+The operator works on this project from more than one computer, so standing rules live here, not
+in a machine-local memory.
+
+- **Resuming ("where did we stop?")**: session transcripts exist only on the machine that ran
+  them. While a multi-step task is in progress, keep an **"In progress"** section at the top of
+  `open_issues.txt` current - the approved plan in short, which steps are done, the exact next
+  step, and anything running (processes, deploys) - updated as each step completes and removed
+  when the task is done. On a restart or another computer, read that first; on the same machine,
+  the previous transcript (newest `*.jsonl` under `~/.claude/projects/<this project>/`) has the
+  full detail. Report the exact step reached, not a summary guessed from git status.
+- **No commit prompts**: don't offer or suggest commits between the steps of a larger task. The
+  operator commits once everything is done and tested (or asks for it).
+- **Domain separation**: `UavOps.Agent` holds only cross-cutting machinery; anything
+  domain-specific (mission/detection handling, wording about UAV events, domain config) goes in
+  its Mcp* server, and the host gets at most a generic, domain-agnostic capability. Test: would
+  this code still make sense if the Moav domain didn't exist? Propose large refactors before
+  making them.
+- **The Jetson** (`192.168.1.154`, user `davidm`, key login; no sudo for Claude - the operator
+  runs sudo commands): keep it cool and efficient. Measure where time goes before tuning
+  (`tegrastats`, the detector's `/detect` timings), state the thermal/power effect of a change,
+  and prefer less compute (model, tiles, frame rate) over higher clocks. Pinning the clocks
+  (MAXN_SUPER + jetson_clocks) was tried on 2026-10-01: no speed-up (the loop is compute-bound,
+  GPU ~98% busy under load), warmer idle - undone; it runs at 25 W with the default governor.
+  Measured: ~73 °C / 19.5 W with two UAVs searching; throttling starts ~99 °C.
+
 ## Running it
 
 Requires the .NET 8 SDK, Ollama running locally with the main chat model (`ollama pull

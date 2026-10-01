@@ -2,6 +2,11 @@ UavOps - open issues
 ====================
 Last updated: 2026-10-01
 
+In progress
+-----------
+Nothing in progress (the 2026-10-01 work is committed). While a multi-step task runs, this section
+holds its plan, the steps done and the exact next step - see CLAUDE.md "Working on this project".
+
 Still open
 ----------
 12. (New, minor) Right after "send 998 to the red car and point its payload there", the reply said
