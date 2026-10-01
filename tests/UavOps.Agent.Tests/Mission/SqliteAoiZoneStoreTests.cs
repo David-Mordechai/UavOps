@@ -20,8 +20,8 @@ public sealed class SqliteAoiZoneStoreTests : IDisposable
     {
         var zones = await NewStore().ListAsync(CancellationToken.None);
 
-        zones.Select(z => z.Name).Should().Equal("ZoneA", "ZoneB");
-        zones[0].Vertices.Should().HaveCount(30, "the seed's 31 GeoJSON points, the closing one dropped");
+        zones.Select(z => z.Name).Should().Equal("ZoneA");
+        zones[0].Vertices.Should().HaveCount(SqliteAoiZoneStore.LoadSeed().Single().Vertices.Count);
     }
 
     [Theory]
@@ -51,8 +51,8 @@ public sealed class SqliteAoiZoneStoreTests : IDisposable
 
         var reopened = await NewStore().ListAsync(CancellationToken.None);
 
-        reopened.Select(z => z.Name).Should().Equal("ZoneA", "ZoneB", "ZoneC");
-        reopened[2].Vertices.Should().Equal(zone.Vertices);
+        reopened.Select(z => z.Name).Should().Equal("ZoneA", "ZoneC");
+        reopened[1].Vertices.Should().Equal(zone.Vertices);
     }
 
     [Fact]
@@ -62,10 +62,10 @@ public sealed class SqliteAoiZoneStoreTests : IDisposable
 
         var summary = zoneA.Summarize();
 
-        // The ~1.3 km x ~190 m strip along the Yatir road.
-        summary.AreaSqKm.Should().BeApproximately(0.224, 0.005);
-        summary.SouthWest.Should().Be(new GeoPoint(31.343184, 35.044370));
-        summary.NorthEast.Should().Be(new GeoPoint(31.350906, 35.054600));
+        // The whole Yatir drone photo, ~0.7 km2.
+        summary.AreaSqKm.Should().BeApproximately(0.687, 0.01);
+        summary.SouthWest.Should().Be(new GeoPoint(31.339673, 35.043168));
+        summary.NorthEast.Should().Be(new GeoPoint(31.351475, 35.056901));
     }
 
     [Fact]
@@ -81,6 +81,7 @@ public sealed class SqliteAoiZoneStoreTests : IDisposable
             command.CommandText = """
                 CREATE TABLE aoi_zone (name TEXT PRIMARY KEY COLLATE NOCASE, name_key TEXT NOT NULL UNIQUE, polygon_geojson TEXT NOT NULL, updated_utc TEXT NOT NULL);
                 INSERT INTO aoi_zone VALUES ('ZoneA', 'zonea', '{"type":"Polygon","coordinates":[[[34.652,31.8075],[34.667,31.8075],[34.667,31.816],[34.652,31.8075]]]}', '2026-01-01');
+                INSERT INTO aoi_zone VALUES ('ZoneB', 'zoneb', '{"type":"Polygon","coordinates":[[[34.916,32.067],[34.921,32.067],[34.921,32.068],[34.916,32.067]]]}', '2026-01-01');
                 INSERT INTO aoi_zone VALUES ('ZoneC', 'zonec', '{"type":"Polygon","coordinates":[[[34.60,31.80],[34.61,31.80],[34.61,31.81],[34.60,31.80]]]}', '2026-01-01');
                 """;
             await command.ExecuteNonQueryAsync();
@@ -89,7 +90,8 @@ public sealed class SqliteAoiZoneStoreTests : IDisposable
 
         var zones = await new SqliteAoiZoneStore(path).ListAsync(CancellationToken.None);
 
-        zones.Select(z => z.Name).Should().Equal("ZoneA", "ZoneB", "ZoneC");
+        // The seed's zone rewritten, retired ZoneB dropped, the operator's ZoneC kept.
+        zones.Select(z => z.Name).Should().Equal("ZoneA", "ZoneC");
         zones[0].Vertices.Should().Equal(SqliteAoiZoneStore.LoadSeed().Single(z => z.Name == "ZoneA").Vertices);
     }
 }

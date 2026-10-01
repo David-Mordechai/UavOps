@@ -7,8 +7,10 @@ namespace UavOps.Agent.Tooling;
 /// they named themselves or picked when asked "Which UAV do you mean?". Lets
 /// <see cref="TailNumberDisambiguationTool"/> accept a follow-up that names no UAV ("start the
 /// mission" right after preparing 997's search) instead of asking again for a UAV the operator
-/// already chose. Only ever set from the operator's own words or answers, never from a model
-/// guess, and it only grounds a guess of that exact same UAV.
+/// already chose. Set from the operator's own words or answers, or by an MCP server whose
+/// unprompted message put the operator's attention on one UAV (McpMoav: "998 locked on the red
+/// car", so "stop tracking" means 998 - it used to ask "Which UAV?"); never from a model guess,
+/// and it only grounds a guess of that exact same UAV.
 ///
 /// Not used when the operator's current message refers to a group ("the rest", "all", "them",
 /// "both"...): there the last single UAV is exactly the wrong answer - e.g. "bring the rest home"

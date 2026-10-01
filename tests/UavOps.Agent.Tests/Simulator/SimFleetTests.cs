@@ -348,7 +348,7 @@ public class SimFleetTests
         var events = fleet.Advance(0, DateTime.UtcNow).MissionEvents;
 
         events.Should().ContainSingle().Which.Kind.Should().Be(MissionEventKinds.Aborted);
-        foreach (var (tail, lat, lng) in new[] { ("997", 31.344000, 35.035000), ("998", 31.342500, 35.033500), ("999", 32.064000, 34.912000) })
+        foreach (var (tail, lat, lng) in new[] { ("997", 31.344000, 35.035000), ("998", 31.342500, 35.033500), ("999", 31.345500, 35.036500) })
         {
             var telemetry = fleet.GetTelemetry(tail).Value;
             telemetry.Lat.Should().BeApproximately(lat, 1e-6);
@@ -359,5 +359,111 @@ public class SimFleetTests
             fleet.GetMissionStatus(tail).Value.SearchPrompt.Should().BeNull();
         }
         fleet.View().Detections.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ARepeatingSearch_FliesTheRouteAgain_UntilStopped()
+    {
+        var (fleet, _) = Create();
+        fleet.SetPayloadZoom("997", Options.PayloadWideHorizontalFovDeg / SurveyHfovDeg);
+        fleet.UploadWaypoints("997", ZoneARoute()).Success.Should().BeTrue();
+        fleet.SetSearchTarget("997", new SearchTargetRequest { MissionId = "m1", ZoneName = "ZoneA", Prompt = "red car", MinConfidence = 0.5, Repeat = true });
+        fleet.StartMission("997");
+
+        var (_, events) = Run(fleet, 3 * 3600);
+
+        events.Should().Contain(e => e.Kind == MissionEventKinds.PassCompleted);
+        events.Should().NotContain(e => e.Kind == MissionEventKinds.Completed, "a repeating search never ends by itself");
+        fleet.GetMissionStatus("997").Value.Mode.Should().Be("Searching");
+
+        fleet.StopMission("997").Value.Mode.Should().Be("Orbiting");
+        var (_, after) = Run(fleet, 5);
+        after.Should().ContainSingle().Which.Kind.Should().Be(MissionEventKinds.Aborted);
+        fleet.View().Uavs.Single(u => u.TailNumber == "997").Looking.Should().BeFalse("the onboard agent stops looking");
+    }
+
+    /// <summary>Plays back onboard-computer target reports, as the real client would hand them over.</summary>
+    private sealed class ScriptedTracks : IOnboardDetector
+    {
+        public Queue<TargetTrackReport> Reports { get; } = new();
+        public IEnumerable<DetectionReport> Look(SimUav uav, DateTime nowUtc) => [];
+        public bool HasFinished(SimUav uav) => true;
+        public TargetTrackReport? TakeTrack(SimUav uav) => Reports.Count > 0 ? Reports.Dequeue() : null;
+    }
+
+    private static TargetTrackReport Report(string state) =>
+        new("997", "m1", "ZoneA", "red car", "T-1", "red car", state, 31.3485, 35.0527, 3, 90, 0.8, DateTime.UtcNow);
+
+    [Fact]
+    public void ATargetGivenUp_SendsAFollowingUav_BackToItsRoute_ButNeverResetsASearch()
+    {
+        var tracks = new ScriptedTracks();
+        var fleet = new SimFleet(tracks, Options);
+        fleet.SetPayloadZoom("997", Options.PayloadWideHorizontalFovDeg / SurveyHfovDeg);
+        fleet.UploadWaypoints("997", ZoneARoute()).Success.Should().BeTrue();
+        fleet.SetSearchTarget("997", new SearchTargetRequest { MissionId = "m1", ZoneName = "ZoneA", Prompt = "red car", MinConfidence = 0.5, Track = true, Repeat = true });
+        fleet.StartMission("997");
+        Run(fleet, 600);
+        var searching = fleet.GetMissionStatus("997").Value;
+        searching.Mode.Should().Be("Searching");
+
+        // Released while searching (an onboard restart's resync): nothing changes.
+        tracks.Reports.Enqueue(Report(TargetTrackStates.Released));
+        Run(fleet, 1);
+        fleet.GetMissionStatus("997").Value.CurrentWaypointIndex.Should().BeGreaterThanOrEqualTo(searching.CurrentWaypointIndex!.Value);
+
+        tracks.Reports.Enqueue(Report(TargetTrackStates.Tracking));
+        Run(fleet, 2);
+        fleet.GetMissionStatus("997").Value.Mode.Should().Be("Following");
+
+        fleet.OnboardZoom("997", 60);    // the onboard computer zoomed in on the target
+        fleet.OnboardRelease("997");      // and let go (straight down, widest)
+        tracks.Reports.Enqueue(Report(TargetTrackStates.Released));
+        var (_, events) = Run(fleet, 2);
+        fleet.GetMissionStatus("997").Value.Mode.Should().Be("Searching");
+        events.Should().Contain(e => e.Kind == MissionEventKinds.SearchResumed);
+        fleet.GetTelemetry("997").Value.PayloadZoom.Should().BeApproximately(Options.PayloadWideHorizontalFovDeg / SurveyHfovDeg, 0.01,
+            "back on the route, the payload is at the search zoom again");
+    }
+
+    [Fact]
+    public void AFollowedTargetsUpdates_AreOneEntryOnThePage_AtItsLatestPosition()
+    {
+        var tracks = new ScriptedTracks();
+        var fleet = new SimFleet(tracks, Options);
+        fleet.SetPayloadZoom("997", Options.PayloadWideHorizontalFovDeg / SurveyHfovDeg);
+        fleet.UploadWaypoints("997", ZoneARoute()).Success.Should().BeTrue();
+        fleet.SetSearchTarget("997", new SearchTargetRequest { MissionId = "m1", ZoneName = "ZoneA", Prompt = "red car", MinConfidence = 0.5, Track = true, Repeat = true });
+        fleet.StartMission("997");
+        Run(fleet, 5);
+
+        for (var k = 0; k < 4; k++)   // 4 reports, 100 m apart: each one goes to the ground
+        {
+            tracks.Reports.Enqueue(Report(TargetTrackStates.Tracking) with { Lat = 31.3485 + k * 100 / 111195.0 });
+            Run(fleet, 1);
+        }
+
+        var entry = fleet.View().Detections.Should().ContainSingle().Subject;
+        entry.TrackId.Should().Be("T-1");
+        entry.Updates.Should().Be(4);
+        entry.Lat.Should().BeApproximately(31.3485 + 300 / 111195.0, 1e-6, "the latest position");
+    }
+
+    [Fact]
+    public void ALateReleaseFromAFinishedTask_DoesNotUndoTheNextSearchsZoom()
+    {
+        var (fleet, _) = Create();
+        var searchZoom = Options.PayloadWideHorizontalFovDeg / SurveyHfovDeg;
+        fleet.SetPayloadZoom("997", searchZoom);                     // PrepareAoiSearch zooms for the lanes
+        fleet.UploadWaypoints("997", ZoneARoute()).Success.Should().BeTrue();
+        fleet.SetSearchTarget("997", new SearchTargetRequest { MissionId = "m2", ZoneName = "ZoneA", Prompt = "red car", MinConfidence = 0.5, Track = true, Repeat = true });
+
+        fleet.OnboardRelease("997");                                 // the previous task's release, arriving late
+        fleet.GetTelemetry("997").Value.PayloadZoom.Should().BeApproximately(searchZoom, 0.01);
+
+        fleet.StartMission("997");
+        Run(fleet, 5);
+        fleet.OnboardRelease("997");                                 // and during the search
+        fleet.GetTelemetry("997").Value.PayloadZoom.Should().BeApproximately(searchZoom, 0.01);
     }
 }

@@ -2,11 +2,12 @@
    view's own layout: the message thread and composer. */
 
 /* ---- Size -------------------------------------------------------------- */
-/* The conversation is read at a glance on an operator console: twice the page's base size (15px ->
-   30px), across the whole window. Every size below is in em, so it all scales together. */
+/* The conversation is read at a glance on an operator console: 1.5x the page's base size (15px ->
+   22.5px; 2x was too big), across the whole window. Every size below is in em, so it all scales
+   together. */
 main,
 #composer {
-  font-size: 2em;
+  font-size: 1.5em;
 }
 
 /* ---- Message list ------------------------------------------------------ */

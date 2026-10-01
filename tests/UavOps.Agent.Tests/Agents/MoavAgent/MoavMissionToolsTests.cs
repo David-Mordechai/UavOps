@@ -91,14 +91,14 @@ public sealed class MoavMissionToolsTests : IDisposable
     {
         var result = await MoavTools.PrepareAoiSearch(_moav, _zones, _routes, _options, _missionEvents, ["997"], "ZoneZ", "white van", CancellationToken.None);
 
-        result.Should().Be("Error: Unknown AOI zone 'ZoneZ'. Known zones: ZoneA, ZoneB.");
+        result.Should().Be("Error: Unknown AOI zone 'ZoneZ'. Known zones: ZoneA.");
         (await MissionStatusOf("997")).WaypointCount.Should().Be(0);
     }
 
     [Fact]
     public async Task PlanSearchRoute_DoesNotUpload_ThenUploadRouteDoes()
     {
-        var plan = await MoavTools.PlanSearchRoute(_moav, _zones, _routes, _options, "998", "ZoneB", 1500, CancellationToken.None);
+        var plan = await MoavTools.PlanSearchRoute(_moav, _zones, _routes, _options, "998", "ZoneA", 1500, CancellationToken.None);
 
         JsonDocument.Parse(plan).RootElement.GetProperty("altitudeFt").GetInt32().Should().Be(1500);
         (await MissionStatusOf("998")).WaypointCount.Should().Be(0);
@@ -212,7 +212,8 @@ public sealed class MoavMissionToolsTests : IDisposable
     [Fact]
     public async Task PrepareAoiSearch_Team_LeavesOutAFarUav_WithoutTouchingIt()
     {
-        // 999 starts near ZoneB, ~80 km from ZoneA; 997 and 998 are next to it.
+        // All three start at the base by ZoneA; 999 is sent ~80 km away first (bravo, Route 443).
+        await _moav.Navigate("999", "bravo", CancellationToken.None);
         var result = await MoavTools.PrepareAoiSearch(_moav, _zones, _routes, _options, _missionEvents, ["998", "999"], "ZoneA", "red car", CancellationToken.None);
 
         var json = JsonDocument.Parse(result).RootElement;
@@ -220,7 +221,32 @@ public sealed class MoavMissionToolsTests : IDisposable
         json.GetProperty("nextStep").GetString().Should().Contain("999 was left out").And.Contain("tailNumber '998'");
         _routes.Get("999").Should().BeNull();
         ((TelemetrySnapshot)(await _moav.GetTelemetry("999", CancellationToken.None)).Value!).PayloadZoom.Should().Be(1, "a UAV left out isn't zoomed");
+        ((TelemetrySnapshot)(await _moav.GetTelemetry("999", CancellationToken.None)).Value!).SpeedKts.Should().NotBe(_options.SearchSpeedKts, "a UAV left out isn't slowed");
         (await MissionStatusOf("998")).WaypointCount.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task PrepareAoiSearch_SetsTheSearchSpeedByCommand_AndSaysSo()
+    {
+        var result = await MoavTools.PrepareAoiSearch(_moav, _zones, _routes, _options, _missionEvents, ["997"], "ZoneA", "red car", CancellationToken.None);
+
+        ((TelemetrySnapshot)(await _moav.GetTelemetry("997", CancellationToken.None)).Value!).SpeedKts.Should().Be(_options.SearchSpeedKts);
+        JsonDocument.Parse(result).RootElement.GetProperty("nextStep").GetString().Should().Contain($"{_options.SearchSpeedKts} kts");
+    }
+
+    [Fact]
+    public async Task PrepareAoiSearch_Team_SetsEveryMembersSearchSpeed_AndEstimatesWithIt()
+    {
+        var result = await MoavTools.PrepareAoiSearch(_moav, _zones, _routes, _options, _missionEvents, ["997", "998"], "ZoneA", "red car", CancellationToken.None);
+
+        foreach (var tail in new[] { "997", "998" })
+        {
+            ((TelemetrySnapshot)(await _moav.GetTelemetry(tail, CancellationToken.None)).Value!).SpeedKts.Should().Be(_options.SearchSpeedKts);
+            var route = _routes.Get(tail)!;
+            var expected = route.LengthMeters / (_options.SearchSpeedKts * SearchPlanParameters.MetersPerSecondPerKnot);
+            route.EstimatedDuration.TotalSeconds.Should().BeApproximately(expected, 2,"the team is planned at the speed it will search at");
+        }
+        JsonDocument.Parse(result).RootElement.GetProperty("nextStep").GetString().Should().Contain($"searching at {_options.SearchSpeedKts} kts");
     }
 
     [Fact]
@@ -261,7 +287,7 @@ public sealed class MoavMissionToolsTests : IDisposable
         var result = await MoavTools.ListAoiZones(_zones, CancellationToken.None);
 
         JsonDocument.Parse(result).RootElement.EnumerateArray().Select(z => z.GetProperty("name").GetString())
-            .Should().Equal("ZoneA", "ZoneB");
+            .Should().Equal("ZoneA");
     }
 
     /// <summary>The real ToolsConfig.yaml against McpMoav's real registrations: every tool builds,
@@ -276,11 +302,12 @@ public sealed class MoavMissionToolsTests : IDisposable
         services.AddSingleton<IRouteStore>(_routes);
         services.AddSingleton(_detections);
         services.AddSingleton(_missionEvents);
+        services.AddSingleton<UavOps.Agent.McpMoav.Missions.MissionEngine>(_ => throw new NotSupportedException()); // only its registration is read here
         var config = McpToolsConfigLoader.Load(Path.Combine(RepoRoot(), "src", "UavOps.Agent.McpMoav", "ToolsConfig.yaml"));
 
         var tools = McpToolsBuilder.Build(typeof(MoavTools), config, services).ToDictionary(t => t.ProtocolTool.Name);
 
-        Properties(tools["PrepareAoiSearch"]).Should().BeEquivalentTo("tailNumbers", "zoneName", "targetDescription");
+        Properties(tools["PrepareAoiSearch"]).Should().BeEquivalentTo("tailNumbers", "zoneName", "targetDescription", "track");
         tools["PrepareAoiSearch"].ProtocolTool.InputSchema.GetProperty("properties").GetProperty("tailNumbers")
             .GetProperty("type").GetString().Should().Be("array", "a team is one call with every UAV in a list");
         Properties(tools["PlanSearchRoute"]).Should().BeEquivalentTo("tailNumber", "zoneName", "altitudeFt");
@@ -288,12 +315,17 @@ public sealed class MoavMissionToolsTests : IDisposable
         Properties(tools["ListAoiZones"]).Should().BeEmpty();
         Properties(tools["Navigate"]).Should().BeEquivalentTo("tailNumber", "location");
         Properties(tools["PointPayload"]).Should().BeEquivalentTo("tailNumber", "location");
-        Properties(tools["SetSearchTarget"]).Should().BeEquivalentTo("tailNumber", "targetDescription");
+        Properties(tools["SetSearchTarget"]).Should().BeEquivalentTo("tailNumber", "targetDescription", "track");
 
         // The operator's own "start the mission" is the approval; a gate prompt on top meant approving twice.
         tools["StartMission"].ProtocolTool.Annotations!.DestructiveHint.Should().BeFalse();
         tools["PrepareAoiSearch"].ProtocolTool.Annotations!.DestructiveHint.Should().BeFalse();
         tools["ListAoiZones"].ProtocolTool.Annotations!.ReadOnlyHint.Should().BeTrue();
+
+        Properties(tools["CreateMissionPlan"]).Should().BeEquivalentTo("steps");
+        Properties(tools["StartMissionPlan"]).Should().BeEquivalentTo("planId");
+        Required(tools["StartMissionPlan"]).Should().BeEmpty();
+        tools["GetMissionPlan"].ProtocolTool.Annotations!.ReadOnlyHint.Should().BeTrue();
     }
 
     private static IEnumerable<string> Properties(ModelContextProtocol.Server.McpServerTool tool) =>

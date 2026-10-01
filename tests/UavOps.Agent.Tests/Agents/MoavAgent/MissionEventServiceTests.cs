@@ -20,8 +20,8 @@ public class MissionEventServiceTests
             NullLogger<MissionEventService>.Instance);
     }
 
-    private static DetectionReport Van(double lat = 31.81234, double lng = 34.66123, string missionId = "m1") =>
-        new("997", missionId, "ZoneA", "white van", "van", 0.87, lat, lng, DateTime.UtcNow, "t1");
+    private static DetectionReport Van(double lat = 31.81234, double lng = 34.66123, string missionId = "m1", string? trackId = null) =>
+        new("997", missionId, "ZoneA", "white van", "van", 0.87, lat, lng, DateTime.UtcNow, trackId ?? Guid.NewGuid().ToString("N"));
 
     [Fact]
     public async Task Detection_PostsAFixedMessageWithTheCoordinates()
@@ -172,12 +172,85 @@ public class MissionEventServiceTests
         _notifier.HistoryNotes.Should().ContainSingle();
     }
 
+    // ----- A detection that drives -----
+
+    [Fact]
+    public async Task ADetectionSeenAgainFarther_UnderItsTrack_IsAMoveNotANewDetection()
+    {
+        var t0 = new DateTime(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
+        await _sut.HandleDetectionAsync(Van(trackId: "trk-1") with { DetectedAtUtc = t0 }, t0);
+
+        // 500 m north, 45 s later: ~40 km/h.
+        var moved = Van(lat: 31.81234 + 500 / 111195.0, trackId: "trk-1") with { DetectedAtUtc = t0.AddSeconds(45) };
+        (await _sut.HandleDetectionAsync(moved, t0.AddSeconds(45))).Should().BeTrue();
+
+        _notifier.Posted.Should().HaveCount(2);
+        _notifier.Posted[1].Message.Should().StartWith("Detection 1 (white van) seen again by 997").And.Contain("~40 km/h N");
+        _notifier.Posted[1].HistoryNote.Should().Contain("latest known location").And.Contain("nothing has been done");
+        _points.TryResolve("the white van", out var latLng).Should().BeTrue();
+        latLng.Should().Be(DetectionPointRegistry.FormatLatLng(moved.Lat, moved.Lng), "\"send 998 to the white van\" goes where it is now");
+        _points.TryResolve("detection 1", out var byNumber).Should().BeTrue();
+        byNumber.Should().Be(latLng);
+    }
+
+    [Fact]
+    public async Task AMovingDetection_TellsTheOperatorAtMostEvery30s_ButAlwaysNotesIt()
+    {
+        var t0 = new DateTime(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
+        await _sut.HandleDetectionAsync(Van(trackId: "trk-1") with { DetectedAtUtc = t0 }, t0);
+        for (var i = 1; i <= 4; i++)
+        {
+            var at = t0.AddSeconds(i * 10);
+            await _sut.HandleDetectionAsync(Van(lat: 31.81234 + i * 150 / 111195.0, trackId: "trk-1") with { DetectedAtUtc = at }, at);
+        }
+
+        _notifier.Posted.Should().HaveCount(3, "the detection, then moved at 10 s and again at 40 s (30 s later); 20 s and 30 s were too soon");
+        _notifier.HistoryNotes.Should().HaveCount(2, "the 20 s and 30 s sightings still update the model's history");
+    }
+
+    [Fact]
+    public async Task ATargetBeingFollowed_IsNotAnnouncedOnEveryMove_OnlyLockLostAndRegained()
+    {
+        var t0 = new DateTime(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
+        await _sut.HandleDetectionAsync(Van(trackId: "trk-1") with { DetectedAtUtc = t0 }, t0);
+        var missionId = Van().MissionId;
+        await _sut.HandleMissionEventAsync(new MissionEventReport("997", missionId, "ZoneA", MissionEventKinds.Tracking));
+        for (var i = 1; i <= 4; i++)
+        {
+            var at = t0.AddSeconds(i * 40);
+            await _sut.HandleDetectionAsync(Van(lat: 31.81234 + i * 150 / 111195.0, trackId: "trk-1") with { DetectedAtUtc = at }, at);
+        }
+
+        _notifier.Posted.Select(p => p.Message).Should().HaveCount(2).And.Contain(m => m.Contains("locked on detection 1"));
+        _notifier.OperatorUavs.Should().Equal(["997"], "after a lock, \"stop tracking\" means the tracker without asking which UAV");
+        _notifier.HistoryNotes.Should().HaveCount(4, "every position still reaches the model's history");
+        _points.TryResolve("the white van", out var latLng).Should().BeTrue();
+        latLng.Should().Be(DetectionPointRegistry.FormatLatLng(31.81234 + 600 / 111195.0, Van().Lng), "\"send 998 to the white van\" goes where it is now");
+
+        // Lost: moving updates are announced again (rate-limited) - nobody is following it.
+        await _sut.HandleMissionEventAsync(new MissionEventReport("997", missionId, "ZoneA", MissionEventKinds.TargetLost));
+        var later = t0.AddSeconds(400);
+        await _sut.HandleDetectionAsync(Van(lat: 31.81234 + 900 / 111195.0, trackId: "trk-1") with { DetectedAtUtc = later }, later);
+        _notifier.Posted.Last().Message.Should().Contain("seen again");
+    }
+
+    [Fact]
+    public async Task ATrackReportedAgainInPlace_IsTheSameSighting()
+    {
+        await _sut.HandleDetectionAsync(Van(trackId: "trk-1"));
+
+        (await _sut.HandleDetectionAsync(Van(lat: 31.81250, trackId: "trk-1"))).Should().BeFalse("~18 m: not a move");
+
+        _notifier.Posted.Should().ContainSingle();
+        _notifier.HistoryNotes.Should().BeEmpty();
+    }
+
     // ----- Team searches: one zone split between 997 (mission a) and 998 (mission b) -----
 
     private void RememberTeam() => _sut.RememberTeam("t1", [("997", "a"), ("998", "b")]);
 
     private static DetectionReport Car(string tail, string missionId, double lat = 31.81234) =>
-        new(tail, missionId, "ZoneA", "red car", "car", 0.9, lat, 34.66123, DateTime.UtcNow, "t");
+        new(tail, missionId, "ZoneA", "red car", "car", 0.9, lat, 34.66123, DateTime.UtcNow, Guid.NewGuid().ToString("N"));
 
     [Fact]
     public async Task Team_TheSameObjectSeenByTwoMembers_IsReportedOnce()
@@ -265,6 +338,14 @@ internal sealed class RecordingOperatorNotifier : IOperatorNotifier
     public Task AddHistoryNoteAsync(string note, string message)
     {
         HistoryNotes.Add((note, message));
+        return Task.CompletedTask;
+    }
+
+    public List<string> OperatorUavs { get; } = [];
+
+    public Task SetOperatorUavAsync(string tailNumber)
+    {
+        OperatorUavs.Add(tailNumber);
         return Task.CompletedTask;
     }
 }

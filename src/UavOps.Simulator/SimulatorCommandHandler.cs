@@ -19,6 +19,7 @@ public sealed class SimulatorCommandHandler(SimFleet fleet, ILogger<SimulatorCom
     public CommandResult<GdtLinkStatus> GetLinkStatus(string tailNumber) => Log("GetLinkStatus", tailNumber, () => fleet.GetLinkStatus(tailNumber));
     public CommandResult<GdtLinkStatus> SetTrackingMode(string tailNumber, string mode) => Log("SetTrackingMode", $"{tailNumber}, {mode}", () => fleet.SetTrackingMode(tailNumber, mode));
     public CommandResult<MissionStatus> StartMission(string tailNumber) => Log("StartMission", tailNumber, () => fleet.StartMission(tailNumber));
+    public CommandResult<MissionStatus> StopMission(string tailNumber) => Log("StopMission", tailNumber, () => fleet.StopMission(tailNumber));
     public CommandResult<MissionStatus> SetSearchTarget(string tailNumber, SearchTargetRequest request) =>
         Log("SetSearchTarget", $"{tailNumber}, '{request.Prompt}' in {request.ZoneName}", () => fleet.SetSearchTarget(tailNumber, request));
 

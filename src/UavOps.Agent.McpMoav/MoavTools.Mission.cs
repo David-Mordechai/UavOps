@@ -89,9 +89,10 @@ public static partial class MoavTools
         MissionEventService missionEvents,
         string tailNumber,
         string targetDescription,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool track = false)
     {
-        var result = await SetTargetAsync(moav, routes, options, missionEvents, tailNumber, targetDescription, cancellationToken);
+        var result = await SetTargetAsync(moav, routes, options, missionEvents, tailNumber, targetDescription, track, cancellationToken);
         return ToResultText(result);
     }
 
@@ -111,7 +112,8 @@ public static partial class MoavTools
         string[] tailNumbers,
         string zoneName,
         string targetDescription,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool track = false)
     {
         var tails = (tailNumbers ?? [])
             .Select(t => t?.Trim() ?? "")
@@ -125,7 +127,7 @@ public static partial class MoavTools
         if (tails.Count > options.MaxTeamSize)
             return $"Error: A search team is at most {options.MaxTeamSize} UAVs. Nothing was sent to any UAV.";
         if (tails.Count == 1)
-            return await PrepareSingleSearchAsync(moav, zones, routes, options, missionEvents, tails[0], zoneName, targetDescription, cancellationToken);
+            return await PrepareSingleSearchAsync(moav, zones, routes, options, missionEvents, tails[0], zoneName, targetDescription, track, cancellationToken);
 
         // Everything that can fail without touching a UAV is checked first: telemetry, the zone,
         // and each UAV's search zoom.
@@ -151,7 +153,7 @@ public static partial class MoavTools
             b.Tail,
             new GeoPoint(b.Telemetry.Lat, b.Telemetry.Lng),
             b.Telemetry.AltitudeFt,
-            b.Telemetry.SpeedKts > 0 ? b.Telemetry.SpeedKts : options.DefaultSpeedKts)).ToList();
+            options.SearchSpeedKts)).ToList();
         List<string> taking;
         List<string> leftOut;
         try
@@ -172,6 +174,9 @@ public static partial class MoavTools
             if (result.Error is not null)
                 return $"{result.Error} (Setting {tail}'s payload zoom failed; nothing was planned or started" +
                        $"{(zoomed.Count > 0 ? $", though {string.Join(" and ", zoomed.Select(z => z.Tail))} already zoomed in" : "")}.)";
+            var slowed = await moav.SetSpeed(tail, options.SearchSpeedKts, cancellationToken);
+            if (!slowed.Success)
+                return $"{ToResultText(slowed)} (Setting {tail}'s search speed failed; nothing was planned or started.)";
             zoomed.Add((tail, result.Value!));
         }
 
@@ -207,7 +212,7 @@ public static partial class MoavTools
                 failed.Add($"{route.TailNumber}: the route didn't upload ({uploaded.Error})");
                 continue;
             }
-            var target = await SetTargetAsync(moav, routes, options, missionEvents, route.TailNumber, targetDescription, cancellationToken);
+            var target = await SetTargetAsync(moav, routes, options, missionEvents, route.TailNumber, targetDescription, track, cancellationToken);
             if (!target.Success)
             {
                 failed.Add($"{route.TailNumber}: the route was uploaded but setting the search target failed ({target.ErrorMessage})");
@@ -244,6 +249,7 @@ public static partial class MoavTools
         {
             zoneName = zone.Name,
             searchTarget = targetDescription,
+            findAndTrack = track,
             teamSearch = planned.Count > 1,
             zoneSplitBetween = ready,
             notReady = failed.Count > 0 ? failed : null,
@@ -252,7 +258,7 @@ public static partial class MoavTools
             started = false,
             nextStep = readyTails.Count == 0
                 ? "Nothing is ready; tell the operator what failed."
-                : $"Tell the operator the search is ready for {JoinAnd(readyTails)}{(failed.Count > 0 ? ", and what failed for the others" : "")}" +
+                : $"Tell the operator the search is ready for {JoinAnd(readyTails)}, searching at {options.SearchSpeedKts} kts{(failed.Count > 0 ? ", and what failed for the others" : "")}" +
                   $"{(mustSay.Length > 0 ? $", and also tell them: \"{mustSay}\"" : "")}. " +
                   $"Don't ask whether to start: when the operator says to start, call StartMission once with tailNumber '{string.Join(",", readyTails)}'."
         }, TeamResultOptions);
@@ -287,6 +293,7 @@ public static partial class MoavTools
         string tailNumber,
         string zoneName,
         string targetDescription,
+        bool track,
         CancellationToken cancellationToken)
     {
         var telemetry = await TelemetryAsync(moav, tailNumber, cancellationToken);
@@ -302,8 +309,11 @@ public static partial class MoavTools
         var zoomed = await ReadTelemetryAsync(await moav.SetPayloadZoom(tailNumber, zoom.Value, cancellationToken));
         if (zoomed.Error is not null)
             return $"{zoomed.Error} (Setting the payload zoom failed; nothing was planned or started.)";
+        var slowed = await moav.SetSpeed(tailNumber, options.SearchSpeedKts, cancellationToken);
+        if (!slowed.Success)
+            return $"{ToResultText(slowed)} (Setting the search speed failed; nothing was planned or started.)";
 
-        var planned = await PlanAsync(zones, routes, options, tailNumber, zoneName, zoomed.Value!, null, cancellationToken);
+        var planned = await PlanAsync(zones, routes, options, tailNumber, zoneName, zoomed.Value!, null, cancellationToken, options.SearchSpeedKts);
         if (planned.Error is not null)
             return planned.Error;
 
@@ -311,7 +321,7 @@ public static partial class MoavTools
         if (uploaded.Error is not null)
             return $"{uploaded.Error} (The route was planned but not uploaded; nothing was started.)";
 
-        var target = await SetTargetAsync(moav, routes, options, missionEvents, tailNumber, targetDescription, cancellationToken);
+        var target = await SetTargetAsync(moav, routes, options, missionEvents, tailNumber, targetDescription, track, cancellationToken);
         if (!target.Success)
             return $"Error: The route was uploaded to {tailNumber}, but setting the search target failed: {target.ErrorMessage}. Nothing was started.";
 
@@ -321,19 +331,24 @@ public static partial class MoavTools
             route.TailNumber,
             route.ZoneName,
             searchTarget = targetDescription,
+            findAndTrack = track,
             waypointsUploaded = route.Waypoints.Count,
             route.LaneCount,
             route.AltitudeFt,
+            searchSpeedKts = options.SearchSpeedKts,
             payloadZoom = zoomed.Value!.PayloadZoom,
             lengthKm = Math.Round(route.LengthMeters / 1000, 1),
             estimatedMinutes = Math.Round(route.EstimatedDuration.TotalMinutes, 1),
             started = false,
-            nextStep = "Tell the operator the search is ready. Don't ask whether to start: call StartMission only when the operator says to start."
+            nextStep = $"Tell the operator the search is ready, searching at {options.SearchSpeedKts} kts. Don't ask whether to start: call StartMission only when the operator says to start."
         });
     }
 
     public static async Task<string> StartMission(IOperationService moav, string tailNumber, CancellationToken cancellationToken) =>
         ToResultText(await moav.StartMission(tailNumber, cancellationToken));
+
+    public static async Task<string> StopMission(IOperationService moav, string tailNumber, CancellationToken cancellationToken) =>
+        ToResultText(await moav.StopMission(tailNumber, cancellationToken));
 
     private sealed record Step(SearchRoute? Route, string? Error);
 
@@ -373,7 +388,8 @@ public static partial class MoavTools
         string zoneName,
         TelemetrySnapshot telemetry,
         int? altitudeFt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int? speedKts = null)
     {
         var zone = await zones.GetAsync(zoneName, cancellationToken);
         if (zone is null)
@@ -385,13 +401,13 @@ public static partial class MoavTools
             return new Step(null, "Error: The UAV is on the ground; give a search altitude.");
 
         // Flown at the UAV's current altitude unless the operator gave one. The position picks the
-        // entry corner; the speed only feeds the time estimate.
+        // entry corner; the speed (the search's own, when it sets one) only feeds the time estimate.
         var parameters = new SearchPlanParameters(
             altitude,
             telemetry.PayloadHfovDeg,
             options.SideOverlap,
             options.MaxWaypoints,
-            telemetry.SpeedKts > 0 ? telemetry.SpeedKts : options.DefaultSpeedKts);
+            speedKts ?? (telemetry.SpeedKts > 0 ? telemetry.SpeedKts : options.DefaultSpeedKts));
 
         try
         {
@@ -424,6 +440,7 @@ public static partial class MoavTools
         MissionEventService missionEvents,
         string tailNumber,
         string targetDescription,
+        bool track,
         CancellationToken cancellationToken)
     {
         // Tied to the planned route when there is one, so detections name the zone being searched.
@@ -432,8 +449,10 @@ public static partial class MoavTools
             route?.RouteId ?? $"search-{tailNumber}-{Guid.NewGuid().ToString("N")[..6]}",
             route?.ZoneName ?? "",
             targetDescription.Trim(),
-            options.MinDetectionConfidence);
-        missionEvents.RememberSearchTarget(request);
+            options.MinDetectionConfidence,
+            track,
+            Repeat: true);
+        missionEvents.RememberSearchTarget(request, tailNumber);
         return moav.SetSearchTarget(tailNumber, request, cancellationToken);
     }
 

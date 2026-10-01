@@ -14,6 +14,10 @@ namespace UavOps.FleetClient
         /// <summary>Start flying the uploaded route. The mode should become <c>"Searching"</c>.</summary>
         CommandResult<MissionStatus> StartMission(string tailNumber);
 
+        /// <summary>End the search or tracking mission: stop where it is and circle, payload back to
+        /// straight down. Report the mission <c>Aborted</c>.</summary>
+        CommandResult<MissionStatus> StopMission(string tailNumber);
+
         /// <summary>Hand the onboard agent what to look for. When it spots it, report back with
         /// <see cref="FleetClientConnection.ReportDetectionAsync"/>.</summary>
         CommandResult<MissionStatus> SetSearchTarget(string tailNumber, SearchTargetRequest request);

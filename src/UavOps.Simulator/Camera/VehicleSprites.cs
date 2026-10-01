@@ -252,4 +252,31 @@ public static class VehicleSprites
 
     public static SKColor Shade(SKColor c, float k) =>
         new((byte)Math.Clamp(c.Red * k, 0, 255), (byte)Math.Clamp(c.Green * k, 0, 255), (byte)Math.Clamp(c.Blue * k, 0, 255), c.Alpha);
+
+    /// <summary>Everyday traffic: mostly cars, mostly white/silver/grey/black. Vans are never white
+    /// (or anything close), so a white van in view is always a scenario object.</summary>
+    public static (VehicleKind Kind, string Color) Background(Random rng)
+    {
+        var roll = rng.NextDouble();
+        var kind = roll < 0.84 ? VehicleKind.Car : roll < 0.9 ? VehicleKind.Pickup : roll < 0.95 ? VehicleKind.Van : roll < 0.99 ? VehicleKind.Truck : VehicleKind.Bus;
+        var colors = new (string Name, double Weight)[] { ("white", 0.27), ("silver", 0.2), ("grey", 0.15), ("black", 0.16), ("blue", 0.08), ("red", 0.07), ("beige", 0.04), ("green", 0.03) };
+        var pick = rng.NextDouble();
+        var name = colors[^1].Name;
+        foreach (var c in colors)
+        {
+            if (pick < c.Weight)
+            {
+                name = c.Name;
+                break;
+            }
+            pick -= c.Weight;
+        }
+        // Nothing a camera could take for a white van: silver and beige read as white in haze
+        // (measured: the model reported a silver van as a white van).
+        if (kind == VehicleKind.Van && name is "white" or "silver" or "beige")
+            name = new[] { "grey", "black", "blue", "red", "green" }[rng.Next(5)];
+        if (kind == VehicleKind.Bus)
+            name = "white";
+        return (kind, name);
+    }
 }

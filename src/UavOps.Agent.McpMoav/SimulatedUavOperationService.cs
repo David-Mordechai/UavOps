@@ -65,10 +65,10 @@ public sealed class SimulatedUavOperationService : IOperationService
     {
         _fleet = new Dictionary<string, VehicleState>(StringComparer.OrdinalIgnoreCase)
         {
-            // 997 and 998 at the base by ZoneA (Yatir); 999 at a forward point by ZoneB (Route 443).
+            // All three at the base by ZoneA (Yatir).
             ["997"] = new VehicleState(31.344000, 35.035000),
             ["998"] = new VehicleState(31.342500, 35.033500),
-            ["999"] = new VehicleState(32.064000, 34.912000),
+            ["999"] = new VehicleState(31.345500, 35.036500),
         };
     }
 
@@ -236,6 +236,22 @@ public sealed class SimulatedUavOperationService : IOperationService
 
             v.Mode = "Searching";
             v.CurrentWaypointIndex = 0;
+        }
+        return Task.FromResult(OperationResult.Ok(v.MissionSnapshot()));
+    }
+
+    public Task<OperationResult> StopMission(string tailNumber, CancellationToken cancellationToken)
+    {
+        if (!_fleet.TryGetValue(tailNumber, out var v))
+        {
+            return Task.FromResult(OperationResult.NotFound(tailNumber));
+        }
+
+        lock (v.Lock)
+        {
+            v.Mode = "Orbiting";
+            v.CurrentWaypointIndex = null;
+            v.SearchPrompt = null;
         }
         return Task.FromResult(OperationResult.Ok(v.MissionSnapshot()));
     }

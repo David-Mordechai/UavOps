@@ -72,6 +72,46 @@
   }
 
   await new Promise((resolve) => map.on("load", resolve));
+  // The credits start folded behind the (i) button, however wide the window.
+  const attribution = document.querySelector(".maplibregl-ctrl-attrib");
+  attribution?.classList.remove("maplibregl-compact-show");
+  attribution?.removeAttribute("open");
+  window.simMap = map; // handy from the browser console
+
+  // ---- Satellite (offline Sentinel-2, where built: scripts/build-satellite.ps1) ----
+  // Under the OSM layers; in satellite mode the map's own fills are hidden and its roads and
+  // labels stay, faint, on top - a hybrid view. The toggle switches back to the dark map.
+
+  const OSM_FILLS = ["landcover-wood", "landcover-grass", "landcover-sand", "landuse-residential", "landuse-industrial", "park", "water", "building"];
+  const OSM_ROADS = ["road-minor", "road-secondary", "road-primary", "road-motorway", "rail", "waterway", "aeroway-runway"];
+  if (mapInfo.basemap) {
+    map.addSource("basemap", {
+      type: "raster",
+      tiles: [location.origin + "/api/basemap/{z}/{x}/{y}.jpg?v=" + mapInfo.basemap.version],
+      tileSize: 256,
+      minzoom: mapInfo.basemap.minzoom,
+      maxzoom: mapInfo.basemap.maxzoom,
+      attribution: esc(mapInfo.basemap.attribution),
+    });
+    const firstOsm = map.getStyle().layers.find((l) => l.id !== "background")?.id;
+    map.addLayer({ id: "basemap", type: "raster", source: "basemap", paint: { "raster-saturation": -0.1, "raster-contrast": 0.08 } }, firstOsm);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "pill pill-toggle";
+    $("mapStatus").after(toggle);
+    let satellite = true;
+    try { satellite = localStorage.getItem("sim.satellite") !== "0"; } catch { /* private window */ }
+    const apply = () => {
+      map.setLayoutProperty("basemap", "visibility", satellite ? "visible" : "none");
+      for (const id of OSM_FILLS) if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", satellite ? "none" : "visible");
+      for (const id of OSM_ROADS) if (map.getLayer(id)) map.setPaintProperty(id, "line-opacity", satellite ? 0.35 : 1);
+      toggle.textContent = satellite ? "view: satellite" : "view: map";
+      toggle.title = satellite ? "Sentinel-2 (10 m) with OSM roads and names. Click for the dark map." : "Click for the satellite view.";
+      try { localStorage.setItem("sim.satellite", satellite ? "1" : "0"); } catch { /* private window */ }
+    };
+    toggle.addEventListener("click", () => { satellite = !satellite; apply(); });
+    apply();
+  }
 
   // ---- Real aerial photos (where downloaded: scripts/fetch-imagery.ps1) over the base map ----
 
@@ -83,7 +123,8 @@
       tileSize: 256,
       minzoom: 12,
       maxzoom: 21,
-      attribution: photos.map((p) => `${esc(p.title)}: ${esc(p.attribution)} (${esc(p.license)})`).join(" · "),
+      // One line: 30 photos' credits filled half the map. Each one, with its licence, is on the credits page.
+      attribution: `Drone photos: OpenAerialMap contributors (${photos.length}, CC-BY / CC BY-SA) - <a href="credits.html" target="_blank">credits</a>`,
     });
     map.addLayer({ id: "imagery", type: "raster", source: "imagery" });
   }
@@ -91,15 +132,52 @@
   // ---- Overlay layers ----
 
   const empty = { type: "FeatureCollection", features: [] };
-  for (const id of ["zones", "footprints", "routes", "waypoints", "trails", "destinations"])
+
+  // Moving traffic: dots when zoomed out, then the vehicle itself at true size and heading.
+  // Sprites (drawn at 50 px per metre, facing up) load on first use.
+  map.addSource("traffic", { type: "geojson", data: empty });
+  const SPRITE_PX_PER_METER = 50;
+  const metersPerScreenPx = (z) => (40075016.686 * Math.cos((31.6 * Math.PI) / 180)) / (512 * Math.pow(2, z));
+  const iconSize = (z) => 1 / metersPerScreenPx(z) / SPRITE_PX_PER_METER;
+  map.addLayer({
+    id: "traffic-dots", type: "circle", source: "traffic", minzoom: 12.5, maxzoom: 16,
+    paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 12.5, 1.2, 16, 2.6], "circle-color": ["get", "color"], "circle-stroke-color": "#000", "circle-stroke-width": 0.5 },
+  });
+  map.addLayer({
+    id: "traffic", type: "symbol", source: "traffic", minzoom: 16,
+    layout: {
+      "icon-image": ["get", "sprite"],
+      "icon-rotate": ["get", "heading"],
+      "icon-rotation-alignment": "map",
+      "icon-pitch-alignment": "map",
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+      "icon-size": ["interpolate", ["exponential", 2], ["zoom"], 16, iconSize(16), 22, iconSize(22)],
+    },
+  });
+  map.on("styleimagemissing", (e) => loadSprite(map, e.id));
+  for (const id of ["zones", "footprints", "sightlines", "lookcenters", "routes", "waypoints", "trails", "destinations", "targets"])
     map.addSource(id, { type: "geojson", data: empty });
 
   // Zones in magenta, no UAV's colour, with a dark casing so the border reads on the aerial photos.
   map.addLayer({ id: "zones-fill", type: "fill", source: "zones", paint: { "fill-color": ZONE_COLOR, "fill-opacity": 0.08 } });
   map.addLayer({ id: "zones-casing", type: "line", source: "zones", layout: { "line-join": "round" }, paint: { "line-color": "#000", "line-width": 5, "line-opacity": 0.6 } });
   map.addLayer({ id: "zones-line", type: "line", source: "zones", layout: { "line-join": "round" }, paint: { "line-color": ZONE_COLOR, "line-width": 2.5 } });
-  map.addLayer({ id: "footprints", type: "fill", source: "footprints", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.16 } });
-  map.addLayer({ id: "footprints-line", type: "line", source: "footprints", paint: { "line-color": ["get", "color"], "line-width": 1, "line-opacity": 0.6 } });
+  // Where every airborne UAV's payload looks: its ground rectangle, a dashed line of sight from
+  // the UAV (shows an oblique look - tracking, PointPayload), and a ring with the tail number at
+  // the look centre that stays visible when the rectangle is a few pixels at a low zoom.
+  map.addLayer({ id: "footprints", type: "fill", source: "footprints", paint: { "fill-color": ["get", "color"], "fill-opacity": ["case", ["get", "looking"], 0.22, 0.12] } });
+  map.addLayer({ id: "footprints-line", type: "line", source: "footprints", paint: { "line-color": ["get", "color"], "line-width": 2, "line-opacity": 0.9 } });
+  map.addLayer({ id: "sightlines", type: "line", source: "sightlines", paint: { "line-color": ["get", "color"], "line-width": 1.2, "line-dasharray": [2, 2], "line-opacity": 0.75 } });
+  map.addLayer({
+    id: "lookcenters", type: "circle", source: "lookcenters",
+    paint: { "circle-radius": 4, "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": ["get", "color"], "circle-stroke-width": 2 },
+  });
+  map.addLayer({
+    id: "lookcenters-label", type: "symbol", source: "lookcenters",
+    layout: { "text-field": ["get", "label"], "text-size": 10, "text-offset": [0, 0.9], "text-anchor": "top", "text-font": ["Noto Sans Regular"], "text-allow-overlap": true },
+    paint: { "text-color": ["get", "color"], "text-halo-color": "#000", "text-halo-width": 1.5 },
+  });
   // The route in its UAV's colour: a solid line with a dark casing and a dot on every waypoint;
   // what's already flown is dimmed.
   map.addLayer({
@@ -125,6 +203,23 @@
   });
   map.addLayer({ id: "trails", type: "line", source: "trails", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": ["get", "color"], "line-width": 2, "line-opacity": 0.55 } });
   map.addLayer({ id: "destinations", type: "line", source: "destinations", paint: { "line-color": ["get", "color"], "line-width": 1.5, "line-dasharray": [1, 2], "line-opacity": 0.8 } });
+  // A target the onboard computer tracks (find and track): a ring in its UAV's colour where it was
+  // last reported - solid while tracked, dashed-looking (hollow, faint) while coasting or lost.
+  map.addLayer({
+    id: "targets", type: "circle", source: "targets",
+    paint: {
+      "circle-radius": 11,
+      "circle-color": "rgba(0,0,0,0)",
+      "circle-stroke-color": ["get", "color"],
+      "circle-stroke-width": 3,
+      "circle-stroke-opacity": ["case", ["==", ["get", "state"], "Tracking"], 1, 0.45],
+    },
+  });
+  map.addLayer({
+    id: "targets-label", type: "symbol", source: "targets",
+    layout: { "text-field": ["get", "label"], "text-size": 11, "text-offset": [0, 1.6], "text-anchor": "top", "text-font": ["Noto Sans Regular"] },
+    paint: { "text-color": "#fff", "text-halo-color": "#000", "text-halo-width": 1.5 },
+  });
 
   for (const p of KNOWN_POINTS) {
     const el = document.createElement("div");
@@ -147,6 +242,91 @@
     new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, -4] }).setLngLat(top).addTo(map);
   }
 
+  // ---- Smooth motion ----
+  // State arrives ~5 times a second; UAVs, traffic and driving objects glide between updates
+  // instead of jumping: each keeps where it was and where it's going, drawn one update behind.
+
+  const smooth = new Map(); // key → { from: [lng, lat, hdg], to: [...], t0 }
+  let pushMs = 200, lastPushAt = 0;
+  function aim(key, lng, lat, hdg) {
+    const now = performance.now();
+    const s = smooth.get(key);
+    if (!s) { smooth.set(key, { from: [lng, lat, hdg], to: [lng, lat, hdg], t0: now, seen: now }); return; }
+    s.from = pose(s, now);
+    s.to = [lng, lat, hdg];
+    s.t0 = now;
+    s.seen = now;
+  }
+  function pose(s, now) {
+    const k = Math.min(Math.max((now - s.t0) / pushMs, 0), 1);
+    let dh = ((s.to[2] - s.from[2] + 540) % 360) - 180;
+    return [s.from[0] + (s.to[0] - s.from[0]) * k, s.from[1] + (s.to[1] - s.from[1]) * k, (s.from[2] + dh * k + 360) % 360];
+  }
+
+  const SPRITE_COLORS = { white: "#eeefed", silver: "#b6babe", grey: "#767a7e", gray: "#767a7e", black: "#1e2023", blue: "#28488e", red: "#ac1e20", green: "#2a663e", yellow: "#e0bc2a", orange: "#d87020", brown: "#704e34", beige: "#d0c0a2" };
+  let trafficRows = [];
+  let targetFeatures = [];
+  let lastFrame = 0;
+  function animate(now) {
+    requestAnimationFrame(animate);
+    if (now - lastFrame < 33) return; // ~30 fps is plenty for a map
+    lastFrame = now;
+    for (const [tail, entry] of uavMarkers) {
+      const s = smooth.get("uav:" + tail);
+      if (!s) continue;
+      const [lng, lat, hdg] = pose(s, now);
+      entry.marker.setLngLat([lng, lat]);
+      entry.el.querySelector("svg").style.transform = `rotate(${hdg}deg)`;
+    }
+    for (const [id, entry] of objectMarkers) {
+      const s = smooth.get("obj:" + id);
+      if (!s || !entry.object.speedKmh) continue;
+      const [lng, lat, hdg] = pose(s, now);
+      entry.marker.setLngLat([lng, lat]);
+      entry.heading = hdg;
+      sizeObject(entry);
+    }
+    // A tracked target's ring glides between state pushes like the car it marks, instead of
+    // jumping once a push and trailing it in between.
+    if (targetFeatures.length > 0) {
+      for (const f of targetFeatures) {
+        const s = smooth.get("tgt:" + f.properties.tail);
+        if (s) f.geometry.coordinates = pose(s, now).slice(0, 2);
+      }
+      map.getSource("targets").setData({ type: "FeatureCollection", features: targetFeatures });
+      // The followed object's detection marker too: its position otherwise only changes with the
+      // detection updates (every 50 m or 20 s), so it trailed the car it marks.
+      for (const f of targetFeatures) {
+        const marker = detectionMarkers.get(`${f.properties.tail}|${f.properties.missionId}|${f.properties.trackId}`);
+        const s = smooth.get("tgt:" + f.properties.tail);
+        if (marker && s && f.properties.state === "Tracking") marker.setLngLat(pose(s, now).slice(0, 2));
+      }
+    }
+    if (map.getZoom() >= 12.5) {
+      const features = [];
+      for (const r of trafficRows) {
+        const s = smooth.get("trf:" + r[0]);
+        if (!s) continue;
+        const [lng, lat, hdg] = pose(s, now);
+        features.push({ type: "Feature", properties: { sprite: r[4], heading: hdg, color: SPRITE_COLORS[r[4].split("-")[1]] || "#888" }, geometry: { type: "Point", coordinates: [lng, lat] } });
+      }
+      map.getSource("traffic").setData({ type: "FeatureCollection", features });
+    }
+  }
+
+  const loadingSprites = new Set();
+  function loadSprite(target, id) {
+    if (!/^[a-z]+-[a-z]+$/.test(id) || loadingSprites.has(target.id + id)) return;
+    loadingSprites.add(target.id + id);
+    target.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) }); // until it loads
+    fetch(`/api/sprites/${id}.png`).then((r) => (r.ok ? r.blob() : null)).then(async (blob) => {
+      if (!blob) return;
+      const bitmap = await createImageBitmap(blob);
+      if (target.hasImage(id)) target.removeImage(id);
+      target.addImage(id, bitmap);
+    }).catch(() => {});
+  }
+
   // ---- Live state ----
 
   const uavMarkers = new Map();
@@ -154,9 +334,32 @@
   const detectionMarkers = new Map();
   let lastState = null;
   let cameraTail = null;
+  requestAnimationFrame(animate);
+
+  // The payload camera, in 3D (camera3d.js); the server's detector view on request.
+  const cam3d = window.createCamera3D({
+    container: $("camera3d"),
+    mapInfo,
+    photos,
+    poseOf: (key, now) => { const s = smooth.get(key); return s ? pose(s, now) : null; },
+    getState: () => lastState,
+    getTraffic: () => trafficRows,
+    loadSprite,
+  });
+  let cameraView = "3d";
 
   function render(state) {
     lastState = state;
+    const now = performance.now();
+    if (lastPushAt) pushMs = Math.min(Math.max(now - lastPushAt, 80), 1000);
+    lastPushAt = now;
+    trafficRows = state.vehicles || [];
+    for (const r of trafficRows) aim("trf:" + r[0], r[2], r[1], r[3]);
+    for (const o of state.objects) aim("obj:" + o.id, o.lng, o.lat, o.headingDeg);
+    for (const u of state.uavs) aim("uav:" + u.tailNumber, u.lng, u.lat, u.headingDeg);
+    for (const u of state.uavs) if (u.target) aim("tgt:" + u.tailNumber, u.target[0], u.target[1], 0);
+    // Forget what hasn't been in an update for a while (drove out of view).
+    for (const [key, s] of smooth) if (now - s.seen > 5000) smooth.delete(key);
     setPill("hostStatus", state.connected ? "host: connected" : "host: waiting…", state.connected ? "ok" : "wait");
     $("hostStatus").title = "UavOps.Agent fleet hub: " + state.hostHubUrl;
     const det = state.detector;
@@ -169,8 +372,12 @@
       : "Tag matching inside the camera frame (Simulator:Detector = Simulated), no model";
     for (const b of document.querySelectorAll("#timeScale button"))
       b.setAttribute("aria-pressed", String(Number(b.dataset.scale) === state.timeScale));
+    // The onboard computer runs in real time whatever the sim speed, so sped up it sees fewer frames.
+    const onboardBusy = det.mode === "Onboard" && state.uavs.some((u) => u.looking);
+    $("timeScaleNote").hidden = !(onboardBusy && state.timeScale > 1);
+    $("timeScaleNote").textContent = `Onboard detection runs in real time - at ${state.timeScale}× it sees 1/${state.timeScale} of the frames. Measure detection at 1×.`;
 
-    const routes = [], waypoints = [], trails = [], footprints = [], destinations = [];
+    const routes = [], waypoints = [], trails = [], footprints = [], sightlines = [], lookcenters = [], destinations = [], targets = [];
     for (const u of state.uavs) {
       const color = colorOf(u.tailNumber);
       if (u.route.length > 1) {
@@ -180,17 +387,30 @@
         u.route.forEach((p, i) => waypoints.push(feature("Point", p, { color, flown: u.waypointIndex != null && i < u.waypointIndex })));
       }
       if (u.trail.length > 1) trails.push(feature("LineString", [...u.trail, [u.lng, u.lat]], { color }));
-      // The camera's ground rectangle: while the onboard agent is looking, or while its view is open.
-      if ((u.looking || u.tailNumber === cameraTail) && u.footprint.length === 4)
+      // Every airborne UAV's camera on the ground, all the time.
+      if (u.mode !== "Landed" && u.footprint.length === 4) {
         footprints.push(feature("Polygon", [[...u.footprint, u.footprint[0]]], { color, looking: u.looking }));
+        const centre = [0, 1].map((k) => u.footprint.reduce((sum, p) => sum + p[k], 0) / 4);
+        sightlines.push(feature("LineString", [[u.lng, u.lat], centre], { color }));
+        lookcenters.push(feature("Point", centre, { color, label: u.tailNumber }));
+      }
       if (u.destination) destinations.push(feature("LineString", [[u.lng, u.lat], u.destination], { color }));
+      if (u.target)
+        targets.push(feature("Point", u.target, {
+          tail: u.tailNumber, missionId: u.missionId, trackId: u.targetTrackId, color, state: u.targetState,
+          label: `${u.tailNumber} ${u.targetTrackId ?? ""} ${u.targetLabel ?? ""}${u.targetState && u.targetState !== "Tracking" ? " (" + u.targetState.toLowerCase() + ")" : ""}`.trim(),
+        }));
       placeUav(u, color);
     }
     map.getSource("routes").setData(collection(routes));
     map.getSource("waypoints").setData(collection(waypoints));
     map.getSource("trails").setData(collection(trails));
     map.getSource("footprints").setData(collection(footprints));
+    map.getSource("sightlines").setData(collection(sightlines));
+    map.getSource("lookcenters").setData(collection(lookcenters));
     map.getSource("destinations").setData(collection(destinations));
+    targetFeatures = targets;
+    map.getSource("targets").setData(collection(targets));
 
     syncObjects(state.objects);
     syncDetections(state.detections);
@@ -208,15 +428,35 @@
     $("cameraPanel").hidden = false;
     $("cameraTitle").textContent = "Camera · " + tail;
     $("cameraSwatch").style.background = colorOf(tail);
-    // MJPEG: the browser keeps the stream open and swaps frames in place.
-    $("cameraFeed").src = "/api/uavs/" + encodeURIComponent(tail) + "/camera.mjpg";
+    showCameraView();
     $("lastDetection").hidden = true;
     if (lastState) render(lastState);
   }
 
+  // Live (3D, in the browser) or Detector (the server's MJPEG, what the onboard model is given).
+  function showCameraView() {
+    const detector = cameraView === "detector";
+    $("cameraView3d").setAttribute("aria-pressed", String(!detector));
+    $("cameraViewDetector").setAttribute("aria-pressed", String(detector));
+    $("cameraFeed").hidden = !detector;
+    if (detector) {
+      cam3d.hide();
+      // MJPEG: the browser keeps the stream open and swaps frames in place.
+      $("cameraFeed").src = "/api/uavs/" + encodeURIComponent(cameraTail) + "/camera.mjpg";
+    } else {
+      $("cameraFeed").removeAttribute("src"); // ends the stream
+      cam3d.show(cameraTail);
+    }
+  }
+  $("cameraView3d").addEventListener("click", () => { cameraView = "3d"; if (cameraTail) showCameraView(); });
+  $("cameraViewDetector").addEventListener("click", () => { cameraView = "detector"; if (cameraTail) showCameraView(); });
+  $("cameraIr").addEventListener("click", () => { cam3d.setIr(!cam3d.ir); $("cameraIr").setAttribute("aria-pressed", String(cam3d.ir)); });
+  $("cameraExpand").addEventListener("click", () => { $("cameraPanel").classList.toggle("camera-large"); cam3d.map.resize(); });
+
   function closeCamera() {
     cameraTail = null;
     $("cameraFeed").removeAttribute("src"); // ends the stream
+    cam3d.hide();
     $("cameraPanel").hidden = true;
     if (lastState) render(lastState);
   }
@@ -238,6 +478,16 @@
     } else {
       const task = det.tasks.find((t) => t.tailNumber === cameraTail);
       if (!task) status = u.searchPrompt ? "Detector: starting…" : "Detector: idle - no search target.";
+      else if (task.phase) {
+        // The every-frame pipeline on the live video: what its executive is doing, and how fast.
+        const t = task.timing;
+        const phase = task.phase === "Tracking" || task.phase === "Reacquiring"
+          ? `${task.phase} <strong>${esc(task.targetTrackId ?? "")}</strong> (${esc(task.prompt)})`
+          : `${task.phase} for <strong>${esc(task.prompt)}</strong>`;
+        status = `${phase} · ${t ? t.fps.toFixed(1) + " fps, detect " + Math.round(t.detectMs) + " ms" : ""}` +
+          ` · ${task.detections} found` +
+          (task.lastError ? ` · <span style="color:var(--danger)">${esc(task.lastError)}</span>` : "");
+      }
       else {
         const behind = Math.max(0, u.lastFrameSeq - task.analyzedThroughSeq);
         status = `Searching for <strong>${esc(task.prompt)}</strong> · ${task.framesAnalyzed} frames analysed` +
@@ -250,7 +500,10 @@
 
     const last = det.recent.filter((d) => d.tailNumber === cameraTail && d.missionId === u.missionId).at(-1);
     if (!last) { $("lastDetection").hidden = true; return; }
-    const src = `/api/uavs/${encodeURIComponent(cameraTail)}/frames/${last.frameSeq}.jpg`;
+    // The frame kept with the detection; an old survey-pipeline one without it is still in the buffer.
+    const src = last.snapshotId != null
+      ? `/api/onboard/snapshots/${last.snapshotId}.jpg`
+      : `/api/uavs/${encodeURIComponent(cameraTail)}/frames/${last.frameSeq}.jpg`;
     if ($("lastDetectionFrame").getAttribute("src") !== src) $("lastDetectionFrame").src = src;
     const b = last.box, box = $("lastDetectionBox").style;
     box.left = b.x1 / 10 + "%"; box.top = b.y1 / 10 + "%";
@@ -273,8 +526,6 @@
       el.addEventListener("click", (e) => { e.stopPropagation(); openCamera(u.tailNumber); });
       uavMarkers.set(u.tailNumber, entry);
     }
-    entry.marker.setLngLat([u.lng, u.lat]);
-    entry.el.querySelector("svg").style.transform = `rotate(${u.headingDeg}deg)`;
     entry.el.querySelector(".uav-label").textContent = `${u.tailNumber} · ${u.altitudeFt} ft`;
   }
 
@@ -287,13 +538,13 @@
       const existing = objectMarkers.get(o.id);
       if (existing) {
         existing.object = o;
-        existing.marker.setLngLat([o.lng, o.lat]);
+        if (!o.speedKmh) { existing.marker.setLngLat([o.lng, o.lat]); existing.heading = o.headingDeg; }
         continue;
       }
       const el = document.createElement("div");
       el.className = "object-marker";
       el.innerHTML = `<img class="object-sprite" alt="" hidden /><span class="object-label">${esc(o.label)}</span>`;
-      const entry = { object: o, el, metersPerPixel: null, marker: new maplibregl.Marker({ element: el }).setLngLat([o.lng, o.lat]).addTo(map) };
+      const entry = { object: o, el, heading: o.headingDeg, metersPerPixel: null, marker: new maplibregl.Marker({ element: el }).setLngLat([o.lng, o.lat]).addTo(map) };
       objectMarkers.set(o.id, entry);
       fetch(`/api/objects/${encodeURIComponent(o.id)}/sprite.png`).then(async (r) => {
         if (!r.ok) return;
@@ -317,23 +568,34 @@
     entry.el.classList.toggle("object-marker-photo", visible);
     img.style.width = w + "px";
     img.style.height = h + "px";
-    img.style.transform = `translate(-50%, -50%) rotate(${entry.object.headingDeg}deg)`;
+    img.style.transform = `translate(-50%, -50%) rotate(${entry.heading ?? entry.object.headingDeg}deg)`;
   }
   map.on("zoom", () => { for (const entry of objectMarkers.values()) sizeObject(entry); });
 
   function syncDetections(detections) {
-    const keyOf = (d) => d.tailNumber + d.detectedAtUtc + d.lat;
+    // One marker per object found: a moving one's marker moves with its updates (keyed by its
+    // track id), instead of a new circle for every update.
+    const keyOf = (d) => d.trackId ? `${d.tailNumber}|${d.missionId}|${d.trackId}` : d.tailNumber + d.detectedAtUtc + d.lat;
+    const popupHtml = (d) =>
+      `<strong>${esc(d.prompt)}</strong> (${Math.round(d.confidence * 100)}%)` + (d.trackId ? ` · ${esc(d.trackId)}` : "") + `<br>` +
+      `${d.updates > 1 ? "last " : ""}seen by ${esc(d.tailNumber)} at ${new Date(d.detectedAtUtc).toLocaleTimeString()}<br>` +
+      `<span style="font-family:var(--font-mono)">${fmt(d.lat)}, ${fmt(d.lng)}</span>`;
     const keys = new Set(detections.map(keyOf));
     for (const [key, m] of detectionMarkers) if (!keys.has(key)) { m.remove(); detectionMarkers.delete(key); }
     for (const d of detections) {
       const key = keyOf(d);
-      if (detectionMarkers.has(key)) continue;
+      const existing = detectionMarkers.get(key);
+      if (existing) {
+        // A followed object's marker is moved by animate() with its UAV's target ring.
+        const followed = targetFeatures.some((f) => f.properties.state === "Tracking" &&
+          `${f.properties.tail}|${f.properties.missionId}|${f.properties.trackId}` === key);
+        if (!followed) existing.setLngLat([d.lng, d.lat]);
+        existing.getPopup().setHTML(popupHtml(d));
+        continue;
+      }
       const el = document.createElement("div");
       el.className = "detection-marker";
-      const popup = new maplibregl.Popup({ offset: 14, closeButton: false }).setHTML(
-        `<strong>${esc(d.prompt)}</strong> (${Math.round(d.confidence * 100)}%)<br>` +
-        `seen by ${esc(d.tailNumber)} at ${new Date(d.detectedAtUtc).toLocaleTimeString()}<br>` +
-        `<span style="font-family:var(--font-mono)">${fmt(d.lat)}, ${fmt(d.lng)}</span>`);
+      const popup = new maplibregl.Popup({ offset: 14, closeButton: false }).setHTML(popupHtml(d));
       detectionMarkers.set(key, new maplibregl.Marker({ element: el }).setLngLat([d.lng, d.lat]).setPopup(popup).addTo(map));
     }
   }
@@ -370,7 +632,7 @@
     $("detectionList").innerHTML = detections.length
       ? detections.slice().reverse().map((d) =>
           `<div class="row" data-lng="${d.lng}" data-lat="${d.lat}">
-            <span class="what">${esc(d.prompt)} <span class="meta">by ${esc(d.tailNumber)}</span></span>
+            <span class="what">${esc(d.prompt)} <span class="meta">by ${esc(d.tailNumber)}${d.trackId ? " · " + esc(d.trackId) : ""}${d.updates > 1 ? " · moving" : ""}</span></span>
             <span class="where">${fmt(d.lat)}, ${fmt(d.lng)}</span>
           </div>`).join("")
       : `<div class="empty">None yet.</div>`;
@@ -380,7 +642,7 @@
     $("objectList").innerHTML = objects.length
       ? objects.map((o) =>
           `<div class="row" data-lng="${o.lng}" data-lat="${o.lat}">
-            <span class="what">${esc(o.label)}</span>
+            <span class="what">${esc(o.label)}${o.speedKmh ? ` <span class="meta">driving ${Math.round(o.speedKmh)} km/h</span>` : ""}</span>
             <span class="where">${fmt(o.lat)}, ${fmt(o.lng)}</span>
             <button type="button" class="icon-btn" data-remove="${esc(o.id)}" title="Remove">✕</button>
           </div>`).join("")
@@ -429,7 +691,7 @@
     await fetch("/api/objects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ label, lat: e.lngLat.lat, lng: e.lngLat.lng }),
+      body: JSON.stringify({ label, lat: e.lngLat.lat, lng: e.lngLat.lng, speedKmh: Number($("objectSpeed").value) || 0 }),
     });
     setPlacing(false);
   });
@@ -443,9 +705,16 @@
   await startFeed();
 
   async function startFeed() {
-    try { await connection.start(); }
+    try { await connection.start(); reportView(); }
     catch { setTimeout(startFeed, 2000); }
   }
+  function reportView() {
+    if (connection.state !== "Connected") return;
+    const b = map.getBounds();
+    connection.invoke("SetView", b.getWest(), b.getSouth(), b.getEast(), b.getNorth(), map.getZoom()).catch(() => {});
+  }
+  map.on("moveend", reportView);
+  connection.onreconnected(reportView);
 
   // ---- Helpers ----
 

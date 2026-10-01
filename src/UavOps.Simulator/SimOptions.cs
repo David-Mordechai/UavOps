@@ -52,16 +52,84 @@ public sealed class SimOptions
     /// inside the footprint, no model needed.</summary>
     public string Detector { get; set; } = "Onboard";
 
-    public string OnboardDetectorUrl { get; set; } = "http://localhost:5280";
+    /// <summary>The onboard computer: everything onboard (detector, tracker, executive, verifier
+    /// VLM) runs there - the Jetson Orin Nano by default. Point it elsewhere (a local
+    /// UavOps.Onboard.Detector for offline dev) by changing this one setting.</summary>
+    public string OnboardUrl { get; set; } = "http://192.168.1.154:5280";
 
-    /// <summary>This simulator's own address as the detector should reach it (frames, callbacks).</summary>
-    public string PublicBaseUrl { get; set; } = "http://localhost:5270";
+    /// <summary><c>SignalR</c> (default): talk to the onboard computer through the ground agent's
+    /// onboard hub (<see cref="OnboardHubUrl"/>); both sides dial the agent, so the onboard computer
+    /// needs no open port. <c>Http</c>: call <see cref="OnboardUrl"/> directly.</summary>
+    public string OnboardLink { get; set; } = "SignalR";
+
+    public bool UsesOnboardHub => OnboardLink.Equals("SignalR", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The ground agent's onboard hub: the host of <see cref="HostHubUrl"/>, at
+    /// <see cref="UavOps.Onboard.Contracts.OnboardLink.HubPath"/>.</summary>
+    public string OnboardHubUrl =>
+        new Uri(new Uri(HostHubUrl), UavOps.Onboard.Contracts.OnboardLink.HubPath).ToString();
+
+    /// <summary>This simulator's own address as the onboard computer reaches it (video, frames,
+    /// payload control, callbacks). Blank: this machine's LAN address on the route to
+    /// <see cref="OnboardUrl"/>, and the port it listens on.</summary>
+    public string PublicBaseUrl { get; set; } = "";
+
+    /// <summary>The live video the onboard computer's every-frame detector reads (sim time is
+    /// rendered, wall-clock rate), while a UAV's onboard agent is looking; frames kept per UAV.</summary>
+    public double OnboardVideoFps { get; set; } = 10;
+    public int VideoFramesKept { get; set; } = 60;
 
     public bool UsesOnboardDetector => Detector.Equals("Onboard", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Fills in a blank <see cref="PublicBaseUrl"/>: this machine's address on the route to the
+    /// onboard computer (asked of the OS by "connecting" a UDP socket, which sends nothing), with the
+    /// port this app listens on. The onboard computer is another machine on the LAN, so localhost
+    /// wouldn't reach back here.
+    /// </summary>
+    public void ResolvePublicBaseUrl(string? listenUrls)
+    {
+        if (!string.IsNullOrWhiteSpace(PublicBaseUrl))
+            return;
+        var port = 5270;
+        var first = listenUrls?.Split(';', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (first is not null && Uri.TryCreate(first.Replace("0.0.0.0", "localhost").Replace("*", "localhost").Replace("+", "localhost"), UriKind.Absolute, out var listen))
+            port = listen.Port;
+        var host = "localhost";
+        if (Uri.TryCreate(OnboardUrl, UriKind.Absolute, out var onboard) && !onboard.IsLoopback)
+        {
+            try
+            {
+                using var socket = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetwork,
+                    System.Net.Sockets.SocketType.Dgram, System.Net.Sockets.ProtocolType.Udp);
+                socket.Connect(onboard.Host, onboard.Port);
+                host = ((System.Net.IPEndPoint)socket.LocalEndPoint!).Address.ToString();
+            }
+            catch (System.Net.Sockets.SocketException)
+            {
+                // No route: fall back to localhost, which works when the onboard service is local.
+            }
+        }
+        PublicBaseUrl = $"http://{host}:{port}";
+    }
 
     /// <summary>How much drawn traffic streets get, as a fraction of a busy town's (1). Where a real
     /// aerial photo covers the ground its own vehicles are the traffic, and none is drawn.</summary>
     public double TrafficDensity { get; set; } = 0.15;
+
+    /// <summary>Where moving traffic drives: around each of these points (default: the UAV base and
+    /// both zones, and 999's forward point by ZoneB), <see cref="TrafficAreaRadiusMeters"/> each way.
+    /// The roads are read from the offline map once at startup.</summary>
+    public List<TrafficArea> TrafficAreas { get; set; } = [];
+    public double TrafficAreaRadiusMeters { get; set; } = 6000;
+
+    /// <summary>Moving traffic over the real aerial photos too. Off by default: the photos have their
+    /// own vehicles, and a drawn red car driving through a zone is one more hit for a "red car" search.</summary>
+    public bool TrafficOverPhotos { get; set; }
+
+    /// <summary>The payload's slew time before a close-up (sim seconds): a close-up of a candidate is
+    /// taken as at the survey frame it was seen in plus this, so a moving car is still in it.</summary>
+    public double CloseUpDelaySeconds { get; set; } = 0.5;
 
     /// <summary>Real vehicles cut from the aerial photos, for scenario objects to look like.</summary>
     public List<Imagery.VehiclePhotoConfig> VehiclePhotos { get; set; } = [];
@@ -69,15 +137,29 @@ public sealed class SimOptions
 
 /// <summary>Something on the ground to find: what the camera draws (a vehicle of
 /// <see cref="Kind"/> in <see cref="Color"/>, facing <see cref="HeadingDeg"/>) and what the
-/// simulated detector matches (<see cref="Tags"/>).</summary>
+/// simulated detector matches (<see cref="Tags"/>). With <see cref="SpeedKmh"/> above 0 it drives
+/// the road it was placed on (<see cref="World.GroundWorld"/>); Lat/Lng/HeadingDeg are then where it
+/// was placed, and <see cref="World.GroundWorld.ObjectsAt"/> gives where it is.</summary>
 public sealed record ScenarioObject(string Id, string Label, IReadOnlyList<string> Tags, double Lat, double Lng,
-    string Kind, string Color, double HeadingDeg, string? Photo = null);
+    string Kind, string Color, double HeadingDeg, string? Photo = null, double SpeedKmh = 0, double DriveMeters = ScenarioObject.DefaultDriveMeters)
+{
+    /// <summary>How far a driving object goes along its road each way from where it was placed,
+    /// back and forth: far enough to be seen moving, short enough to stay in its search area.</summary>
+    public const double DefaultDriveMeters = 800;
+}
 
 /// <summary>The "Scenario" section: <c>Objects</c>, plus anything placed from the page.</summary>
 public sealed class ScenarioOptions
 {
     public const string SectionName = "Scenario";
     public List<ScenarioObjectConfig> Objects { get; set; } = [];
+}
+
+public sealed class TrafficArea
+{
+    public string Name { get; set; } = "";
+    public double Lat { get; set; }
+    public double Lng { get; set; }
 }
 
 public sealed class ScenarioObjectConfig
@@ -92,6 +174,10 @@ public sealed class ScenarioObjectConfig
     public double? HeadingDeg { get; set; }
     /// <summary>A <c>Simulator:VehiclePhotos</c> name; default: the first photo of this kind and colour.</summary>
     public string? Photo { get; set; }
+    /// <summary>Above 0: it drives the nearest road back and forth at this speed. 0: parked.</summary>
+    public double SpeedKmh { get; set; }
+    /// <summary>How far it drives each way from where it was placed (default 800 m).</summary>
+    public double? DriveMeters { get; set; }
 }
 
 public sealed class ScenarioStore
@@ -106,7 +192,7 @@ public sealed class ScenarioStore
     {
         _photos = photos ?? [];
         foreach (var o in options.Objects)
-            Add(o.Label, o.Tags, o.Lat, o.Lng, string.IsNullOrWhiteSpace(o.Id) ? null : o.Id, o.Kind, o.Color, o.HeadingDeg, o.Photo);
+            Add(o.Label, o.Tags, o.Lat, o.Lng, string.IsNullOrWhiteSpace(o.Id) ? null : o.Id, o.Kind, o.Color, o.HeadingDeg, o.Photo, o.SpeedKmh, o.DriveMeters);
     }
 
     public IReadOnlyList<ScenarioObject> All()
@@ -118,7 +204,8 @@ public sealed class ScenarioStore
     /// colour default to the label's words too ("red car" is a red car), and heading to a fixed
     /// angle per object.</summary>
     public ScenarioObject Add(string label, IEnumerable<string>? tags, double lat, double lng, string? id = null,
-        string? kind = null, string? color = null, double? headingDeg = null, string? photo = null)
+        string? kind = null, string? color = null, double? headingDeg = null, string? photo = null, double speedKmh = 0,
+        double? driveMeters = null)
     {
         var tagList = (tags ?? []).Concat(TextWords.Of(label)).Select(t => t.Trim().ToLowerInvariant())
             .Where(t => t.Length > 0).Distinct().ToList();
@@ -133,7 +220,8 @@ public sealed class ScenarioStore
             // A real photo of a vehicle like this one, when there is one.
             photo ??= _photos.FirstOrDefault(p => p.Kind.Equals(kind, StringComparison.OrdinalIgnoreCase)
                                                  && p.Color.Equals(color, StringComparison.OrdinalIgnoreCase))?.Name;
-            var obj = new ScenarioObject(objectId, label.Trim(), tagList, lat, lng, kind.ToLowerInvariant(), color.ToLowerInvariant(), heading, photo);
+            var obj = new ScenarioObject(objectId, label.Trim(), tagList, lat, lng, kind.ToLowerInvariant(), color.ToLowerInvariant(), heading, photo,
+                Math.Clamp(speedKmh, 0, 150), Math.Clamp(driveMeters ?? ScenarioObject.DefaultDriveMeters, 50, 20_000));
             _objects.RemoveAll(o => o.Id == obj.Id);
             _objects.Add(obj);
             return obj;

@@ -87,16 +87,16 @@ public class TeamAoiSearchLiveTests(ITestOutputHelper output)
 }
 
 /// <summary>"Search ZoneA for a red car with all UAVs": there is no 'ALL' for a search, so the model
-/// must list the fleet itself and pass every tail number in one PrepareAoiSearch call. 999 starts
-/// ~80 km away near ZoneB, so the planner leaves it out: 997 and 998 must be one team, 999 must be
-/// untouched, and the reply must tell the operator 999 was left out.</summary>
+/// must list the fleet itself and pass every tail number in one PrepareAoiSearch call. Since
+/// 2026-10-01 all three start at the base by ZoneA, so all three must be one team. (Leaving out a
+/// far UAV is covered by MoavMissionToolsTests.)</summary>
 public class TeamAoiSearchAllUavsLiveTests(ITestOutputHelper output)
 {
     static TeamAoiSearchAllUavsLiveTests() => LiveTestSupport.ClearProgressLogOnce();
 
     [Fact]
     [Trait("Category", "Live")]
-    public async Task SearchWithAllUavs_ListsTheFleet_AndLeavesOutTheFarUav()
+    public async Task SearchWithAllUavs_ListsTheFleet_AndMakesOneTeamOfAllThree()
     {
         var repeats = LiveTestSupport.RepeatCount;
         var successes = 0;
@@ -109,22 +109,16 @@ public class TeamAoiSearchAllUavsLiveTests(ITestOutputHelper output)
 
             var (summary, _) = await orchestrator.HandleAsync("search ZoneA for a red car with all UAVs", $"team-search-all-{i}", CancellationToken.None);
             output.WriteLine($"[prepare] {summary}");
-            var team = await TeamAoiSearchLiveTests.TeamStatusAsync(mcpClients, ["997", "998"]);
-            var far = (await TeamAoiSearchLiveTests.TeamStatusAsync(mcpClients, ["999"]))[0];
+            var team = await TeamAoiSearchLiveTests.TeamStatusAsync(mcpClients, ["997", "998", "999"]);
 
-            var prepared = TeamAoiSearchLiveTests.TeamPrepared(team, "red car");
-            var farUntouched = far.WaypointCount == 0 && string.IsNullOrEmpty(far.SearchPrompt);
-            var toldLeftOut = Regex.IsMatch(summary, @"999[^.]*(left out|not used|too far|distance)", RegexOptions.IgnoreCase);
-
-            if (prepared && farUntouched && toldLeftOut)
+            if (TeamAoiSearchLiveTests.TeamPrepared(team, "red car"))
             {
                 successes++;
-                LiveTestSupport.LiveLog(output, "  => VERIFIED SUCCESS (997+998 one team, 999 left out and said so)");
+                LiveTestSupport.LiveLog(output, "  => VERIFIED SUCCESS (997+998+999 one team)");
             }
             else
             {
-                LiveTestSupport.LiveLog(output,
-                    $"  => MISMATCH (team: {string.Join(" | ", team)}; 999: {far}; told left out: {toldLeftOut}; reply: {summary})");
+                LiveTestSupport.LiveLog(output, $"  => MISMATCH (team: {string.Join(" | ", team)}; reply: {summary})");
             }
         }
 

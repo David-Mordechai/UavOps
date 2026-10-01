@@ -120,6 +120,12 @@ namespace UavOps.MockFleetClient
             return CommandResult<MissionStatus>.Ok(new MissionStatus { Mode = "Searching", WaypointCount = 0, CurrentWaypointIndex = 0 });
         }
 
+        public CommandResult<MissionStatus> StopMission(string tailNumber)
+        {
+            Log("StopMission", tailNumber);
+            return CommandResult<MissionStatus>.Ok(new MissionStatus { Mode = "Orbiting", WaypointCount = 0 });
+        }
+
         private string _lastSearchTail = "997";
         private SearchTargetRequest _lastSearchTarget = new SearchTargetRequest
         {

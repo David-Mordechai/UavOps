@@ -133,6 +133,8 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 var(--font); }
   padding: 6px 8px; font: inherit;
 }
 .hint input:focus { outline: none; border-color: var(--accent); }
+.hint label.speed { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.hint label.speed input { width: 72px; }
 .map.placing .maplibregl-canvas { cursor: crosshair; }
 
 /* ---- Map markers (DOM, so no glyphs are needed even without the offline map) ---- */
@@ -180,3 +182,27 @@ body { background: var(--bg); color: var(--text); font: 13px/1.45 var(--font); }
 
 .card-selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 .uav-marker { cursor: pointer; }
+
+.pill-toggle { cursor: pointer; background: transparent; border: 1px solid var(--border, #333); color: inherit; font: inherit; }
+.pill-toggle:hover { border-color: var(--accent, #5b8def); }
+
+/* The 3D payload camera (camera3d.js). */
+.camera-panel.camera-large { width: min(1100px, calc(100% - 24px)); }
+.camera-header .camera-tools { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.camera-header .camera-tools .icon-btn { margin-left: 0; }
+.camera-header .seg { font: inherit; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+.camera-header .seg[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: rgba(91, 141, 239, 0.15); }
+.camera3d { position: relative; overflow: hidden; }
+.camera3d .c3d-map { position: absolute; inset: 0; }
+.camera3d .c3d-hud { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.camera3d .c3d-vignette { position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.45) 100%); }
+.camera3d .c3d-grain { position: absolute; inset: -50%; pointer-events: none; opacity: 0.07; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  animation: c3d-grain 1.5s steps(6) infinite; }
+@keyframes c3d-grain { 0% { transform: translate(0, 0); } 33% { transform: translate(-6%, 4%); } 66% { transform: translate(5%, -5%); } 100% { transform: translate(0, 0); } }
+.camera3d .c3d-map canvas { filter: contrast(1.06) saturate(0.92); }
+.camera3d.c3d-ir .c3d-map canvas { filter: grayscale(1) contrast(1.45) brightness(1.05); }
+.camera-feed[hidden] { display: none; }
+.note-warn { margin-top: 6px; padding: 4px 8px; border-radius: 6px; font-size: 12px; background: var(--warning-bg); color: var(--warning); }

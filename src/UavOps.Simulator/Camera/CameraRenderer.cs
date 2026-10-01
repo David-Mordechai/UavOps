@@ -14,20 +14,26 @@ public sealed record CameraOverlay(GeoPoint Position, double WidthMeters, double
 /// heading, at the scale its altitude and field of view give (<see cref="CameraModel"/>), then
 /// made to look like a sensor: slight blur, grain, haze and vignette, and a telemetry strip like
 /// real UAV video burns in.
+///
+/// Moving things (traffic, driving scenario objects) are drawn where they were at the frame's
+/// moment in sim time (<see cref="World.GroundWorld"/>): survey frames are rendered after they were
+/// captured, and a close-up is taken as at the frame its candidate was seen in.
 /// </summary>
-public sealed class CameraRenderer(GroundRenderer ground, ScenarioStore scenario, Imagery.VehiclePhotos? photos = null)
+public sealed class CameraRenderer(GroundRenderer ground, ScenarioStore scenario, Imagery.VehiclePhotos? photos = null,
+    World.GroundWorld? world = null)
 {
     private const int JpegQuality = 82;
 
-    public byte[] RenderJpeg(FrameTelemetry frame, string tailNumber, IReadOnlyList<CameraOverlay>? overlays = null)
+    public byte[] RenderJpeg(FrameTelemetry frame, string tailNumber, IReadOnlyList<CameraOverlay>? overlays = null, double? simTime = null)
     {
-        using var image = Render(frame, tailNumber, overlays);
+        using var image = Render(frame, tailNumber, overlays, simTime);
         using var data = image.Encode(SKEncodedImageFormat.Jpeg, JpegQuality);
         return data.ToArray();
     }
 
-    public SKImage Render(FrameTelemetry frame, string tailNumber, IReadOnlyList<CameraOverlay>? overlays = null)
+    public SKImage Render(FrameTelemetry frame, string tailNumber, IReadOnlyList<CameraOverlay>? overlays = null, double? simTime = null)
     {
+        var at = simTime ?? world?.Clock.At(frame.CapturedAtUtc) ?? 0;
         var width = frame.Width;
         var height = frame.Height;
         var camera = new CameraModel(frame);
@@ -52,7 +58,8 @@ public sealed class CameraRenderer(GroundRenderer ground, ScenarioStore scenario
         canvas.Clear(new SKColor(120, 110, 90));
 
         DrawGround(canvas, camera, center, gsd, a, b, c, d, e, f);
-        DrawScenarioObjects(canvas, frame, gsd, forward, right, ToFrame);
+        DrawTraffic(canvas, camera, frame, gsd, forward, right, ToFrame, at);
+        DrawScenarioObjects(canvas, frame, gsd, forward, right, ToFrame, world?.ObjectsAt(at) ?? scenario.All());
 
         using var raw = surface.Snapshot();
         using var output = SKSurface.Create(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul))!;
@@ -109,12 +116,36 @@ public sealed class CameraRenderer(GroundRenderer ground, ScenarioStore scenario
                 (int)Math.Floor((center.Y - radius) / size), (int)Math.Floor((center.Y + radius) / size));
     }
 
-    private void DrawScenarioObjects(SKCanvas canvas, FrameTelemetry frame, double gsd, Vec2 forward, Vec2 right, Func<Vec2, SKPoint> toFrame)
+    /// <summary>Background traffic in view, as drawn vehicles at their true size and heading.</summary>
+    private void DrawTraffic(SKCanvas canvas, CameraModel camera, FrameTelemetry frame, double gsd, Vec2 forward, Vec2 right,
+        Func<Vec2, SKPoint> toFrame, double simTime)
     {
-        // Shadow direction in frame pixels per meter of height.
+        if (world?.Traffic is null || gsd > 1.5)
+            return; // from high up (or wide), a car is under two pixels
+        var shadow = Shadow(gsd, forward, right);
+        var radius = Math.Sqrt(camera.GroundWidthMeters * camera.GroundWidthMeters + camera.GroundHeightMeters * camera.GroundHeightMeters) / 2 + 10;
+        foreach (var (vehicle, position, heading) in world.TrafficNear(new GeoPoint(frame.Lat, frame.Lng), radius, simTime))
+        {
+            var p = toFrame(ground.Projection.ToLocal(position));
+            if (p.X < -50 || p.Y < -50 || p.X > frame.Width + 50 || p.Y > frame.Height + 50)
+                continue;
+            var paint = VehicleSprites.Colors.GetValueOrDefault(vehicle.Color, VehicleSprites.Colors["grey"]);
+            VehicleSprites.Draw(canvas, p, heading - frame.HeadingDeg, 1 / gsd, VehicleLook.Of(vehicle.Kind, paint), shadow);
+        }
+    }
+
+    /// <summary>Shadow direction in frame pixels per meter of height.</summary>
+    private static SKPoint Shadow(double gsd, Vec2 forward, Vec2 right)
+    {
         var s = GroundRenderer.SunShadowPerMeter;
-        var shadow = new SKPoint((float)((s.X * right.X + s.Y * right.Y) / gsd), (float)(-(s.X * forward.X + s.Y * forward.Y) / gsd));
-        foreach (var obj in scenario.All())
+        return new SKPoint((float)((s.X * right.X + s.Y * right.Y) / gsd), (float)(-(s.X * forward.X + s.Y * forward.Y) / gsd));
+    }
+
+    private void DrawScenarioObjects(SKCanvas canvas, FrameTelemetry frame, double gsd, Vec2 forward, Vec2 right, Func<Vec2, SKPoint> toFrame,
+        IReadOnlyList<ScenarioObject> objects)
+    {
+        var shadow = Shadow(gsd, forward, right);
+        foreach (var obj in objects)
         {
             var p = toFrame(ground.Projection.ToLocal(new GeoPoint(obj.Lat, obj.Lng)));
             if (p.X < -50 || p.Y < -50 || p.X > frame.Width + 50 || p.Y > frame.Height + 50)

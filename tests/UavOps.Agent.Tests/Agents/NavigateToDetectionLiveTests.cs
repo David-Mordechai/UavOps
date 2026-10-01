@@ -82,5 +82,7 @@ public class NavigateToDetectionLiveTests(ITestOutputHelper output)
             journal.Add(note, message);
             return Task.CompletedTask;
         }
+
+        public Task SetOperatorUavAsync(string tailNumber) => Task.CompletedTask;
     }
 }

@@ -24,6 +24,11 @@ public sealed class MissionOptions
     /// operator (their strips are side by side). A search never changes anyone's altitude.</summary>
     public int TeamAltitudeSeparationFt { get; set; } = 200;
 
+    /// <summary>The speed a search flies at: PrepareAoiSearch sends it with SetSpeed, like the zoom.
+    /// At 105 kts a point on the ground crossed the 75 m-long search frame in 1.4 s - a handful of
+    /// detector frames to confirm a car in; at 70 kts it stays in view ~2.1 s.</summary>
+    public int SearchSpeedKts { get; set; } = 70;
+
     /// <summary>Used for the route's time estimate when the UAV reports no speed.</summary>
     public double DefaultSpeedKts { get; set; } = 100;
 
@@ -38,6 +43,14 @@ public sealed class MissionOptions
     /// gathered into a summary every <see cref="DetectionSummaryIntervalSeconds"/>.</summary>
     public int DetectionsReportedIndividually { get; set; } = 3;
     public double DetectionSummaryIntervalSeconds { get; set; } = 30;
+
+    /// <summary>A detection seen again somewhere else (a vehicle driving) is posted to the operator at
+    /// most this often; every sighting still updates its position and the model's history.</summary>
+    public double MovedMessageIntervalSeconds { get; set; } = 30;
+
+    /// <summary>A detection reported again under its track id counts as moved only this far from
+    /// where it was last; closer is the same sighting again.</summary>
+    public double MovedReportMeters { get; set; } = 50;
 
     /// <summary>A summary message names this many (the most confident); its history note has all.</summary>
     public int MaxDetectionsListedInSummary { get; set; } = 5;

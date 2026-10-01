@@ -97,6 +97,10 @@ public static class McpToolsBuilder
             return true;
         }
 
-        return services.GetService(parameter.ParameterType) is not null;
+        // Registered, not resolved: resolving would construct services (and their own
+        // dependencies) in this throwaway container just to answer yes.
+        return services.GetService<IServiceProviderIsService>() is { } isService
+            ? isService.IsService(parameter.ParameterType)
+            : services.GetService(parameter.ParameterType) is not null;
     }
 }

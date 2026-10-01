@@ -37,8 +37,13 @@ public static class AoiZoneNames
 public sealed class SqliteAoiZoneStore : IAoiZoneStore
 {
     /// <summary>Bump when aoi-seed.json changes. 2: the zones moved to open country with real
-    /// aerial photos (Yatir forest road, Route 443).</summary>
-    public const int SeedVersion = 2;
+    /// aerial photos (Yatir forest road, Route 443). 3: ZoneA is the whole Yatir drone photo, and
+    /// ZoneB is gone (operator's decision, 2026-10-01: one zone, three UAVs).</summary>
+    public const int SeedVersion = 3;
+
+    /// <summary>Seed zones that a later seed dropped: deleted when a file is upgraded (other zones
+    /// with names not in the seed are kept).</summary>
+    private static readonly string[] RetiredSeedZones = ["ZoneB"];
 
     private readonly string _connectionString;
     private readonly SemaphoreSlim _initLock = new(1, 1);
@@ -133,9 +138,17 @@ public sealed class SqliteAoiZoneStore : IAoiZoneStore
         if (seeded >= SeedVersion)
             return;
 
-        // A new file, or one seeded from an older aoi-seed.json: (re)write the seed's zones.
+        // A new file, or one seeded from an older aoi-seed.json: (re)write the seed's zones, and
+        // drop the ones a newer seed retired.
         foreach (var zone in LoadSeed())
             await WriteAsync(connection, zone, replace: true, cancellationToken);
+        foreach (var retired in RetiredSeedZones)
+        {
+            var delete = connection.CreateCommand();
+            delete.CommandText = "DELETE FROM aoi_zone WHERE name_key = $key";
+            delete.Parameters.AddWithValue("$key", AoiZoneNames.Key(retired));
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+        }
         var write = connection.CreateCommand();
         write.CommandText = "DELETE FROM aoi_seed; INSERT INTO aoi_seed VALUES ($v)";
         write.Parameters.AddWithValue("$v", SeedVersion);

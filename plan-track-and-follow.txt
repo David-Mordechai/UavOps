@@ -1,0 +1,206 @@
+STATUS (2026-09-30, later the same day): SUPERSEDED - not built as written below. The operator
+chose instead a small onboard autonomy stack on the Jetson Orin Nano Super: a fast detector + tracker
++ a deterministic mission executive that drives the payload itself, with a small VLM only verifying
+at decision points, and find-and-track of ONE target (the UAV circles it). Built and running: see
+src/UavOps.Onboard.Detector/README.md ("The fast pipeline") and CLAUDE.md ("Find and track", "The
+fast onboard pipeline"). Still open from this plan: tracking every object with an id for the
+operator (ListTracks / FollowTrack over the tracker's tracks - the tracker already keeps them),
+fused ids across UAVs, and a tracking-metrics page. Kept for those ideas and its sources.
+
+# Wide-area tracking: every object has an ID, and any one can be followed
+
+## Context
+Today a search detection is a single sighting (`DetectionReport`, time of capture). After the
+search nothing keeps watching, so a moving car is lost, and with several red cars nothing says
+which is which.
+
+**The operator's model (2026-09-30):** the payload looks down from 1,000 ft or more and sees a
+wide picture. The onboard system gives **every object in it a unique ID** and keeps tracking each
+one: its location, speed, heading and state. The operator sees them all, asks about any of them,
+and can pick one for a UAV to follow.
+
+This is how wide-area surveillance works (researched 2026-09-30; sources at the end):
+- **Everything in view is tracked,** not one target. Each track has an id, position/velocity from a
+  Kalman filter, a state (tentative / confirmed / coasting on prediction / lost) and last-seen.
+  Tracks are sent with the video as MISB ST 0903 (VMTI).
+- **Split by speed:**
+  - a fast detector finds every vehicle in every frame (YOLO-class, ~30 fps on a Jetson);
+  - a multi-object tracker keeps the IDs (ByteTrack / DeepSORT: motion gating plus appearance, so
+    two red cars crossing don't swap IDs);
+  - the slow vision model (ours: 2-5 s a frame) only describes tracks and answers questions about
+    them. It never runs per frame.
+- **The operator nominates.** Several look-alikes are separate tracks; the operator picks one to
+  follow. The system never guesses.
+
+**Physics sets how wide "wide" is.** With the current camera (40° HFOV, 1280 px), a 4.5 m car is
+~26 px at 1,000 ft AGL, ~13 px at 2,000 ft and ~6 px at 4,000 ft. Detectors get unreliable
+below ~10-15 px. Real wide-area systems carry very high-resolution sensors for exactly this
+reason, so the simulator's wide-area mode uses a 4K sensor (3840 px): ~3x the pixels per car,
+tracking across ~500-900 m from our altitudes. Zoomed close-ups stay available for the vision
+model to identify a track.
+
+Out of scope for v1: fusing two UAVs' tracks of the same object into one global ID (each UAV's
+IDs are its own, and the map shows both), and handing custody from one UAV to another.
+
+## Architecture
+```
+UAV payload (wide, 4K, ~2 fps in the sim) ──▶ onboard: fast detector (all vehicles) ──▶ MOT (IDs, Kalman, appearance)
+                                                  │ on demand: close-up + vision model → "T-12: red sedan"
+                                                  ▼
+             track list per frame (VMTI-like): id, class, position, velocity, state, description, confidence
+                                                  │ ChatHub.ReportTracks → McpMoav (generic relay)
+                                                  ▼
+McpMoav: the current tracks picture ── tools: ListTracks / DescribeTrack / FollowTrack / StopFollowing
+                                                  ▲
+Operator (chat, voice) ── "what's moving in ZoneA?", "follow T-12 with 998", "which of them is a red car?"
+Page: every track on the map (ID, trail, velocity arrow) and in the 3D camera (box + ID)
+```
+The tracks live onboard, as on a real UAV. McpMoav holds the ground picture and all meaning, and
+the host only relays (the domain-separation rule).
+
+## 1. The wide-area sensor and the fast detector
+- **Sensor.** A payload mode `Wide`: 4K frames (`Simulator:WideSensorWidth`, default 3840) at the
+  UAV's zoom (default 1x, 40°), at ~2 fps of sim time, looking straight down or at a locked point.
+  It's a new frame stream beside the survey frames. It renders at the frame's sim time
+  (`World/GroundWorld`), so moving objects are where they are.
+- **Fast detector: two interchangeable implementations** behind `IObjectDetector`:
+  - **Simulated** (first): the simulator knows every object, so it projects each object in view
+    into the frame with the camera model. A detection needs enough pixels (≥ 10 px, from the car's
+    size and ground sample distance); its box gets pixel noise, a miss probability that grows as
+    pixels shrink, and occasional false positives. That's honest about resolution limits with no
+    model, and it runs in the simulator.
+  - **Real** (later): a YOLO-class ONNX model in the onboard detector (ONNX Runtime, CPU or GPU),
+    with a permissively licensed model (Apache-2.0 RT-DETR / YOLOX, not AGPL YOLOv8), trained or
+    fine-tuned on aerial vehicles (VisDrone). The model choice is measured on our rendered frames,
+    and it runs on the Jetson later (open issue #11).
+- **Objects:** the scenario objects (and traffic, if it's turned back on: `TrafficDensity` > 0,
+  now off). The picture shows exactly what's on the ground.
+
+## 2. Multi-object tracking (`src/UavOps.Onboard.Detector`, new `Tracking/`)
+- **`TrackManager`** per UAV. Each frame:
+  1. Predict every track (constant-velocity Kalman in local metres).
+  2. Associate detections, ByteTrack-style: high-confidence detections first, by gated Mahalanobis
+     distance plus an appearance cost (colour histogram of the box). Then low-confidence
+     detections to the tracks left over. Hungarian assignment.
+  3. Unmatched detections start tentative tracks (confirmed after 3 hits). Unmatched tracks coast,
+     then are lost after `LostAfterSeconds` (8).
+- **IDs:** `T-<n>` per UAV (e.g. "998:T-12" when both UAVs matter), never reused in a session.
+- **Descriptions** on demand or in the background: the vision model looks at a zoom close-up of a
+  confirmed track ("red sedan", "white van"). This reuses today's close-up path, with no target
+  given, as the structure search does. It's cached per track and refreshed if the appearance
+  changes. That's how "which of them is a red car?" is answered without running the model per
+  frame.
+- **Search targets become queries over tracks:** during a search, a track whose description
+  matches the target word by word (today's matcher) is reported as a detection, with its track
+  ID. The existing detection messages keep working, now with an ID and motion.
+
+## 3. The track picture on the ground (McpMoav)
+- **Wire:**
+  - Fleet → host: `ChatHub.ReportTracks(TrackBatch)`, per UAV, ~1 per second: id, class,
+    position, speed, heading, state, description, confidence, last seen. It's forwarded unchanged
+    to McpMoav (`HostHubContract.FleetEvents.Tracks`), like detections.
+  - Host → fleet: `SetTrackingMode(tail, Wide|Off)`. The existing `SetTrackingMode` is the GDT
+    antenna's, so this gets its own name, `SetSensorMode`. Also `FollowTrack(tail, trackId)` and
+    `StopFollowing(tail)`, through every layer as StartMission was. `FleetContractDriftTests`
+    covers them.
+- **`TrackPicture`** (McpMoav): the current tracks per UAV, with short history. "T-12" and "track
+  12" resolve to its current position for Navigate / PointPayload (as detection names do today).
+- **Tools** (`ToolsConfig.yaml`, tool-description-review skill):
+  - `ListTracks(zoneOrArea?, filter?)`: e.g. "what's moving in ZoneA?", "any red cars?". Compact
+    rows, ID / class / description / motion / where; the model never gets raw coordinates it
+    doesn't need.
+  - `DescribeTrack(trackId)`: asks the vision model now, if not described yet.
+  - `FollowTrack(tailNumber, trackId)`: the UAV follows that track (section 4). A description
+    instead of an ID ("the red car") resolves to the matching tracks. More than one asks the
+    operator, listing each with its motion, through the generic `ChatHub.RelayAskOperatorChoice`,
+    never the model's guess.
+  - `StopFollowing(tailNumber)`.
+- **Messages** (fixed text, with voice short forms), only on changes:
+  - "998 is following T-12 (red sedan), ~40 km/h NE".
+  - "998 lost T-12 near …, searching where it should be".
+  - "998 found T-12 again".
+  - A new object of the search target's kind appearing in view (today's detection message, now
+    with an ID).
+
+  There's no message per track update. The model's history gets a compact picture on request
+  (`ListTracks`), not a stream.
+
+## 4. Following one track
+- **Aircraft mode `Following` (`SimFleet`):**
+  - It circles the track's predicted position: `LoiterAround` with a moving centre, radius from
+    altitude.
+  - The gimbal is locked on the track: `PayloadTarget` is updated each tick; the 3D view's `LOCK`.
+  - Wide mode stays on, so the other objects keep their IDs around it.
+  - The zoom only narrows if the track gets too small in the frame.
+- **When the followed track coasts or is lost:**
+  1. Fly to the prediction and look there.
+  2. Reassociation by the tracker (motion + appearance) brings the same ID back. A vision-model
+     check on a close-up confirms it's the same car before the ID is continued.
+  3. After `ReacquireSeconds` (60), report it lost and orbit the last prediction.
+
+## 5. The page
+- **Map:** every confirmed track as a small labelled symbol: ID, a velocity arrow, a short trail,
+  coloured by state. The followed one is highlighted, with its predicted-position ring. Tracks
+  from two UAVs of the same object show both IDs (no fusion in v1).
+- **3D camera:** a box and ID on each tracked object (`T-12 · 40 km/h`), and the HUD shows the
+  followed track. Boxes are drawn from the track list, geo-positioned, so they stay on the
+  objects.
+- **A tracks panel** in the sidebar: the list, filterable. Clicking one zooms to it.
+
+## 6. Measuring it (the simulator knows the truth)
+- **`TrackEvaluator`**, dev only, per run, at `GET /api/tracking/metrics`:
+  - detection recall vs pixels-per-object (at 1,000 / 2,000 / 4,000 ft);
+  - identity switches (a track moving onto another object);
+  - track fragmentation (one object, several IDs);
+  - position error;
+  - custody % for a followed track;
+  - reacquisition time.
+- **Scenarios:** two red cars on the same road (crossing, overtaking), a car stopping under
+  trees, and several parked look-alikes. Traffic can be switched on to load-test the tracker
+  (thousands of objects).
+- **Unit tests:**
+  - Kalman predict/update.
+  - Association: two cars crossing keep their IDs; a missed detection coasts.
+  - Tentative → confirmed → lost.
+  - The simulated detector's pixel-size threshold.
+  - `FollowTrack` asks when a description matches two tracks.
+  - Contract drift.
+- **Live tests** (8 repeats):
+  - "what's moving in ZoneA?" → `ListTracks`.
+  - "follow T-12 with 998" → `FollowTrack`.
+  - "follow the red car" with two red cars → the operator is asked.
+  - "stop following" → `StopFollowing`.
+- **End to end in Chrome:**
+  1. Wide mode over ZoneA with two red cars and the parked vehicles.
+  2. The IDs on the map and in the camera.
+  3. "which of them is a red car?"
+  4. "follow T-12 with 998", then watch it hold the car through the bends and under the trees.
+  5. Report the metrics.
+
+## Order
+1. Wide sensor + simulated fast detector + MOT with IDs + the track list to McpMoav and the map
+   (sections 1-3, 5). The operator already sees every object with an ID.
+2. `ListTracks` / `DescribeTrack` and descriptions by the vision model; search targets as
+   queries over tracks.
+3. `FollowTrack` and the following mode, custody messages, reacquisition (section 4).
+4. Metrics and scenarios (section 6). Then the real ONNX detector in the onboard service,
+   compared against the simulated one on the same frames.
+
+## Open questions
+1. **Follow geometry:** circle the car (fixed-wing norm, what our UAVs do) or trail behind it?
+   The plan assumes circling.
+2. **One global ID across UAVs** (fuse 997's and 998's tracks of the same car) in v1, or per-UAV
+   IDs first? The plan assumes per-UAV first.
+3. **Real detector now or later:** the plan starts with the simulated detector (it models the
+   pixel limits honestly and needs no model) and adds the ONNX one in step 4.
+
+## Sources
+- Kalman-guided UAV tracking and reacquisition: https://arxiv.org/pdf/2410.10409 ,
+  https://www.nature.com/articles/s41598-025-13698-6
+- Drone multi-object tracking (DeepSORT/ByteTrack, re-identification):
+  https://openaccess.thecvf.com/content/ICCV2021W/VisDrone/papers/Chen_VisDrone-MOT2021_The_Vision_Meets_Drone_Multiple_Object_Tracking_Challenge_Results_ICCVW_2021_paper.pdf ,
+  https://www.forasoft.com/learn/ai-for-video-engineering/articles-ai/multi-object-tracking-deepsort-bytetrack-ocsort ,
+  https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12473289/
+- Track metadata with video (MISB ST 0903 VMTI): https://docs.ogc.org/per/20-036.html
+- Gimbal targeting a moving vehicle: https://ardupilot.org/copter/docs/common-mount-targeting.html
+- Following a target with a UAV: https://www.mdpi.com/2504-446X/8/9/488

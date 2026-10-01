@@ -7,6 +7,9 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- The offline map data (scripts/build-satellite.ps1, hundreds of MB): read by the app, not served as static files, so the build doesn't
+         fingerprint it (it failed on the locked file, and re-hashed it all on every build). -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);wwwroot/map/*.mbtiles*</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

@@ -22,6 +22,10 @@ public interface IOperatorNotifier
     /// <param name="note">What happened, for the model.</param>
     /// <param name="message">The reply the history records for it.</param>
     Task AddHistoryNoteAsync(string note, string message);
+
+    /// <summary>The operator's attention is now on this UAV (it locked on the target): a message
+    /// naming no UAV ("stop tracking") is about it.</summary>
+    Task SetOperatorUavAsync(string tailNumber);
 }
 
 /// <summary>The real notifier, over McpMoav's relay connection to the host (OperationBackend: SignalR).</summary>
@@ -32,6 +36,9 @@ public sealed class HubOperatorNotifier(HubConnection hubConnection) : IOperator
 
     public Task AddHistoryNoteAsync(string note, string message) =>
         hubConnection.InvokeAsync(HostHubContract.Methods.AddHistoryNote, note, message);
+
+    public Task SetOperatorUavAsync(string tailNumber) =>
+        hubConnection.InvokeAsync(HostHubContract.Methods.SetOperatorUav, tailNumber);
 }
 
 /// <summary>OperationBackend: Simulated has no host connection, and nothing there reports
@@ -49,4 +56,6 @@ public sealed class LogOnlyOperatorNotifier(ILogger<LogOnlyOperatorNotifier> log
         logger.LogInformation("No host connection (OperationBackend: Simulated); history note not delivered: {Note}", note);
         return Task.CompletedTask;
     }
+
+    public Task SetOperatorUavAsync(string tailNumber) => Task.CompletedTask;
 }

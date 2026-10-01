@@ -56,6 +56,34 @@ public sealed class SimUav(string tailNumber, GeoPoint home)
     public LinkedList<GeoPoint> Trail { get; } = new();
     public double TrailClock { get; set; }
 
+    /// <summary>Find and track: once the onboard computer has found and verified the target, it
+    /// locks the payload on it and reports where it is; the UAV then circles that position.</summary>
+    public bool TrackTarget { get; set; }
+
+    /// <summary>Fly the route again and again until the mission is stopped; which pass this is.</summary>
+    public bool RepeatSearch { get; set; }
+    public int SearchPass { get; set; }
+
+    /// <summary>The payload zoom the search was started with (the ground side set it for the lanes'
+    /// spacing): restored whenever the UAV goes back to its route after following a target.</summary>
+    public double SearchZoom { get; set; } = 1;
+
+    /// <summary>The target being followed, as the onboard computer last reported it.</summary>
+    public GeoPoint? FollowCenter { get; set; }
+    public string? FollowState { get; set; }
+    public string? FollowTrackId { get; set; }
+    public string? FollowLabel { get; set; }
+    public GeoPoint? FollowForwarded { get; set; }
+    public DateTime FollowForwardedAtUtc { get; set; }
+
+    /// <summary>The followed target's velocity (m/s east, north) and when the frame it was seen in
+    /// was captured: the page's ring is drawn where it is now, not where it was in that frame.</summary>
+    public Vec2 FollowVelocity { get; set; }
+    public DateTime FollowSeenAtUtc { get; set; }
+
+    /// <summary>The live video's last frame number (for the onboard computer's every-frame loop).</summary>
+    public long VideoSeq { get; set; }
+
     /// <summary>The camera's last survey frame number; never reset, so frame numbers only grow.</summary>
     public long LastFrameSeq { get; set; }
     /// <summary>Distance flown since the last survey frame, or null before the first one of a search.</summary>
@@ -83,6 +111,12 @@ public sealed class SimFleet
     private const int TrailLength = 400;
     private const double AltitudeToleranceFt = 30;
 
+    /// <summary>A followed target's position goes to the ground (as a detection update under its
+    /// track id) when it has moved this far, or at least this often while it moves: the model's
+    /// history gets each one, so not every second.</summary>
+    private const double FollowForwardMeters = 50;
+    private static readonly TimeSpan FollowForwardInterval = TimeSpan.FromSeconds(20);
+
     private readonly object _lock = new();
     private readonly Dictionary<string, SimUav> _uavs = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<MissionEventReport> _pendingEvents = [];
@@ -95,8 +129,8 @@ public sealed class SimFleet
         _detector = detector;
         _options = options;
         // Same start points as McpMoav's in-memory backend: 997 and 998 at the base by ZoneA
-        // (Yatir), 999 at a forward point by ZoneB (Route 443).
-        foreach (var (tail, lat, lng) in new[] { ("997", 31.344000, 35.035000), ("998", 31.342500, 35.033500), ("999", 32.064000, 34.912000) })
+        // (Yatir), and 999 there too.
+        foreach (var (tail, lat, lng) in new[] { ("997", 31.344000, 35.035000), ("998", 31.342500, 35.033500), ("999", 31.345500, 35.036500) })
         {
             var uav = new SimUav(tail, new GeoPoint(lat, lng));
             Zoom(uav, 1);
@@ -124,6 +158,8 @@ public sealed class SimFleet
                     detections.Add(detection);
                     _detections.Add(detection);
                 }
+                while (_detector.TakeTrack(uav) is { } report)
+                    ApplyTrack(uav, report, detections);
                 // Complete once the route is flown and every frame has been looked at: reporting
                 // "nothing found" while frames still wait would be wrong.
                 if (uav.RouteFlown && !uav.SearchEnded && _detector.HasFinished(uav))
@@ -216,6 +252,12 @@ public sealed class SimFleet
         return nadir with { Lat = target.Lat, Lng = target.Lng, HeadingDeg = 0 };
     }
 
+    /// <summary>The point the payload is locked on, while it holds it (in reach, not surveying).</summary>
+    private double[]? LookAt(SimUav uav) =>
+        uav.PayloadTarget is { } t && !Surveying(uav) && GeoProjection.DistanceMeters(uav.Position, t) <= _options.MaxZoomRangeMeters
+            ? [t.Lng, t.Lat]
+            : null;
+
     private void Zoom(SimUav uav, double zoom)
     {
         uav.PayloadZoom = Math.Clamp(zoom, 1, Math.Max(_options.PayloadMaxZoom, 1));
@@ -231,6 +273,63 @@ public sealed class SimFleet
             if (!_uavs.TryGetValue(tail, out var uav))
                 return null;
             return nadir ? Camera(uav, uav.LastFrameSeq, nowUtc) : PayloadCamera(uav, uav.LastFrameSeq, nowUtc);
+        }
+    }
+
+    // ----- The onboard computer (UavOps.Onboard.Detector on the Jetson) -----
+
+    /// <summary>UAVs whose onboard agent is looking now.</summary>
+    public List<string> Looking()
+    {
+        lock (_lock)
+            return _uavs.Values.Where(u => u.IsLooking).Select(u => u.TailNumber).ToList();
+    }
+
+    /// <summary>The next live-video frame of a looking UAV's payload (where it points, at its zoom),
+    /// numbered in its own sequence; null if it isn't looking.</summary>
+    public FrameTelemetry? NextVideoFrame(string tail, DateTime nowUtc)
+    {
+        lock (_lock)
+        {
+            if (!_uavs.TryGetValue(tail, out var uav) || !uav.IsLooking)
+                return null;
+            uav.VideoSeq++;
+            return PayloadCamera(uav, uav.VideoSeq, nowUtc);
+        }
+    }
+
+    /// <summary>The onboard computer aims the payload at a ground point (holding a target in view).</summary>
+    public bool OnboardPoint(string tail, double lat, double lng) => Onboard(tail, uav =>
+        LockPayload(uav, string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{lat:F5},{lng:F5}"), new GeoPoint(lat, lng)));
+
+    /// <summary>The onboard computer zooms so the frame shows about this much ground across.</summary>
+    public bool OnboardZoom(string tail, double groundWidthMeters) => Onboard(tail, uav =>
+    {
+        var wide = CameraModel.GroundWidthFor(Math.Max(uav.AltitudeFt, 1), _options.PayloadWideHorizontalFovDeg);
+        Zoom(uav, wide / Math.Max(groundWidthMeters, 1));
+    });
+
+    /// <summary>
+    /// The onboard computer lets go of the payload: back to straight down. The zoom goes back to the
+    /// search's only while a search is flying; otherwise it's left alone - a finished task's release
+    /// can arrive after the next search has already zoomed for its lanes (measured: it reset that
+    /// new search to 1x, where a car is ~6 px), and ending a mission resets the payload by itself.
+    /// </summary>
+    public bool OnboardRelease(string tail) => Onboard(tail, uav =>
+    {
+        LockPayload(uav, null, null);
+        if (uav.IsLooking && uav.Mode == "Searching")
+            Zoom(uav, uav.SearchZoom);
+    });
+
+    private bool Onboard(string tail, Action<SimUav> action)
+    {
+        lock (_lock)
+        {
+            if (!_uavs.TryGetValue(tail, out var uav))
+                return false;
+            action(uav);
+            return true;
         }
     }
 
@@ -313,6 +412,16 @@ public sealed class SimFleet
                         continue;
                     }
 
+                    if (uav.RepeatSearch && uav.Route.Count > 1 && !uav.SearchEnded)
+                    {
+                        // Again, from this end: the route backwards, so the next pass starts right
+                        // here instead of flying back across the zone to the first waypoint.
+                        uav.Route.Reverse();
+                        uav.WaypointIndex = 1;
+                        uav.SearchPass++;
+                        _pendingEvents.Add(MissionEvent(uav, MissionEventKinds.PassCompleted));
+                        continue;
+                    }
                     uav.WaypointIndex = null;
                     uav.RouteFlown = true;
                     HoldAt(uav, uav.Position);
@@ -321,6 +430,10 @@ public sealed class SimFleet
 
             case "Orbiting":
                 Circle(uav, distance);
+                break;
+
+            case "Following":
+                FollowCircle(uav, distance);
                 break;
         }
 
@@ -360,6 +473,104 @@ public sealed class SimFleet
         uav.Position = new GeoProjection(uav.OrbitCenter).ToGeo(local);
         // Counter-clockwise: heading is 90° left of the radius (compass: 0 north, 90 east).
         uav.HeadingDeg = Normalize(90 - (uav.OrbitAngle * 180 / Math.PI + 90));
+    }
+
+    /// <summary>
+    /// Circles a moving point (the tracked target): flies to it when far, otherwise round it
+    /// counter-clockwise, easing back onto the orbit radius as the centre moves - no jumps, unlike
+    /// <see cref="Circle"/>, whose centre is fixed.
+    /// </summary>
+    private void FollowCircle(SimUav uav, double distance)
+    {
+        if (uav.FollowCenter is not { } center)
+        {
+            Circle(uav, distance);
+            return;
+        }
+        var radius = _options.OrbitRadiusMeters;
+        var projection = new GeoProjection(center);
+        var local = projection.ToLocal(uav.Position);
+        var r = local.Length;
+        if (r > radius * 1.5)
+        {
+            FlyToward(uav, center, Math.Min(distance, r - radius), arrivalRadius: 0);
+            return;
+        }
+        if (r < 1)
+            local = new Vec2(0, -radius);
+        var angle = Math.Atan2(local.Y, local.X) + distance / radius;
+        var newR = Math.Max(r, 1) + Math.Clamp(radius - r, -distance * 0.5, distance * 0.5);
+        var next = new Vec2(Math.Cos(angle) * newR, Math.Sin(angle) * newR);
+        var step = next - local;
+        if (step.Length > 0.01)
+            uav.HeadingDeg = Normalize(Math.Atan2(step.X, step.Y) * 180 / Math.PI);
+        uav.Position = projection.ToGeo(next);
+    }
+
+    /// <summary>
+    /// A report from the onboard computer about the target it tracks. The first one switches the
+    /// UAV from its search route to following (the mission goes on, as tracking); every one moves
+    /// the circle's centre. The ground hears the lock, a loss and a regain as mission events, and the
+    /// target's position as detection updates under its track id - every
+    /// <see cref="FollowForwardMeters"/> or <see cref="FollowForwardInterval"/>, not every second.
+    /// </summary>
+    private void ApplyTrack(SimUav uav, TargetTrackReport report, List<DetectionReport> detections)
+    {
+        if (report.MissionId != uav.MissionId || !uav.IsLooking)
+            return;
+        var at = new GeoPoint(report.Lat, report.Lng);
+        if (report.State == TargetTrackStates.Released)
+        {
+            if (uav.Mode == "Following")
+                ResumeSearch(uav);
+            return;
+        }
+        var previous = uav.FollowState;
+        uav.FollowCenter = at;
+        var heading = (report.HeadingDeg ?? 0) * Math.PI / 180;
+        uav.FollowVelocity = report.HeadingDeg is null ? new Vec2(0, 0) : new Vec2(Math.Sin(heading), Math.Cos(heading)) * report.SpeedMps;
+        uav.FollowSeenAtUtc = report.SeenAtUtc;
+        uav.FollowState = report.State;
+        uav.FollowTrackId = report.TrackId;
+        uav.FollowLabel = report.Label;
+        if (uav.Mode != "Following")
+        {
+            uav.Mode = "Following";
+            uav.Destination = null;
+            uav.WaypointIndex = null;
+            uav.EntryHold = false;
+            uav.RouteFlown = false;
+            _pendingEvents.Add(MissionEvent(uav, MissionEventKinds.Tracking));
+        }
+        else if (report.State == TargetTrackStates.Lost && previous != TargetTrackStates.Lost)
+            _pendingEvents.Add(MissionEvent(uav, MissionEventKinds.TargetLost));
+        else if (report.State == TargetTrackStates.Tracking && previous == TargetTrackStates.Lost)
+            _pendingEvents.Add(MissionEvent(uav, MissionEventKinds.TargetRegained));
+
+        if (report.State == TargetTrackStates.Lost)
+            return;
+        var due = uav.FollowForwarded is not { } last
+                  || GeoProjection.DistanceMeters(last, at) >= FollowForwardMeters
+                  || (report.SeenAtUtc - uav.FollowForwardedAtUtc >= FollowForwardInterval && GeoProjection.DistanceMeters(last, at) >= 5);
+        if (!due)
+            return;
+        uav.FollowForwarded = at;
+        uav.FollowForwardedAtUtc = report.SeenAtUtc;
+        var update = new DetectionReport
+        {
+            TailNumber = uav.TailNumber,
+            MissionId = report.MissionId,
+            ZoneName = report.ZoneName,
+            Prompt = report.Prompt,
+            Label = report.Label,
+            Confidence = report.Confidence,
+            Lat = report.Lat,
+            Lng = report.Lng,
+            DetectedAtUtc = report.SeenAtUtc,
+            TrackId = report.TrackId
+        };
+        detections.Add(update);
+        _detections.Add(update);
     }
 
     /// <summary>Start circling so the circle passes through <paramref name="point"/>, turning
@@ -422,6 +633,8 @@ public sealed class SimFleet
                 uav.MissionId = null;
                 uav.ZoneName = null;
                 uav.SearchPrompt = null;
+                uav.TrackTarget = false;
+                ClearFollow(uav);
                 uav.SearchEnded = false;
                 uav.RouteFlown = false;
                 uav.EntryHold = false;
@@ -541,6 +754,7 @@ public sealed class SimFleet
         uav.Mode = "Searching";
         uav.Destination = null;
         LockPayload(uav, null, null); // the search looks straight down
+        uav.SearchZoom = uav.PayloadZoom;
         uav.WaypointIndex = 0;
         uav.EntryHold = false;
         uav.RouteFlown = false;
@@ -549,6 +763,30 @@ public sealed class SimFleet
         uav.SearchEnded = false;
         if (uav.TargetSpeedKts <= 0)
             uav.TargetSpeedKts = 105;
+        return CommandResult<MissionStatus>.Ok(Mission(uav));
+    });
+
+    /// <summary>
+    /// The operator's "stop the search" / "stop tracking": the mission ends (reported aborted, as a
+    /// redirect would be), the UAV circles where it is, and the payload goes back to straight down
+    /// at its widest (the onboard computer, told the search is over, lets go too).
+    /// </summary>
+    public CommandResult<MissionStatus> StopMission(string tail) => WithUav(tail, uav =>
+    {
+        if (uav.Mode is "Searching" or "Following")
+            AbortSearch(uav);
+        else if (uav.SearchPrompt is not null && !uav.SearchEnded)
+        {
+            uav.SearchEnded = true;
+            _pendingEvents.Add(MissionEvent(uav, MissionEventKinds.Aborted));
+        }
+        uav.WaypointIndex = null;
+        uav.RouteFlown = false;
+        uav.EntryHold = false;
+        ClearFollow(uav);
+        LockPayload(uav, null, null);
+        Zoom(uav, 1);
+        HoldAt(uav, uav.Position);
         return CommandResult<MissionStatus>.Ok(Mission(uav));
     });
 
@@ -561,7 +799,11 @@ public sealed class SimFleet
         uav.ZoneName = request.ZoneName;
         uav.SearchPrompt = request.Prompt.Trim();
         uav.MinConfidence = request.MinConfidence;
+        uav.TrackTarget = request.Track;
+        uav.RepeatSearch = request.Repeat;
+        uav.SearchPass = 1;
         uav.SearchEnded = false;
+        ClearFollow(uav);
         return CommandResult<MissionStatus>.Ok(Mission(uav));
     });
 
@@ -584,11 +826,62 @@ public sealed class SimFleet
 
     private void AbortSearch(SimUav uav)
     {
-        if (uav.Mode != "Searching")
+        if (uav.Mode is not ("Searching" or "Following"))
             return;
         uav.WaypointIndex = null;
         uav.SearchEnded = true;
+        ClearFollow(uav);
         _pendingEvents.Add(MissionEvent(uav, MissionEventKinds.Aborted));
+    }
+
+    /// <summary>The onboard computer gave the target up: back onto the search route from its
+    /// nearest waypoint, the search still repeating.</summary>
+    private void ResumeSearch(SimUav uav)
+    {
+        ClearFollow(uav);
+        if (uav.Route.Count < 2)
+        {
+            HoldAt(uav, uav.Position);
+            return;
+        }
+        var nearest = Enumerable.Range(1, uav.Route.Count - 1)
+            .MinBy(i => GeoProjection.DistanceMeters(uav.Position, uav.Route[i]));
+        // Straight down at the search zoom again: following moved and zoomed the payload, and a
+        // search at another zoom sees nothing (at 1x a car is ~6 px - measured: the operator saw the
+        // red car on screen, the detector couldn't).
+        LockPayload(uav, null, null);
+        Zoom(uav, uav.SearchZoom);
+        uav.Mode = "Searching";
+        uav.WaypointIndex = nearest;
+        uav.EntryHold = false;
+        uav.RouteFlown = false;
+        _pendingEvents.Add(MissionEvent(uav, MissionEventKinds.SearchResumed));
+    }
+
+    /// <summary>
+    /// Where the followed target is now: its last report moved on by its reported velocity for the
+    /// time since that frame was captured (at most <see cref="MaxFollowPredictSeconds"/>). Reports
+    /// come about once a second, a frame's processing late, so the ring drawn at the report itself
+    /// trailed the moving car and jumped after it.
+    /// </summary>
+    private static GeoPoint? FollowNow(SimUav uav)
+    {
+        // Coasting or lost, the report is already the tracker's own prediction, not a sighting.
+        if (uav.FollowCenter is not { } center || uav.FollowState != TargetTrackStates.Tracking)
+            return uav.FollowCenter;
+        var age = Math.Clamp((DateTime.UtcNow - uav.FollowSeenAtUtc).TotalSeconds, 0, MaxFollowPredictSeconds);
+        return new GeoProjection(center).ToGeo(uav.FollowVelocity * age);
+    }
+
+    private const double MaxFollowPredictSeconds = 3;
+
+    private static void ClearFollow(SimUav uav)
+    {
+        uav.FollowCenter = null;
+        uav.FollowState = null;
+        uav.FollowTrackId = null;
+        uav.FollowLabel = null;
+        uav.FollowForwarded = null;
     }
 
     private static MissionEventReport MissionEvent(SimUav uav, string kind) => new()
@@ -632,6 +925,27 @@ public sealed class SimFleet
 
     // ----- For the page -----
 
+    /// <summary>
+    /// One entry per object found, at its latest position: a moving one's updates (same mission and
+    /// track id) are folded into it, not drawn as a new circle each time. In the order objects were
+    /// first found. Call under <see cref="_lock"/>.
+    /// </summary>
+    private List<SimDetectionView> DetectionsForPage()
+    {
+        var byObject = new Dictionary<string, (int Order, DetectionReport Latest, int Count)>(StringComparer.Ordinal);
+        var order = 0;
+        foreach (var d in _detections)
+        {
+            var key = d.TrackId is { Length: > 0 } track ? $"{d.TailNumber}\n{d.MissionId}\n{track}" : $"#{order}";
+            byObject[key] = byObject.TryGetValue(key, out var seen) ? (seen.Order, d, seen.Count + 1) : (order, d, 1);
+            order++;
+        }
+        return byObject.Values.OrderBy(v => v.Order).TakeLast(50)
+            .Select(v => new SimDetectionView(v.Latest.TailNumber, v.Latest.Prompt, v.Latest.Label, v.Latest.Confidence, v.Latest.Lat, v.Latest.Lng,
+                v.Latest.DetectedAtUtc, v.Latest.TrackId, v.Latest.MissionId, v.Count))
+            .ToList();
+    }
+
     public SimFleetView View()
     {
         lock (_lock)
@@ -645,17 +959,27 @@ public sealed class SimFleet
                     u.WaypointIndex, u.MissionId, u.ZoneName, u.SearchPrompt, u.IsLooking,
                     new CameraModel(PayloadCamera(u, u.LastFrameSeq, DateTime.UtcNow)).FootprintLngLat(),
                     u.LastFrameSeq,
-                    u.Trail.Select(p => new[] { p.Lng, p.Lat }).ToList())).ToList(),
-                _detections.TakeLast(50).Select(d => new SimDetectionView(d.TailNumber, d.Prompt, d.Label, d.Confidence, d.Lat, d.Lng, d.DetectedAtUtc)).ToList());
+                    u.Trail.Select(p => new[] { p.Lng, p.Lat }).ToList(),
+                    Math.Round(u.PayloadZoom, 2), Math.Round(u.PayloadHfovDeg, 3), Surveying(u), LookAt(u),
+                    FollowNow(u) is { } f ? [f.Lng, f.Lat] : null, u.FollowState, u.FollowLabel, u.FollowTrackId)).ToList(),
+                DetectionsForPage());
         }
     }
 }
 
+/// <summary>A UAV for the page. The payload fields drive the 3D camera view: <see cref="Surveying"/>
+/// means straight down (survey frames); <see cref="LookAt"/> ([lng, lat]) means locked on a point;
+/// otherwise the gimbal's rest position, forward and down.</summary>
 public sealed record SimUavView(
     string TailNumber, double Lat, double Lng, double HeadingDeg, int SpeedKts, int AltitudeFt, string Mode,
     double[]? Destination, List<double[]> Route, int? WaypointIndex, string? MissionId, string? ZoneName,
-    string? SearchPrompt, bool Looking, List<double[]> Footprint, long LastFrameSeq, List<double[]> Trail);
+    string? SearchPrompt, bool Looking, List<double[]> Footprint, long LastFrameSeq, List<double[]> Trail,
+    double PayloadZoom = 1, double PayloadHfovDeg = 40, bool Surveying = false, double[]? LookAt = null,
+    double[]? Target = null, string? TargetState = null, string? TargetLabel = null, string? TargetTrackId = null);
 
-public sealed record SimDetectionView(string TailNumber, string Prompt, string Label, double Confidence, double Lat, double Lng, DateTime DetectedAtUtc);
+/// <summary>One object found, where it was last seen; <see cref="Updates"/> is how many reports
+/// (the first plus position updates of a moving one) it stands for.</summary>
+public sealed record SimDetectionView(string TailNumber, string Prompt, string Label, double Confidence, double Lat, double Lng, DateTime DetectedAtUtc,
+    string? TrackId = null, string? MissionId = null, int Updates = 1);
 
 public sealed record SimFleetView(List<SimUavView> Uavs, List<SimDetectionView> Detections);

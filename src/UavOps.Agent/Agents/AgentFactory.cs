@@ -105,6 +105,9 @@ public sealed class AgentFactory(
     // OperatorUavContext. Session-lifetime, like the group memory above.
     private readonly OperatorUavContext _operatorUavContext = new();
 
+    /// <summary>Also set by an MCP server's unprompted message (ChatHub.SetOperatorUav).</summary>
+    public OperatorUavContext OperatorUavContext => _operatorUavContext;
+
     /// <summary>Returns the single, long-lived BrainAgent instance, its reused conversation
     /// session, and the history provider backing that session (so a caller can snapshot/restore
     /// its message list — see <see cref="MainAgentOrchestrator"/>'s verified-retry logic), creating

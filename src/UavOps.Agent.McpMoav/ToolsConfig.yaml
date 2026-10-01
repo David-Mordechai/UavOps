@@ -22,6 +22,28 @@ serverInstructions: |
   - When the UAV's onboard agent spots the target, the operator gets a message with its location
     automatically; never claim something was found unless such a message said so.
 
+  Mission plans (anything the operator wants done LATER, when something happens):
+  - A mission with "when ...", "once ...", "after ...", "then ...", "until ..." (e.g. "Send 997 and
+    998 to search and track for a red car in ZoneA, when the car is found return the other UAV
+    home and keep tracking the red car") is ONE CreateMissionPlan call with steps; you can't wait
+    for the event yourself. A plain "search ZoneA for a red car with 997" is not a plan:
+    PrepareAoiSearch.
+  - Each step is {when, do, args}. "do" is one of this server's tools that changes something
+    (PrepareAoiSearch, StartMission, ReturnToLaunch, StopMission, Navigate, SetSpeed, SetAltitude,
+    PointPayload, SetPayloadZoom, ResetPayload...), "args" its normal arguments. "when" is: start;
+    after N (step N done); target.found; target.lost; target.regained; target.given_up;
+    pass.completed; time N (seconds after start).
+  - In a tail number argument you may write {finder} (the UAV that found the target), {others} (the
+    plan's other UAVs) or {all} (every UAV the plan names). {finder}/{others} only in a target.*
+    step or one after it. Nobody knows in advance which UAV will find the target, so "the other
+    UAV(s)" / "the one that found it" are always {others} / {finder}, never a tail number.
+  - The example above is: 1. start: PrepareAoiSearch {tailNumbers: ["997","998"], zoneName:
+    "ZoneA", targetDescription: "red car", track: true}; 2. after 1: StartMission {tailNumber:
+    "{all}"}; 3. target.found: ReturnToLaunch {tailNumber: "{others}"}. (Tracking needs no step:
+    track true keeps the finder on it.)
+  - Show the operator the steps the tool returns; when they say start, StartMissionPlan - never
+    StartMission for a plan, and never run the steps' tools yourself.
+
   Tail numbers:
   - Never guess a target location or a tail number you were not given. If you don't already know the
     fleet's real tail numbers this turn, call ListFleet first; if a command doesn't name a UAV and
@@ -240,7 +262,10 @@ tools:
         guess one.
 
   - operation: SetTrackingMode
-    description: "Set the ground data terminal antenna's tracking mode for a UAV."
+    description: >-
+      Set the ground data terminal antenna's tracking mode for a UAV (the datalink antenna
+      following the UAV). Not for tracking or following a target on the ground - that's
+      PrepareAoiSearch or SetSearchTarget with track true.
     destructive: false
     parameters:
       tailNumber: >-
@@ -294,8 +319,10 @@ tools:
     description: >-
       Prepare one or more UAVs to search a named AOI zone for something: plans search routes
       covering the zone (split between the UAVs when there are several, so each searches its own
-      part), zooms each UAV's payload camera for the search, uploads each route, and tells each
-      UAV's onboard agent what to look for. Each UAV keeps its current altitude. Use for requests
+      part), zooms each UAV's payload camera and sets its search speed, uploads each route, and
+      tells each UAV's onboard agent what to look for. Each UAV keeps its current altitude. Once started, a
+      search goes over the zone again and again (a moving target may not be there on one pass)
+      until the operator stops it (StopMission) or sends the UAV elsewhere. Use for requests
       like 'enter AOI zone ZoneA and search for a white van', 'search zone B for a red car', or
       'send 998 and 999 to search ZoneA for a red car'. It does NOT start flying; StartMission
       does that, only once the operator says to start - never ask whether to start. 'Enter a zone'
@@ -325,16 +352,77 @@ tools:
       targetDescription: >-
         What to look for, in the operator's own words, e.g. 'white van'. This is the object to
         find, not a location.
+      track: >-
+        true when the operator wants the target tracked or followed once found ('search ZoneA for
+        a red car and track it', 'find the white van and follow it'): the UAV then locks its
+        camera on it, follows it and keeps reporting where it is. false (the default) for a plain
+        search.
 
   - operation: StartMission
     description: >-
       Start a UAV flying the search route already uploaded to it (by PrepareAoiSearch or
       UploadRoute) - what 'start the mission', 'go', or 'begin the search' means after a search
-      was prepared. Not for the training simulator or its lessons, and not for watchdog services.
+      was prepared. If a mission plan was created (CreateMissionPlan), use StartMissionPlan
+      instead. Not for the training simulator or its lessons, and not for watchdog services.
     destructive: false
     parameters:
       tailNumber: >-
         The tail number of the UAV whose mission to start, e.g. '997'. Must be one of the known
+        UAVs - never guess one.
+
+  - operation: CreateMissionPlan
+    description: >-
+      Turn an operator's mission into steps that run by themselves later, as things happen - for
+      any mission with 'when', 'once', 'after', 'then' or 'until' (e.g. 'search ZoneA for a red car
+      with 997 and 998, when it's found send the other one home'). Checks every step, nothing runs
+      yet; returns the steps in plain words to show the operator. Not for a plain search or a
+      single command - call those tools directly.
+    destructive: false
+    parameters:
+      steps: >-
+        The steps in order, each {when, do, args}: 'when' is start, after N, target.found,
+        target.lost, target.regained, target.given_up, pass.completed or time N (seconds); 'do' is
+        the tool to run; 'args' its arguments, where a tail number can be {finder}, {others} or
+        {all}. See the server notes for a full example.
+
+  - operation: StartMissionPlan
+    description: >-
+      Start a mission plan made by CreateMissionPlan - what 'start', 'go' or 'start the mission'
+      means once a plan was shown to the operator. Its steps then run by themselves. Use this, not
+      StartMission, whenever a plan was created.
+    destructive: false
+    parameters:
+      planId: >-
+        The plan's id from CreateMissionPlan (e.g. 'P1'); leave it out for the latest plan.
+
+  - operation: GetMissionPlan
+    description: >-
+      Show a mission plan's steps and which have run, are waiting or failed - for 'what is the
+      mission doing?', 'which steps are left?'.
+    readOnly: true
+    parameters:
+      planId: >-
+        The plan's id (e.g. 'P1'); leave it out for the latest plan.
+
+  - operation: CancelMissionPlan
+    description: >-
+      Cancel a mission plan's remaining steps ('cancel the plan', 'forget the plan'). The UAVs keep
+      doing what they are doing; to stop a UAV use StopMission, to bring it home ReturnToLaunch.
+    destructive: false
+    parameters:
+      planId: >-
+        The plan's id (e.g. 'P1'); leave it out for the latest plan.
+
+  - operation: StopMission
+    description: >-
+      Stop a UAV's search or tracking mission: 'stop the search', 'stop searching', 'stop
+      tracking', 'cancel the mission'. The UAV stops where it is and circles, and its payload goes
+      back to straight down. A search keeps repeating until this is called. Not for 'come home'
+      (ReturnToLaunch) or 'go to <place>' (Navigate) - those end the mission by themselves.
+    destructive: false
+    parameters:
+      tailNumber: >-
+        The tail number of the UAV whose mission to stop, e.g. '997'. Must be one of the known
         UAVs - never guess one.
 
   - operation: ListAoiZones
@@ -392,3 +480,6 @@ tools:
       targetDescription: >-
         What to look for, in the operator's own words, e.g. 'red car'. This is the object to find,
         not a location like 'target alpha'.
+      track: >-
+        true when the operator wants the target tracked or followed once found; the UAV then
+        locks its camera on it and follows it. false (the default) to only report it.

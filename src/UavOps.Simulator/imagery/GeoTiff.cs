@@ -6,7 +6,7 @@ namespace UavOps.Simulator.Imagery;
 
 /// <summary>
 /// A minimal reader for the tiled, JPEG-compressed GeoTIFFs OpenAerialMap serves (Cloud-Optimized
-/// GeoTIFF): classic little-endian TIFF, 512 px tiles with shared JPEG tables, reduced-resolution
+/// GeoTIFF): little-endian TIFF, classic or BigTIFF (OAM's largest photos), 512 px tiles with shared JPEG tables, reduced-resolution
 /// overviews, an optional 1-bit deflate transparency mask per level (or a GDAL nodata value), and
 /// UTM georeferencing (ModelTiepoint + ModelPixelScale). No GDAL. Thread-safe.
 /// </summary>
@@ -14,29 +14,38 @@ public sealed class GeoTiff : IDisposable
 {
     private readonly FileStream _file;
     private readonly object _lock = new();
+    /// <summary>BigTIFF: 8-byte offsets and counts, 20-byte directory entries, values up to 8 bytes inline.</summary>
+    private readonly bool _big;
 
     public GeoTiff(string path)
     {
         _file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
-        var header = Read(0, 8);
-        if (header[0] != 'I' || header[1] != 'I' || BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(2)) != 42)
-            throw new InvalidDataException($"{path}: only little-endian classic TIFF is supported.");
+        var header = Read(0, 16);
+        var magic = BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(2));
+        if (header[0] != 'I' || header[1] != 'I' || magic is not (42 or 43))
+            throw new InvalidDataException($"{path}: only little-endian TIFF (classic or BigTIFF) is supported.");
+        _big = magic == 43;
 
         var ifds = new List<Dictionary<ushort, Entry>>();
-        var offset = BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(4));
+        var offset = _big ? (long)BinaryPrimitives.ReadUInt64LittleEndian(header.AsSpan(8)) : BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(4));
+        var entrySize = _big ? 20 : 12;
+        var valueSize = _big ? 8 : 4;
         while (offset != 0 && ifds.Count < 64)
         {
-            var count = BinaryPrimitives.ReadUInt16LittleEndian(Read(offset, 2));
-            var raw = Read(offset + 2, count * 12 + 4);
+            var count = _big ? (int)BinaryPrimitives.ReadUInt64LittleEndian(Read(offset, 8)) : BinaryPrimitives.ReadUInt16LittleEndian(Read(offset, 2));
+            var start = offset + (_big ? 8 : 2);
+            var raw = Read(start, count * entrySize + valueSize);
             var tags = new Dictionary<ushort, Entry>();
             for (var i = 0; i < count; i++)
             {
-                var e = raw.AsSpan(i * 12, 12);
+                var e = raw.AsSpan(i * entrySize, entrySize);
+                var entryCount = _big ? (long)BinaryPrimitives.ReadUInt64LittleEndian(e[4..]) : BinaryPrimitives.ReadUInt32LittleEndian(e[4..]);
                 tags[BinaryPrimitives.ReadUInt16LittleEndian(e)] = new Entry(
-                    BinaryPrimitives.ReadUInt16LittleEndian(e[2..]), BinaryPrimitives.ReadUInt32LittleEndian(e[4..]), e[8..12].ToArray());
+                    BinaryPrimitives.ReadUInt16LittleEndian(e[2..]), entryCount, e[(entrySize - valueSize)..].ToArray());
             }
             ifds.Add(tags);
-            offset = BinaryPrimitives.ReadUInt32LittleEndian(raw.AsSpan(count * 12));
+            var next = raw.AsSpan(count * entrySize);
+            offset = _big ? (long)BinaryPrimitives.ReadUInt64LittleEndian(next) : BinaryPrimitives.ReadUInt32LittleEndian(next);
         }
 
         var full = ifds[0];
@@ -189,14 +198,17 @@ public sealed class GeoTiff : IDisposable
 
     // ----- Tag values -----
 
-    private sealed record Entry(ushort Type, uint Count, byte[] Inline);
+    private sealed record Entry(ushort Type, long Count, byte[] Inline);
 
-    private static int TypeSize(ushort type) => type switch { 1 or 2 or 6 or 7 => 1, 3 or 8 => 2, 4 or 9 or 11 => 4, 5 or 10 or 12 or 16 => 8, _ => 1 };
+    private static int TypeSize(ushort type) => type switch { 1 or 2 or 6 or 7 => 1, 3 or 8 => 2, 4 or 9 or 11 => 4, 5 or 10 or 12 or 16 or 17 or 18 => 8, _ => 1 };
 
     private byte[] Bytes(Entry e)
     {
         var size = (int)e.Count * TypeSize(e.Type);
-        return size <= 4 ? e.Inline[..size] : Read(BinaryPrimitives.ReadUInt32LittleEndian(e.Inline), size);
+        if (size <= e.Inline.Length)
+            return e.Inline[..size];
+        var at = _big ? (long)BinaryPrimitives.ReadUInt64LittleEndian(e.Inline) : BinaryPrimitives.ReadUInt32LittleEndian(e.Inline);
+        return Read(at, size);
     }
 
     private string Ascii(Entry e) => System.Text.Encoding.ASCII.GetString(Bytes(e));

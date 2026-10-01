@@ -18,9 +18,16 @@
           <span class="swatch" id="cameraSwatch"></span>
           <span id="cameraTitle">Camera</span>
           <span id="cameraMeta" class="camera-meta"></span>
-          <button type="button" id="cameraClose" class="icon-btn" title="Close">✕</button>
+          <span class="camera-tools">
+            <button type="button" id="cameraView3d" class="seg" aria-pressed="true" title="The payload camera, as the operator watches it">Live</button>
+            <button type="button" id="cameraViewDetector" class="seg" aria-pressed="false" title="What the onboard detector's camera renders (server, straight down)">Detector</button>
+            <button type="button" id="cameraIr" class="seg" aria-pressed="false" title="Infrared (white-hot)">IR</button>
+            <button type="button" id="cameraExpand" class="icon-btn" title="Larger">⤢</button>
+            <button type="button" id="cameraClose" class="icon-btn" title="Close">✕</button>
+          </span>
         </header>
-        <img id="cameraFeed" class="camera-feed" alt="Live payload camera view" />
+        <div id="camera3d" class="camera-feed camera3d" hidden></div>
+        <img id="cameraFeed" class="camera-feed" alt="What the onboard detector's camera renders" hidden />
         <div id="detectorStatus" class="camera-status"></div>
         <div id="lastDetection" class="last-detection" hidden>
           <div class="section-title">What the model matched</div>
@@ -55,6 +62,7 @@
           </div>
           <button type="button" id="resetFleet" class="btn" title="Every UAV back to its start point; missions and detections cleared">↺ Reset</button>
         </div>
+        <div class="note-warn" id="timeScaleNote" hidden></div>
       </section>
 
       <section class="section">
@@ -74,6 +82,8 @@
         </div>
         <div id="placeHint" class="hint" hidden>
           <input id="objectLabel" type="text" placeholder="What is it? e.g. white van" autocomplete="off" />
+          <label class="speed">Driving <input id="objectSpeed" type="number" min="0" max="150" step="5" value="0" /> km/h
+            <span class="meta">(0 = parked; driving follows the nearest road)</span></label>
           <span>Colour and vehicle type (car, van, pickup, truck, bus) come from the words. Then click the map.
             <button type="button" id="cancelPlace" class="link-btn">Cancel</button></span>
         </div>
@@ -85,6 +95,7 @@
   <script src="vendor/signalr.min.js"></script>
   <script src="vendor/maplibre-gl.js"></script>
   <script src="vendor/pmtiles.js"></script>
+  <script src="camera3d.js"></script>
   <script src="sim.js"></script>
 </body>
 </html>

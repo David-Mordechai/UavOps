@@ -37,7 +37,17 @@ public sealed class ImageryLayer
                 logger?.LogInformation("Aerial photo '{Name}' not downloaded ({File}); run scripts/fetch-imagery.ps1 to use it.", name, file);
                 continue;
             }
-            var tiff = new GeoTiff(file);
+            GeoTiff tiff;
+            try
+            {
+                tiff = new GeoTiff(file);
+            }
+            catch (Exception ex) when (ex is InvalidDataException or NotSupportedException or IOException or KeyNotFoundException)
+            {
+                // One photo in a format this reader can't take mustn't stop the simulator.
+                logger?.LogWarning("Aerial photo '{Name}' skipped: {Message}", name, ex.Message);
+                continue;
+            }
             var corners = new[] { (0.0, 0.0), (tiff.FullWidth, 0.0), (0.0, tiff.FullHeight), (tiff.FullWidth, tiff.FullHeight) }
                 .Select(c => tiff.PixelToUtm(c.Item1, c.Item2))
                 .Select(u => Utm.ToLatLng(u.E, u.N, tiff.UtmZone, tiff.North))
@@ -134,6 +144,12 @@ public sealed class ImageryLayer
             var matrix = fromPhoto.PreConcat(tileToPhoto);
             canvas.Save();
             canvas.Concat(in matrix);
+            // Edge tiles are padded to full size with repeats of the last pixels: drawn, that
+            // padding smeared streaks off the photo's edge (worst on the small overviews used
+            // zoomed out). Only the level's real pixels are drawn.
+            var validWidth = Math.Min(level.TileWidth, level.Width - tx * level.TileWidth);
+            var validHeight = Math.Min(level.TileHeight, level.Height - ty * level.TileHeight);
+            canvas.ClipRect(new SKRect(0, 0, validWidth, validHeight));
             canvas.DrawImage(tile, 0, 0, sampling);
             canvas.Restore();
         }

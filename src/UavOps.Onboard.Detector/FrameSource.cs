@@ -20,7 +20,11 @@ public interface IFrameSource
 /// (out of range, no zoom).</summary>
 public interface IZoomCamera
 {
-    Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken);
+    /// <summary>A close-up of a ground point. <paramref name="frameSeq"/> is the survey frame the
+    /// point was seen in: a moving object is looked at as it was then (the payload tracking it
+    /// while it slews), not wherever it has driven to since.</summary>
+    Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken,
+        long? frameSeq = null);
 }
 
 /// <summary>Where each object found goes: the aircraft's callback.</summary>
@@ -62,9 +66,12 @@ public sealed class HttpSurveyFrameSource(HttpClient http, DetectorOptions optio
 
 public sealed class HttpZoomCamera(HttpClient http) : IZoomCamera
 {
-    public async Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken)
+    public async Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken,
+        long? frameSeq = null)
     {
         var url = string.Create(CultureInfo.InvariantCulture, $"{zoomUrl}?lat={lat:R}&lng={lng:R}&widthMeters={widthMeters:F1}&pixels={pixels}");
+        if (frameSeq is { } seq)
+            url += string.Create(CultureInfo.InvariantCulture, $"&seq={seq}");
         using var response = await http.GetAsync(url, cancellationToken);
         return response.IsSuccessStatusCode ? await response.Content.ReadAsByteArrayAsync(cancellationToken) : null;
     }

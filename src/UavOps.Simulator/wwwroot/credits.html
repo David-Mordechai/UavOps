@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Map credits</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #fff; --fg: #1b1c1f; --muted: #5f6368; --border: #e2e3e6; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #15171a; --fg: #e8e8ea; --muted: #9a9ba1; --border: #2a2c31; } }
+    body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg); font: 14px/1.5 system-ui, sans-serif; }
+    main { max-width: 900px; margin: 0 auto; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p { color: var(--muted); margin: 0 0 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Map credits</h1>
+    <p>The simulator's base layers, and every drone photo it shows, with its licence.</p>
+    <table>
+      <thead><tr><th>What</th><th>Credit</th><th>Licence</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </main>
+  <script>
+    (async function () {
+      const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      const row = (what, credit, licence) => `<tr><td>${esc(what)}</td><td>${esc(credit)}</td><td>${esc(licence)}</td></tr>`;
+      const map = await fetch("/api/map").then((r) => r.json()).catch(() => ({}));
+      const photos = await fetch("/api/imagery").then((r) => r.json()).catch(() => []);
+      const rows = [row("Roads, places, labels", "© OpenStreetMap contributors, OpenMapTiles", "ODbL")];
+      if (map.basemap) rows.push(row("Satellite (10 m)", map.basemap.attribution, "Copernicus, free and open"));
+      if (map.terrain) rows.push(row("Terrain", map.terrain.attribution, "Copernicus DEM licence"));
+      for (const p of photos) rows.push(row(p.title, p.attribution, p.license));
+      document.getElementById("rows").innerHTML = rows.join("");
+    })();
+  </script>
+</body>
+</html>

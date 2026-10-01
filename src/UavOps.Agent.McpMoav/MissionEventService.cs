@@ -42,7 +42,22 @@ public sealed class MissionEventService(
     private readonly Dictionary<string, string> _promptByMission = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PendingSummary> _pending = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Team> _teamByMission = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Tracked> _tracks = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _passesByMission = new(StringComparer.Ordinal);
+
+    /// <summary>Missions whose UAV is locked on its target and following it (find and track).</summary>
+    private readonly HashSet<string> _following = new(StringComparer.Ordinal);
     private int _detectionCount;
+
+    /// <summary>A reported detection the aircraft can report again under its track id, when the
+    /// object has moved (a vehicle driving): its number, where it was last, and when the operator was
+    /// last told about it moving.</summary>
+    private sealed class Tracked(int number, DetectionReport last)
+    {
+        public int Number { get; } = number;
+        public DetectionReport Last { get; set; } = last;
+        public DateTime LastMessageUtc { get; set; } = DateTime.MinValue;
+    }
 
     /// <summary>Detections of one search (a mission, or a team's missions) waiting for the next summary.</summary>
     private sealed class PendingSummary(DateTime dueUtc, string searchId)
@@ -61,6 +76,27 @@ public sealed class MissionEventService(
         public Dictionary<string, string?> EndByMission { get; } = members.ToDictionary(m => m.MissionId, _ => (string?)null, StringComparer.Ordinal);
     }
 
+    /// <summary>Missions ended on purpose by a mission plan or its one-tracker rule
+    /// (<see cref="MarkStoppedOnPurpose"/>): their end was already reported, so it isn't again.</summary>
+    private readonly HashSet<string> _stoppedOnPurpose = new(StringComparer.Ordinal);
+
+    /// <summary>A UAV's search is being ended deliberately (a plan step, or the one-tracker rule):
+    /// its coming Aborted event isn't announced as "stopped before finishing".</summary>
+    public void MarkStoppedOnPurpose(string missionId)
+    {
+        lock (_lock)
+            _stoppedOnPurpose.Add(missionId);
+    }
+
+    /// <summary>The mission id a UAV's current search carries, from its last detection or target.</summary>
+    public string? MissionOf(string tail)
+    {
+        lock (_lock)
+            return _missionByTail.GetValueOrDefault(tail);
+    }
+
+    private readonly Dictionary<string, string> _missionByTail = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>Called as a team search is prepared, before any member's target goes out.</summary>
     public void RememberTeam(string teamId, IReadOnlyList<(string TailNumber, string MissionId)> members)
     {
@@ -78,11 +114,13 @@ public sealed class MissionEventService(
 
     /// <summary>Called as a search target goes out to a UAV, so a mission that ends with nothing
     /// found can still say what it was looking for.</summary>
-    public void RememberSearchTarget(SearchTargetRequest request)
+    public void RememberSearchTarget(SearchTargetRequest request, string? tailNumber = null)
     {
         lock (_lock)
         {
             _promptByMission[request.MissionId] = request.Prompt;
+            if (tailNumber is not null)
+                _missionByTail[tailNumber] = request.MissionId;
         }
     }
 
@@ -100,9 +138,31 @@ public sealed class MissionEventService(
         int number;
         bool individually;
         string searchId;
+        Tracked? moved = null;
+        DetectionReport? previous = null;
         lock (_lock)
         {
             searchId = SearchId(report.MissionId);
+            // Seen again under a track already reported: it moved - an update, not a new detection.
+            if (report.TrackId is { } trackId && _tracks.TryGetValue(searchId + "\n" + trackId, out var tracked))
+            {
+                // Barely moved: the same sighting again (another frame, another team member).
+                if (DistanceMeters(tracked.Last.Lat, tracked.Last.Lng, report.Lat, report.Lng) <= options.MovedReportMeters)
+                    return false;
+                previous = tracked.Last;
+                tracked.Last = report;
+                moved = tracked;
+                if (_detectionsByMission.TryGetValue(MissionKey(searchId, report.Prompt), out var list))
+                    for (var i = 0; i < list.Count; i++)
+                        if (list[i].TrackId == trackId)
+                            list[i] = report;
+            }
+        }
+        if (moved is not null)
+            return await HandleMovedAsync(moved, previous!, report, nowUtc);
+
+        lock (_lock)
+        {
             var key = MissionKey(searchId, report.Prompt);
             if (!_detectionsByMission.TryGetValue(key, out var seen))
                 _detectionsByMission[key] = seen = [];
@@ -117,6 +177,8 @@ public sealed class MissionEventService(
             seen.Add(report);
             _promptByMission.TryAdd(report.MissionId, report.Prompt);
             number = ++_detectionCount;
+            if (report.TrackId is { } newTrack)
+                _tracks[searchId + "\n" + newTrack] = new Tracked(number, report);
 
             individually = seen.Count <= options.DetectionsReportedIndividually;
             if (!individually)
@@ -143,12 +205,74 @@ public sealed class MissionEventService(
         var voice = new OperatorVoice($"Detection {number}: {target}, by {report.TailNumber}.", VoiceGroup(searchId));
         await notifier.PostAsync(message,
             $"UAV {report.TailNumber}'s onboard agent reported a detection (detection {number}, the {target}) while searching " +
-            $"{ZoneText(report.ZoneName)}, and the operator was shown the message below. This is only a report: no UAV " +
+            $"{ZoneText(report.ZoneName)} at {Time(report.DetectedAtUtc)}, and the operator was shown the message below. This is only a report: no UAV " +
             $"has been sent there and nothing else has been done about it. To send a UAV there or point a payload at it, " +
             $"call that tool with location '{latLng}' - it only happens if you call the tool.",
             voice);
         return true;
     }
+
+    /// <summary>
+    /// A detection seen again somewhere else: a vehicle that drives. Its name ("the red car",
+    /// "detection 3") now points at where it is, so "send 998 to the red car" goes there; the model's
+    /// history always gets the new position, the operator a short message at most every
+    /// <see cref="MissionOptions.MovedMessageIntervalSeconds"/> per detection (a car followed along a
+    /// road would otherwise post one per frame). Speed and direction come from the last two sightings.
+    /// </summary>
+    private async Task<bool> HandleMovedAsync(Tracked tracked, DetectionReport previous, DetectionReport report, DateTime nowUtc)
+    {
+        var target = report.Prompt.Trim();
+        var number = tracked.Number;
+        points.Register(report.Lat, report.Lng, target, $"detection {number}", $"detection #{number}");
+
+        var meters = DistanceMeters(previous.Lat, previous.Lng, report.Lat, report.Lng);
+        var seconds = (report.DetectedAtUtc - previous.DetectedAtUtc).TotalSeconds;
+        var motion = seconds >= 1
+            ? string.Create(CultureInfo.InvariantCulture, $", moving ~{meters / seconds * 3.6:F0} km/h {Compass(previous, report)}")
+            : "";
+        var latLng = DetectionPointRegistry.FormatLatLng(report.Lat, report.Lng);
+        var note =
+            $"Detection {number} (the {target}) was seen again by UAV {report.TailNumber} at {Time(report.DetectedAtUtc)}, " +
+            string.Create(CultureInfo.InvariantCulture, $"{meters:F0} m from where it was last reported{motion}: it is moving. Its latest known location is '{latLng}'; ") +
+            "'the " + target + "' and 'detection " + number + "' now mean that location. This is only a report: nothing has been done about it.";
+        var message = $"Detection {number} ({target}) seen again by {report.TailNumber} at {Coordinates(report)} ({Time(report.DetectedAtUtc)}){motion}.";
+
+        bool tell;
+        lock (_lock)
+        {
+            // A target the UAV is locked on and following: the operator already knows it's being
+            // followed ("997 locked on ..."), and only hears when it's lost or found again - its
+            // position updates only go into the model's history (an operator called the message
+            // every 30 s while following noise).
+            tell = !_following.Contains(report.MissionId)
+                   && (nowUtc - tracked.LastMessageUtc).TotalSeconds >= options.MovedMessageIntervalSeconds;
+            if (tell)
+                tracked.LastMessageUtc = nowUtc;
+        }
+        logger.LogInformation("Detection {Number} moved: {Message}", number, message);
+        if (tell)
+            await notifier.PostAsync(message, note, new OperatorVoice($"Detection {number}, {target}, is moving{motion}.", VoiceGroup(SearchIdOf(report.MissionId))));
+        else
+            await notifier.AddHistoryNoteAsync(note, message);
+        return true;
+    }
+
+    private string SearchIdOf(string missionId)
+    {
+        lock (_lock) return SearchId(missionId);
+    }
+
+    /// <summary>"NE": the direction from one sighting to the next.</summary>
+    private static string Compass(DetectionReport from, DetectionReport to)
+    {
+        var dLat = to.Lat - from.Lat;
+        var dLng = (to.Lng - from.Lng) * Math.Cos(from.Lat * Math.PI / 180);
+        var bearing = (Math.Atan2(dLng, dLat) * 180 / Math.PI + 360) % 360;
+        return new[] { "N", "NE", "E", "SE", "S", "SW", "W", "NW" }[(int)Math.Round(bearing / 45) % 8];
+    }
+
+    /// <summary>"12:53:05 UTC".</summary>
+    private static string Time(DateTime utc) => utc.ToUniversalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture) + " UTC";
 
     /// <summary>Posts every detection summary that's due (all of them with <paramref name="force"/>).</summary>
     public async Task FlushDueSummariesAsync(DateTime nowUtc, bool force = false)
@@ -224,6 +348,19 @@ public sealed class MissionEventService(
 
     public async Task HandleMissionEventAsync(MissionEventReport report)
     {
+        // Find and track: not an end - the UAV locked on its target, lost it, or found it again.
+        if (report.Kind is MissionEventKinds.Tracking or MissionEventKinds.TargetLost or MissionEventKinds.TargetRegained or MissionEventKinds.SearchResumed)
+        {
+            await HandleTrackingEventAsync(report);
+            return;
+        }
+        // A repeating search finished one pass and goes again: not an end either.
+        if (report.Kind == MissionEventKinds.PassCompleted)
+        {
+            await HandlePassCompletedAsync(report);
+            return;
+        }
+
         Team? team;
         lock (_lock)
         {
@@ -231,6 +368,11 @@ public sealed class MissionEventService(
             if (team is not null)
                 team.EndByMission[report.MissionId] = report.Kind;
         }
+        bool onPurpose;
+        lock (_lock)
+            onPurpose = _stoppedOnPurpose.Contains(report.MissionId);
+        if (onPurpose && !IsCompleted(report.Kind))
+            return; // ended by a plan step or the one-tracker rule: already reported
         if (team is not null)
         {
             await HandleTeamMemberEndAsync(team, report);
@@ -263,6 +405,90 @@ public sealed class MissionEventService(
                 $"(the UAV was redirected or given a new search).",
                 $"{report.TailNumber} stopped searching {zone} before finishing.");
         }
+    }
+
+    /// <summary>
+    /// A find-and-track mission's news: the onboard agent locked on the target it found (the UAV now
+    /// circles it, and its position keeps coming as detection updates), lost it, or found it again.
+    /// Named by the detection number the operator already knows it by.
+    /// </summary>
+    private async Task HandleTrackingEventAsync(MissionEventReport report)
+    {
+        Tracked? tracked;
+        string? prompt;
+        lock (_lock)
+        {
+            var searchId = SearchId(report.MissionId);
+            tracked = _tracks.Where(kv => kv.Key.StartsWith(searchId + "\n", StringComparison.Ordinal) && kv.Value.Last.MissionId == report.MissionId)
+                .Select(kv => kv.Value)
+                .MaxBy(t => t.Last.DetectedAtUtc);
+            prompt = _promptByMission.GetValueOrDefault(report.MissionId);
+        }
+        lock (_lock)
+        {
+            if (report.Kind is MissionEventKinds.Tracking or MissionEventKinds.TargetRegained)
+                _following.Add(report.MissionId);
+            else
+                _following.Remove(report.MissionId);
+        }
+        var target = tracked?.Last.Prompt.Trim() ?? prompt ?? "the target";
+        var name = tracked is null ? $"the {target}" : $"detection {tracked.Number} ({target})";
+        var where = tracked is null ? "" : $" near {Coordinates(tracked.Last)}";
+        var tail = report.TailNumber;
+        switch (report.Kind)
+        {
+            case MissionEventKinds.Tracking:
+                await notifier.PostAsync(
+                    $"{tail} locked on {name} and is following it.",
+                    $"UAV {tail}'s onboard agent locked its payload on {name} and the UAV now circles it, following it as it moves; " +
+                    "its latest position keeps coming as detection updates. The search is over; the UAV keeps following until the " +
+                    "operator sends it elsewhere.",
+                    new OperatorVoice($"{tail} locked on the {target} and is following it."));
+                // "Stop tracking", "zoom in more" now mean this UAV, without "Which UAV?".
+                await notifier.SetOperatorUavAsync(tail);
+                break;
+            case MissionEventKinds.TargetLost:
+                await notifier.PostAsync(
+                    $"{tail} lost sight of {name}{where}; searching the area around where it was heading.",
+                    $"UAV {tail}'s onboard agent lost sight of {name}{where}. It is searching the area around where the target " +
+                    "should be by now (the search grows with time); nothing else has been done.",
+                    new OperatorVoice($"{tail} lost sight of the {target} and is searching for it."));
+                break;
+            case MissionEventKinds.SearchResumed:
+                await notifier.PostAsync(
+                    $"{tail} couldn't find {name} again; back to searching {ZoneText(report.ZoneName)}.",
+                    $"UAV {tail}'s onboard agent gave up looking for {name} after losing it, and the UAV went back to its search " +
+                    $"route over {ZoneText(report.ZoneName)}; the search keeps repeating until the operator stops it.",
+                    new OperatorVoice($"{tail} couldn't find the {target} again; back to searching."));
+                break;
+            case MissionEventKinds.TargetRegained:
+                await notifier.PostAsync(
+                    $"{tail} found {name} again and is following it.",
+                    $"UAV {tail}'s onboard agent found {name} again (checked up close) and the UAV follows it again.",
+                    new OperatorVoice($"{tail} found the {target} again."));
+                await notifier.SetOperatorUavAsync(tail);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A search goes over its zone again and again until the operator stops it (a moving target may
+    /// not be there on one pass). After each pass: what it has found so far, and that it goes on.
+    /// </summary>
+    private async Task HandlePassCompletedAsync(MissionEventReport report)
+    {
+        int pass;
+        lock (_lock)
+            _passesByMission[report.MissionId] = pass = _passesByMission.GetValueOrDefault(report.MissionId) + 1;
+        await FlushSearchAsync(SearchIdOf(report.MissionId));
+        var (detections, prompt) = DetectionsAndPrompt(SearchIdOf(report.MissionId), report.MissionId);
+        var zone = ZoneText(report.ZoneName);
+        var found = detections.Count == 0 ? $"no {prompt} found yet" : $"{Plural(detections.Count, "detection")} of {prompt} so far";
+        await notifier.PostAsync(
+            $"{report.TailNumber} searched all of {zone} (pass {pass}): {found}. Searching it again.",
+            $"UAV {report.TailNumber} finished pass {pass} over {zone} looking for {prompt} ({found}) and is searching the zone " +
+            "again; it keeps going until the operator stops the mission (StopMission) or sends the UAV elsewhere.",
+            new OperatorVoice($"{report.TailNumber} finished pass {pass} of {zone}: {found}. Searching again.", VoiceGroup(SearchIdOf(report.MissionId))));
     }
 
     /// <summary>A team member's mission ended. While others are still searching, a member that

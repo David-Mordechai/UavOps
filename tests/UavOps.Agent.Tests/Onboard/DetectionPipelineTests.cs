@@ -68,6 +68,33 @@ public class DetectionPipelineTests
         tracker.Observe("m2", "white van", van, 0.9).Should().NotBeNull("a new mission starts fresh");
     }
 
+    [Fact]
+    public void Tracker_ADrivingCarInTheNextFrames_IsOneObject_ReportedAgainOnceItHasMoved()
+    {
+        var tracker = new DetectionTracker(25, maxSpeedMps: 25, memorySeconds: 20, moveReportMeters: 50);
+        var t0 = new DateTime(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
+        var start = new GeoPoint(31.8138, 34.6652);
+        GeoPoint North(double meters) => new(start.Lat + meters / 111195.0, start.Lng);
+
+        tracker.See("m1", "red car", start, 0.9, t0)!.IsNew.Should().BeTrue();
+        tracker.See("m1", "red car", North(30), 0.9, t0.AddSeconds(2)).Should().BeNull("15 m/s for 2 s: the same car, not far enough to report");
+        var moved = tracker.See("m1", "red car", North(60), 0.9, t0.AddSeconds(4));
+        moved.Should().NotBeNull();
+        moved!.IsNew.Should().BeFalse("the same car, 60 m on: its new position is reported");
+        moved.Track.Id.Should().Be("trk-1");
+    }
+
+    [Fact]
+    public void Tracker_TwoCarsFarApart_AMinuteApart_AreTwoCars()
+    {
+        var tracker = new DetectionTracker(25, maxSpeedMps: 25, memorySeconds: 20);
+        var t0 = new DateTime(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
+
+        tracker.See("m1", "red car", new GeoPoint(31.8138, 34.6652), 0.9, t0)!.IsNew.Should().BeTrue();
+        tracker.See("m1", "red car", new GeoPoint(31.8138 + 400 / 111195.0, 34.6652), 0.9, t0.AddSeconds(60))!.IsNew
+            .Should().BeTrue("past the tracker's memory only the radius counts: 400 m away is another car");
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(37)]
@@ -200,7 +227,7 @@ public class DetectionPipelineTests
     {
         public List<double> Widths { get; } = [];
 
-        public Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken)
+        public Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken, long? frameSeq = null)
         {
             lock (Widths)
                 Widths.Add(widthMeters);
@@ -240,7 +267,7 @@ public class DetectionPipelineTests
         public int Captures => _captures;
         public List<double> Widths { get; } = [];
 
-        public Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken)
+        public Task<byte[]?> CaptureAsync(string zoomUrl, double lat, double lng, double widthMeters, int pixels, CancellationToken cancellationToken, long? frameSeq = null)
         {
             Interlocked.Increment(ref _captures);
             lock (Widths)

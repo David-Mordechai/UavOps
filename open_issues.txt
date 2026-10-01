@@ -1,13 +1,9 @@
 UavOps - open issues
 ====================
-Last updated: 2026-09-27
+Last updated: 2026-10-01
 
 Still open
 ----------
-11. Onboard detector on the real Jetson Orin Nano 8GB: which small vision model fits, and its
-    accuracy and speed, are not measured yet (dev runs the GX10's Qwen3.6-35B). Deferred by the
-    operator.
-
 12. (New, minor) Right after "send 998 to the red car and point its payload there", the reply said
     "Orbiting target" while 998 was still flying there (Transiting). The tool calls were right; only
     the wording ran ahead of the UAV. Seen once in the chat run; not measured.
@@ -16,6 +12,9 @@ Still open
     shared the model server - the one miss asked "Which UAV tail number?" in text instead of calling
     PrepareAoiSearch (the load-related pattern already recorded in McpMoav's ToolsConfig.yaml).
     Harmless (the operator answers and it proceeds), but visible under load.
+    2026-09-29: the same miss hit 6/8 even alone with the first team-search wording; an empty
+    tailNumbers list now means "not named" (the host asks), and it's 8/8 alone again. Not yet
+    re-measured under load.
 
 14. (New, 2026-09-28) A typed search target that isn't a word can be turned into a different
     word by the model before it reaches the tools: a ZoneB search went out as "breach" (no voice
@@ -26,6 +25,60 @@ Still open
     pylons, 1 overpass, 10 look-alikes. The second look at a different width is what keeps false
     hits out; a new kind of structure or scene may need its own check. A tall pole seen obliquely
     was sometimes a "utility pole" (not counted as a pylon).
+
+16. (New, 2026-09-29) Live tests leak into a running app. With UavOps.Agent running on :5262,
+    a live-test run posted "Lesson emergency-procedures.ps1 completed successfully" into the
+    operator's chat twice (seen during the team-search demo). The live tests' McpSimulator
+    connects back to whatever host is listening on :5262 (HubConnectionStarter) and posts its
+    lesson summary there. McpMoav was already isolated the same way (the live tests launch it with
+    --OperationBackend Simulated); McpSimulator needs the equivalent, e.g. no hub connection when
+    launched by the tests. Until then: don't run live tests while the app is up.
+
+19. (New, 2026-09-30) Detector recall on top-down vehicles. 2026-10-01: D-FINE-X on 2x2 tiles finds
+    every placed vehicle (paused scene, 10 frames each: 40/40, all above the track-start score).
+    Still open: small or partly covered vehicles, and real (not placed) traffic. Fine-tuning on
+    VisDrone (on the GX10) remains the next step if that's needed.
+
+20. (New, 2026-09-30) Find and track has no live test yet (the model-side part: "search ZoneA for a
+    red car and track it" -> PrepareAoiSearch track=true, measured once in chat). "Stop tracking"
+    is StopMission now (2026-10-01).
+
+Done 2026-10-01
+---------------
+- 21: "stop tracking" asked "Which UAV do you mean?" with only 998 tracking. McpMoav now tells the
+  host (generic SetOperatorUav) that a UAV which locked on the target is the operator's current UAV;
+  a model guess of exactly that UAV is grounded. Chrome: "stop tracking" -> 998 stopped, no question.
+- 22 and 18: ~3 fps per UAV with two searching. The GPU clock was never the limit (306 MHz was the
+  idle reading; under load it was 98% busy at a raised clock); pinned at max it ran no faster and
+  warmer idle, so pinning was undone. D-FINE-S would be 3.2x faster but lost the white vehicles
+  (track-start 2/10 van, 0/10 white car vs X 10/10). X stays: the car was found on the first pass
+  in both Chrome runs. Device under the search: ~73 C, 19.5 W (throttles ~99 C).
+- Mission step messages are short and name the UAVs ("Step 3 (998 found the red car): 997
+  returning home."; the voice says only "997 returning home."). Voice plays at 1.25x. The map's
+  target ring and the followed detection's marker move with the car (they trailed it by up to
+  ~1.5 s / 50 m). Chat font 1.5x the base (was 2x).
+- Spotting the car: the onboard detector runs on 2x2 tiles of the full frame (the red car scores
+  0.6-0.74, was 0.24 - under the 0.35 that starts a track); searches fly at 70 kts (set by
+  PrepareAoiSearch with SetSpeed; was 105); the map shows every airborne UAV's camera footprint, line
+  of sight and tail number, and warns when sped up while onboard detection runs. Chrome at 1x, the
+  operator's plan sentence (997+998, ZoneA, red car, track; when found return the other home): 998
+  found the car on the FIRST pass (~70 s after start; before: 16 passes at 5x), 74%, locked and
+  followed it within 2-12 m of its true position; 997 went home and landed; "stop tracking" ended it.
+- Mission plans ("...when the car is found, return the other UAV home"): MissionPlanLiveTests 8/8.
+
+Done 2026-09-30
+---------------
+- Onboard find-and-track on the Jetson Orin Nano Super (was issue 11): TensorRT detector (D-FINE-S
+  Objects365, 13 ms), ground-plane tracker, deterministic executive driving the payload, Qwen3-VL-2B
+  verifier (~1.6 s); found, verified, locked and followed the moving red car in the simulator,
+  reported within 7-10 m, lost and regained under the same id. See the onboard README.
+
+Done 2026-09-29
+---------------
+- Team AOI searches ("send 997 and 998 to search for a red car in ZoneA"): one call splits the
+  zone between the UAVs; a UAV too far away to help is left out; per-team detection handling and
+  end messages. Live 8/8 (TeamAoiSearch, TeamAoiSearchAllUavs, AoiSearchMission alone), shown end
+  to end on the map. Commit ee24e83; see CLAUDE.md "Team searches".
 
 Done 2026-09-28
 ---------------

@@ -241,6 +241,9 @@ public sealed class ChatHub(
     public async Task<string> RelayStartMission(string tailNumber) =>
         ToResultText(await broker.SendAsync<MissionStatus>((proxy, correlationId) => proxy.StartMission(correlationId, tailNumber), CancellationToken.None));
 
+    public async Task<string> RelayStopMission(string tailNumber) =>
+        ToResultText(await broker.SendAsync<MissionStatus>((proxy, correlationId) => proxy.StopMission(correlationId, tailNumber), CancellationToken.None));
+
     public async Task<string> RelaySetSearchTarget(string tailNumber, SearchTargetRequest request) =>
         ToResultText(await broker.SendAsync<MissionStatus>((proxy, correlationId) => proxy.SetSearchTarget(correlationId, tailNumber, request), CancellationToken.None));
 
@@ -292,6 +295,15 @@ public sealed class ChatHub(
             proactiveJournal.Add(historyNote, message);
         }
         await PushUnpromptedAsync(message, 0d, spoken, voiceGroup);
+    }
+
+    /// <summary>The UAV an MCP server's unprompted message put the operator's attention on (e.g. it
+    /// locked on a target): becomes the operator's current UAV (<see cref="OperatorUavContext"/>).</summary>
+    public void SetOperatorUav(string tailNumber)
+    {
+        RequireMcpServerConnection(nameof(SetOperatorUav));
+        if (!string.IsNullOrWhiteSpace(tailNumber))
+            agentFactory.OperatorUavContext.Set(tailNumber.Trim());
     }
 
     /// <summary>Adds <paramref name="note"/> and <paramref name="message"/> to BrainAgent's history

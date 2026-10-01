@@ -29,6 +29,7 @@ public interface IOperationClientProxy
     // AOI search missions. A fleet app opts into these via UavOps.FleetClient's optional
     // IUavMissionHandler; FleetClientConnection fails them fast for one that hasn't.
     Task StartMission(string correlationId, string tailNumber);
+    Task StopMission(string correlationId, string tailNumber);
     Task SetSearchTarget(string correlationId, string tailNumber, SearchTargetRequest request);
 
     // Payload zoom: UavOps.FleetClient's optional IUavPayloadZoomHandler, failed fast the same way.

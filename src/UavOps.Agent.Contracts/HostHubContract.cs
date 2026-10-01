@@ -24,6 +24,12 @@ public static class HostHubContract
         /// <summary><c>(string instruction, double elapsedSeconds)</c>: have BrainAgent's persona
         /// (no tools) phrase <c>instruction</c> for the operator, then show the result.</summary>
         public const string PostPhrasedOperatorMessage = nameof(PostPhrasedOperatorMessage);
+
+        /// <summary><c>(string tailNumber)</c>: the UAV the operator's attention is now on, because
+        /// of something the server just told them (e.g. it locked on a target). A later message
+        /// that names no UAV ("stop tracking") is then about it, as if the operator had named it -
+        /// only a model guess of exactly that UAV is grounded this way.</summary>
+        public const string SetOperatorUav = nameof(SetOperatorUav);
     }
 
     /// <summary>What the fleet app reports on its own, forwarded unchanged by the host to McpMoav's

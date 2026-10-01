@@ -9,7 +9,7 @@ namespace UavOps.Simulator.Camera;
 /// <summary>
 /// The ground as a nadir camera sees it, drawn from the offline OSM map
 /// (<see cref="PmTilesReader"/>): landuse and landcover as textured fills, water, roads with
-/// markings, buildings with shadows, trees, and parked or moving traffic.
+/// markings, buildings with shadows, trees, and parked cars (moving traffic is drawn per frame).
 ///
 /// Where OSM has no buildings mapped (most of this area), buildings are added along the roads so
 /// streets look built-up. Traffic never includes a white van, so the only white van in view is one
@@ -504,25 +504,23 @@ public sealed class GroundRenderer
         }
     }
 
-    /// <summary>Parked cars along the kerbs of streets and a few vehicles in the lanes of main
-    /// roads. Each slot is owned by the tile its position falls in, so a road split across tiles
-    /// doesn't get two sets of cars.</summary>
+    /// <summary>Parked cars along the kerbs of streets. Each slot is owned by the tile its position
+    /// falls in, so a road split across tiles doesn't get two sets of cars. Moving traffic isn't
+    /// drawn here (these chunks are cached): it's <see cref="World.Traffic"/>, drawn per frame.</summary>
     private static void DrawTraffic(SKCanvas canvas, ChunkContext ctx, ChunkFeatures features, double density)
     {
         var shadow = ShadowPixels(ctx, 1);
         foreach (var road in features.Roads)
         {
-            var (parked, moving) = road.Class switch
+            var parked = road.Class switch
             {
-                "minor" => (0.32, 0.03),
-                "service" => (0.35, 0.02),
-                "tertiary" => (0.18, 0.05),
-                "secondary" => (0.06, 0.07),
-                "primary" or "trunk" => (0.0, 0.08),
-                _ => (0.0, 0.0)
-            };
-            (parked, moving) = (parked * density, moving * density);
-            if (parked == 0 && moving == 0)
+                "minor" => 0.32,
+                "service" => 0.35,
+                "tertiary" => 0.18,
+                "secondary" => 0.06,
+                _ => 0.0
+            } * density;
+            if (parked == 0)
                 continue;
 
             var travelled = 0.0;
@@ -545,15 +543,10 @@ public sealed class GroundRenderer
                     {
                         var rng = new Random(Hash(at) ^ side * 7919);
                         var roll = rng.NextDouble();
-                        // Parked at the kerb, or driving in the lane; either way facing the traffic
-                        // direction of that side.
-                        double offset;
-                        if (roll < parked)
-                            offset = road.WidthMeters / 2 - 1.1;
-                        else if (roll < parked + moving)
-                            offset = road.WidthMeters / 4;
-                        else
+                        // Parked at the kerb, facing the traffic direction of that side.
+                        if (roll >= parked)
                             continue;
+                        var offset = road.WidthMeters / 2 - 1.1;
                         var position = at + right * (offset * side);
                         var direction = along * side;
                         // Compass-style angle (0 = up/north, clockwise) is the canvas rotation too.
@@ -566,31 +559,10 @@ public sealed class GroundRenderer
         }
     }
 
-    /// <summary>Everyday traffic: mostly cars, mostly white/silver/grey/black. Vans are never white
-    /// (or anything close), so a white van in view is always a scenario object.</summary>
     private static VehicleLook BackgroundVehicle(Random rng)
     {
-        var roll = rng.NextDouble();
-        var kind = roll < 0.84 ? VehicleKind.Car : roll < 0.9 ? VehicleKind.Pickup : roll < 0.95 ? VehicleKind.Van : roll < 0.99 ? VehicleKind.Truck : VehicleKind.Bus;
-        var colors = new (string Name, double Weight)[] { ("white", 0.27), ("silver", 0.2), ("grey", 0.15), ("black", 0.16), ("blue", 0.08), ("red", 0.07), ("beige", 0.04), ("green", 0.03) };
-        var pick = rng.NextDouble();
-        var name = colors[^1].Name;
-        foreach (var c in colors)
-        {
-            if (pick < c.Weight)
-            {
-                name = c.Name;
-                break;
-            }
-            pick -= c.Weight;
-        }
-        // Nothing a camera could take for a white van: silver and beige read as white in haze
-        // (measured: the model reported a silver van as a white van).
-        if (kind == VehicleKind.Van && name is "white" or "silver" or "beige")
-            name = new[] { "grey", "black", "blue", "red", "green" }[rng.Next(5)];
-        if (kind == VehicleKind.Bus)
-            name = "white";
-        return VehicleLook.Of(kind, VehicleSprites.Colors[name]);
+        var (kind, color) = VehicleSprites.Background(rng);
+        return VehicleLook.Of(kind, VehicleSprites.Colors[color]);
     }
 
     private static bool InBox(Vec2 p, (Vec2 Min, Vec2 Max) box) =>

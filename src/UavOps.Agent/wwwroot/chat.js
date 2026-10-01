@@ -503,6 +503,8 @@ connection.on("SetMicActive", (active) => {
 
 // ---- Voice: hear replies (BrainAgent's final answer → Voice/VoiceEndpoints' /v1/audio/speech) --
 const SPEAK_KEY = "uavops-speak-replies";
+// Replies are played faster than the TTS speaks them (pitch kept): the operator asked for 1.25x.
+const VOICE_PLAYBACK_RATE = 1.25;
 let speakEnabled = localStorage.getItem(SPEAK_KEY) === "true";
 speakToggle.classList.toggle("is-active", speakEnabled);
 speakToggle.setAttribute("aria-pressed", String(speakEnabled));
@@ -572,6 +574,8 @@ function synthesizeChunk(chunk) {
 function playClip(blob) {
   const url = URL.createObjectURL(blob);
   const audio = new Audio(url);
+  audio.playbackRate = VOICE_PLAYBACK_RATE;
+  audio.preservesPitch = true;
   return new Promise((resolve) => {
     const done = () => {
       URL.revokeObjectURL(url);

@@ -1,8 +1,18 @@
 using System.Collections.Concurrent;
 using UavOps.Agent.Mission;
 using UavOps.Onboard.Contracts;
+using UavOps.Onboard.Detector.Autonomy;
+using UavOps.Onboard.Detector.Perception;
 
 namespace UavOps.Onboard.Detector;
+
+/// <summary>One UAV's search, whichever pipeline runs it.</summary>
+public interface ISearchRunner
+{
+    SearchTask Search { get; }
+    SearchTaskStatus Status { get; }
+    Task RunAsync(CancellationToken cancellationToken);
+}
 
 /// <summary>
 /// Runs one UAV's search: pulls every camera frame in order, has the vision model look at each
@@ -20,7 +30,7 @@ public sealed class SearchTaskRunner(
     DetectionTracker tracker,
     DetectorOptions options,
     ILogger logger,
-    IZoomCamera? zoom = null)
+    IZoomCamera? zoom = null) : ISearchRunner
 {
     private readonly ConcurrentDictionary<long, byte> _inFlight = new();
     private readonly List<(GeoPoint Position, ObjectDescription Description, bool IsTarget)> _examined = [];
@@ -197,15 +207,19 @@ public sealed class SearchTaskRunner(
                 continue;
 
             var position = camera.NormalizedToGeo(candidate.Box.CenterX, candidate.Box.CenterY);
-            var track = tracker.Observe(task.MissionId, task.Prompt, position, description.Confidence);
-            if (track is null)
+            // Stamped with when the frame was taken: that's when it was there (a vehicle may have
+            // driven on since). A known object that has moved is reported again under its track id.
+            var seenAt = frame.Telemetry.CapturedAtUtc;
+            if (tracker.See(task.MissionId, task.Prompt, position, description.Confidence, seenAt) is not { } sighting)
                 continue;
+            var track = sighting.Track;
 
-            Interlocked.Increment(ref _detections);
+            if (sighting.IsNew)
+                Interlocked.Increment(ref _detections);
             var detection = new OnboardDetection(task.TailNumber, task.MissionId, task.ZoneName, task.Prompt, description.Text,
-                description.Confidence, position.Lat, position.Lng, DateTime.UtcNow, track.Id, seq, candidate.Box, latency);
-            logger.LogInformation("Found '{Label}' ({Confidence:P0}) for {Tail} at {Lat:F5}, {Lng:F5} in frame {Seq} ({Ms} ms).",
-                description.Text, description.Confidence, task.TailNumber, position.Lat, position.Lng, seq, latency);
+                description.Confidence, position.Lat, position.Lng, seenAt, track.Id, seq, candidate.Box, latency);
+            logger.LogInformation("{What} '{Label}' ({Confidence:P0}) for {Tail} at {Lat:F5}, {Lng:F5} in frame {Seq} ({Ms} ms).",
+                sighting.IsNew ? "Found" : "Moved:", description.Text, description.Confidence, task.TailNumber, position.Lat, position.Lng, seq, latency);
             try
             {
                 await sink.SendAsync(task.DetectionCallbackUrl, detection, cancellationToken);
@@ -322,7 +336,7 @@ public sealed class SearchTaskRunner(
             var center = camera.NormalizedToGeo(box.CenterX, box.CenterY);
             try
             {
-                if (await zoom.CaptureAsync(zoomUrl, center.Lat, center.Lng, width, options.ZoomPixels, cancellationToken) is { } jpeg)
+                if (await zoom.CaptureAsync(zoomUrl, center.Lat, center.Lng, width, options.ZoomPixels, cancellationToken, frame.Telemetry.Seq) is { } jpeg)
                     return (jpeg, width);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
@@ -346,24 +360,46 @@ public sealed class SearchTaskRunner(
     }
 }
 
-/// <summary>The searches running now, one per UAV: a new task for a UAV replaces its old one.</summary>
+/// <summary>
+/// The searches running now, one per UAV: a new task for a UAV replaces its old one. Each search
+/// gets the fast pipeline (<see cref="Autonomy.TrackingRunner"/>: detector, tracker, executive) when
+/// there's a detector, the aircraft offers live video, and the target is something the detector
+/// knows (<see cref="TargetSpec"/>); otherwise the vision-model pipeline (<see cref="SearchTaskRunner"/>).
+/// A find-and-track mission needs the fast pipeline; without it, it runs as a plain search.
+/// </summary>
 public sealed class SearchTaskRegistry(
     IFrameSource frames,
     IVisionModel model,
     IDetectionSink sink,
     IZoomCamera zoom,
     DetectorOptions options,
-    ILoggerFactory loggers) : IHostedService
+    ILoggerFactory loggers,
+    PerceptionOptions perception,
+    IServiceProvider services) : IHostedService
 {
     private readonly object _lock = new();
-    private readonly Dictionary<string, (SearchTaskRunner Runner, CancellationTokenSource Stop, Task Running)> _running =
+    private readonly Dictionary<string, (ISearchRunner Runner, CancellationTokenSource Stop, Task Running)> _running =
         new(StringComparer.OrdinalIgnoreCase);
-    private readonly DetectionTracker _tracker = new(options.TrackRadiusMeters);
+    private readonly DetectionTracker _tracker = new(options.TrackRadiusMeters, options.MaxTargetSpeedMps, options.TrackMemorySeconds, options.MoveReportMeters);
 
     public void Start(SearchTask task)
     {
         Stop(task.TailNumber);
-        var runner = new SearchTaskRunner(task, frames, model, sink, _tracker, options, loggers.CreateLogger<SearchTaskRunner>(), zoom);
+        var detector = services.GetService<IObjectDetector>();
+        var spec = TargetSpec.Parse(task.Prompt);
+        ISearchRunner runner;
+        if (detector is not null && spec is not null && task.VideoSourceUrl is not null)
+            runner = new TrackingRunner(task, spec, detector, frames, zoom, services.GetRequiredService<IVerifier>(),
+                services.GetRequiredService<IPayloadControl>(), services.GetRequiredService<ITrackSink>(), sink, perception,
+                loggers.CreateLogger<TrackingRunner>());
+        else
+        {
+            var logger = loggers.CreateLogger<SearchTaskRunner>();
+            if (task.Track)
+                logger.LogWarning("{Tail}: find-and-track for '{Prompt}' needs the fast pipeline ({Why}); searching only.", task.TailNumber, task.Prompt,
+                    detector is null ? "no detector engine" : spec is null ? "the detector doesn't know that target" : "no live video");
+            runner = new SearchTaskRunner(task, frames, model, sink, _tracker, options, logger, zoom);
+        }
         var stop = new CancellationTokenSource();
         var running = Task.Run(() => runner.RunAsync(stop.Token));
         lock (_lock)
@@ -372,7 +408,7 @@ public sealed class SearchTaskRegistry(
 
     public bool Stop(string tail)
     {
-        (SearchTaskRunner, CancellationTokenSource Stop, Task)? entry = null;
+        (ISearchRunner, CancellationTokenSource Stop, Task)? entry = null;
         lock (_lock)
         {
             if (_running.Remove(tail, out var found))

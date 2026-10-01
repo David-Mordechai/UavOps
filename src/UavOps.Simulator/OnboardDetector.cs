@@ -19,16 +19,24 @@ public interface IOnboardDetector
     /// <summary>Whether everything the camera took for this UAV's search has been looked at, so
     /// the search can be reported complete once its route is flown.</summary>
     bool HasFinished(SimUav uav);
+
+    /// <summary>The next report from the onboard computer about a target it tracks for this UAV
+    /// (find and track), or null. Called on the tick under the fleet lock.</summary>
+    TargetTrackReport? TakeTrack(SimUav uav) => null;
 }
 
 /// <summary>
 /// The no-model fallback (<c>Simulator:Detector = Simulated</c>): sees a scenario object when it's
 /// inside the camera frame (<see cref="CameraModel"/>) and every word of the search prompt is one
-/// of its tags. Reports each object once per mission, with a few meters of position noise.
+/// of its tags. Reports each object once per mission, with a few meters of position noise - and
+/// again, under the same track id, when a driving one is seen more than <see cref="MovedMeters"/>
+/// from where it was last reported.
 /// </summary>
-public sealed class SimulatedDetector(ScenarioStore scenario, SimOptions options) : IOnboardDetector
+public sealed class SimulatedDetector(ScenarioStore scenario, SimOptions options, World.GroundWorld? world = null) : IOnboardDetector
 {
-    private readonly HashSet<(string MissionId, string ObjectId)> _reported = [];
+    public const double MovedMeters = 50;
+
+    private readonly Dictionary<(string MissionId, string ObjectId), GeoPoint> _reported = [];
     private readonly Random _random = new();
 
     public IEnumerable<DetectionReport> Look(SimUav uav, DateTime nowUtc)
@@ -43,14 +51,17 @@ public sealed class SimulatedDetector(ScenarioStore scenario, SimOptions options
         var camera = new CameraModel(uav.Position.Lat, uav.Position.Lng, Math.Max(uav.AltitudeFt, 1), uav.HeadingDeg,
             uav.PayloadHfovDeg, options.CameraWidth, options.CameraHeight);
         var projection = new GeoProjection(uav.Position);
-        foreach (var obj in scenario.All())
+        // Where things are now: a driving target is seen where it has got to.
+        foreach (var obj in world?.ObjectsNow() ?? scenario.All())
         {
             if (!wanted.All(obj.Tags.Contains))
                 continue;
             if (!camera.Contains(new GeoPoint(obj.Lat, obj.Lng)))
                 continue;
-            if (!_reported.Add((uav.MissionId, obj.Id)))
+            var at = new GeoPoint(obj.Lat, obj.Lng);
+            if (_reported.TryGetValue((uav.MissionId, obj.Id), out var last) && GeoProjection.DistanceMeters(last, at) <= MovedMeters)
                 continue;
+            _reported[(uav.MissionId, obj.Id)] = at;
 
             var seen = projection.ToGeo(projection.ToLocal(new GeoPoint(obj.Lat, obj.Lng)) + new Vec2(Jitter(), Jitter()));
             yield return new DetectionReport

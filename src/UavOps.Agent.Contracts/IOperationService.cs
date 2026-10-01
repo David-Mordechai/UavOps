@@ -39,5 +39,9 @@ public interface IOperationService
     // AOI search missions. The route itself goes up with UploadWaypoints, which never starts
     // flight; StartMission does. Both return a MissionStatus.
     Task<OperationResult> StartMission(string tailNumber, CancellationToken cancellationToken);
+
+    /// <summary>Ends a UAV's search or tracking mission: it stops where it is and circles, the
+    /// payload back to straight down. A search repeats until this (or a redirect).</summary>
+    Task<OperationResult> StopMission(string tailNumber, CancellationToken cancellationToken);
     Task<OperationResult> SetSearchTarget(string tailNumber, SearchTargetRequest request, CancellationToken cancellationToken);
 }

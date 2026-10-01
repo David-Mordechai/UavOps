@@ -73,6 +73,10 @@ builder.Services.AddSingleton<IAoiZoneStore>(new SqliteAoiZoneStore(MissionOptio
 builder.Services.AddSingleton<IRouteStore, InMemoryRouteStore>();
 builder.Services.AddSingleton<DetectionPointRegistry>();
 builder.Services.AddSingleton<MissionEventService>();
+// Mission plans (Missions/): the operator's mission as steps, run here as things happen.
+builder.Services.AddSingleton<UavOps.Agent.McpMoav.Missions.StepExecutor>();
+builder.Services.AddSingleton<UavOps.Agent.McpMoav.Missions.MissionPlanValidator>();
+builder.Services.AddSingleton<UavOps.Agent.McpMoav.Missions.MissionEngine>();
 builder.Services.AddHostedService<DetectionSummaryFlusher>();
 
 // Every AI-facing string for this domain - ServerInstructions, tool descriptions, parameter
@@ -82,6 +86,7 @@ builder.Services.AddHostedService<DetectionSummaryFlusher>();
 // see McpToolsConfig/McpToolsBuilder's own doc comments for why this moved off attributes and how
 // it was verified against the actual installed MCP SDK before being built this way).
 var toolsConfig = McpToolsConfigLoader.Load(Path.Combine(AppContext.BaseDirectory, "ToolsConfig.yaml"));
+builder.Services.AddSingleton(toolsConfig);
 var tools = McpToolsBuilder.Build(typeof(MoavTools), toolsConfig, builder.Services);
 
 builder.Services
@@ -97,8 +102,18 @@ var app = builder.Build();
 if (app.Services.GetService<HubConnection>() is { } relayConnection)
 {
     var missionEvents = app.Services.GetRequiredService<MissionEventService>();
-    relayConnection.On<DetectionReport>(HostHubContract.FleetEvents.Detection, report => missionEvents.HandleDetectionAsync(report));
-    relayConnection.On<MissionEventReport>(HostHubContract.FleetEvents.MissionEvent, report => missionEvents.HandleMissionEventAsync(report));
+    var plans = app.Services.GetRequiredService<UavOps.Agent.McpMoav.Missions.MissionEngine>();
+    relayConnection.On<DetectionReport>(HostHubContract.FleetEvents.Detection, async report =>
+    {
+        // Messages first, so "Detection 1: ..." comes before what a plan does about it.
+        if (await missionEvents.HandleDetectionAsync(report))
+            plans.OnDetection(report);
+    });
+    relayConnection.On<MissionEventReport>(HostHubContract.FleetEvents.MissionEvent, async report =>
+    {
+        await missionEvents.HandleMissionEventAsync(report);
+        plans.OnMissionEvent(report);
+    });
 }
 
 await app.RunAsync();

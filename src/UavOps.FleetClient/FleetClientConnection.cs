@@ -129,6 +129,11 @@ namespace UavOps.FleetClient
                     ? MissionsNotSupported()
                     : missionHandler.StartMission(tailNumber)));
 
+            _connection.On<string, string>(nameof(IUavMissionHandler.StopMission), (correlationId, tailNumber) =>
+                RunAsync(correlationId, () => missionHandler == null
+                    ? MissionsNotSupported()
+                    : missionHandler.StopMission(tailNumber)));
+
             _connection.On<string, string, SearchTargetRequest>(nameof(IUavMissionHandler.SetSearchTarget), (correlationId, tailNumber, request) =>
                 RunAsync(correlationId, () => missionHandler == null
                     ? MissionsNotSupported()

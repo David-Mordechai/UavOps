@@ -10,6 +10,15 @@ namespace UavOps.Onboard.Contracts;
 /// <param name="DetectionCallbackUrl">Where to POST each <see cref="OnboardDetection"/>.</param>
 /// <param name="ZoomUrl">The payload's zoom (<c>GET ?lat=&amp;lng=&amp;widthMeters=</c>, a JPEG close-up
 /// of that ground point); null if it has none, and candidates are cropped from the frame instead.</param>
+/// <param name="Track">Find and track: once the target is found and verified, lock the payload on it
+/// and keep reporting where it is (<see cref="TargetTrackReport"/>) instead of searching on.</param>
+/// <param name="VideoSourceUrl">The payload's live video (<c>{url}/next?after=N</c>, the newest frame,
+/// same headers as survey frames), for the every-frame detector, and its close-ups
+/// (<c>{url}/zoom</c>, like <paramref name="ZoomUrl"/> but <c>?seq=</c> is a video frame's number -
+/// video and survey frames are numbered separately). Null: survey frames only.</param>
+/// <param name="PayloadUrl">The payload's control, for the onboard computer to point and zoom it
+/// (<see cref="PayloadPaths"/>). Null: it can't move the payload.</param>
+/// <param name="TrackCallbackUrl">Where to POST each <see cref="TargetTrackReport"/>.</param>
 public sealed record SearchTask(
     string TailNumber,
     string MissionId,
@@ -19,7 +28,67 @@ public sealed record SearchTask(
     string FrameSourceUrl,
     long FromSeq,
     string DetectionCallbackUrl,
-    string? ZoomUrl = null);
+    string? ZoomUrl = null,
+    bool Track = false,
+    string? VideoSourceUrl = null,
+    string? PayloadUrl = null,
+    string? TrackCallbackUrl = null);
+
+/// <summary>The states a tracked target is reported in.</summary>
+public static class TargetTrackStates
+{
+    /// <summary>Seen in the last frames; the position is measured.</summary>
+    public const string Tracking = "Tracking";
+
+    /// <summary>Not seen for a moment (under trees, behind a building): the position is predicted.</summary>
+    public const string Coasting = "Coasting";
+
+    /// <summary>Not seen for a while: the onboard computer searches around where it should be; the
+    /// position is the centre of that search (it moves with the target's last known motion).</summary>
+    public const string Lost = "Lost";
+
+    /// <summary>Not found again: given up. The aircraft resumes its search route.</summary>
+    public const string Released = "Released";
+}
+
+/// <summary>Where a tracked target is, from the onboard computer to the aircraft: about once a
+/// second while tracking, and on every state change. "The tool that gives the target's location."</summary>
+public sealed record TargetTrackReport(
+    string TailNumber,
+    string MissionId,
+    string ZoneName,
+    string Prompt,
+    string TrackId,
+    string Label,
+    string State,
+    double Lat,
+    double Lng,
+    double SpeedMps,
+    double? HeadingDeg,
+    double Confidence,
+    DateTime SeenAtUtc);
+
+/// <summary>The payload control the onboard computer drives, relative to <see cref="SearchTask.PayloadUrl"/>
+/// (JSON bodies). On a real UAV these are the gimbal's own commands.</summary>
+public static class PayloadPaths
+{
+    /// <summary>POST <see cref="PointAtCommand"/>: hold this ground point in the centre.</summary>
+    public const string Point = "point";
+
+    /// <summary>POST <see cref="ZoomCommand"/>.</summary>
+    public const string Zoom = "zoom";
+
+    /// <summary>POST, no body: back to straight down, widest.</summary>
+    public const string Release = "release";
+}
+
+public sealed record PointAtCommand(double Lat, double Lng);
+
+/// <summary>Zoom so the frame shows about <paramref name="GroundWidthMeters"/> across.</summary>
+public sealed record ZoomCommand(double GroundWidthMeters);
+
+/// <summary>Per-stage timing of the every-frame loop, for GET /tasks (ms, recent average).</summary>
+public sealed record PipelineTiming(double FetchMs, double DecodeMs, double DetectMs, double TrackMs, double Fps, int Tracks, string? Detector);
 
 /// <summary>Where the camera was and how it was pointed when a frame was taken - what real UAV
 /// video carries as MISB KLV metadata. The camera looks straight down, image top = heading.</summary>
@@ -57,7 +126,8 @@ public sealed record OnboardDetection(
     string TrackId,
     long FrameSeq,
     BoundingBox Box,
-    long ModelLatencyMs);
+    long ModelLatencyMs,
+    bool FromVideo = false);
 
 /// <summary>What the service is doing for one UAV (GET /tasks).</summary>
 /// <param name="AnalyzedThroughSeq">Every frame up to this one has been analysed (frames are
@@ -70,7 +140,10 @@ public sealed record SearchTaskStatus(
     int FramesAnalyzed,
     int Detections,
     long LastLatencyMs,
-    string? LastError);
+    string? LastError,
+    string? Phase = null,
+    string? TargetTrackId = null,
+    PipelineTiming? Timing = null);
 
 /// <summary>Response headers that carry <see cref="FrameTelemetry"/> alongside a JPEG frame.</summary>
 public static class FrameHeaders

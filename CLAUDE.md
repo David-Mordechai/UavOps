@@ -52,10 +52,13 @@ Up to seven server-side processes end to end (counting the opt-in `UavOps.Simula
 - **`src/UavOps.Simulator`** (.NET 8 web app, `:5270`, opt-in) — a richer dev stand-in for the
   fleet app: flies the UAVs, renders their payload camera from the offline map, and shows it all on
   an offline map. See its own README.
-- **`src/UavOps.Onboard.Detector`** (.NET 8, `:5280`, opt-in) — the onboard detection service (the
-  Jetson process next to the camera): searches the camera frames for the search target with a
-  vision-language model. **`src/UavOps.Onboard.Contracts`** holds what it and the aircraft exchange,
-  and the shared `CameraModel`. See "Onboard detection" below and its own README.
+- **`src/UavOps.Onboard.Detector`** (.NET 8, `:5280`) — the onboard service, running **on the
+  Jetson Orin Nano Super** (`192.168.1.154`, `Simulator:OnboardUrl`), never on the ground: finds the
+  search target (a TensorRT detector + tracker + a small verifier VLM, or a large VLM for targets
+  the detector doesn't know), and in a find-and-track mission drives the payload onto it and reports
+  where it is. Deployed by `scripts/deploy-onboard.ps1`. **`src/UavOps.Onboard.Contracts`** holds
+  what it and the aircraft exchange, and the shared `CameraModel`. See "Onboard detection" below and
+  its own README.
 
 There is no separate REST API or OpenAPI spec anywhere in this system. Fleet operations are
 declared as one C# interface (`IOperationService`, in `UavOps.Agent.Contracts`) and invoked
@@ -549,7 +552,9 @@ tail number plus the literal sentinel `ALL`.
   Never when the current message refers to a group ("the rest", "all", "them", "both", "others"):
   after "bring 997 home", "bring the rest home" must not resolve to 997 — `ReturnRemainingFleetLiveTests`
   stays 8/8. Any multi-UAV resolution (ALL, subset, group completion) clears it; a different
-  guess still asks, and the answer becomes the new current UAV.
+  guess still asks, and the answer becomes the new current UAV. An MCP server can also set it
+  (`HostHubContract.Methods.SetOperatorUav`): McpMoav does when a UAV locks on its target, so
+  "stop tracking" stops the tracker instead of asking "Which UAV?" (2026-10-01).
 
 ### Live test infrastructure (`tests/UavOps.Agent.Tests/Agents/LiveTestSupport.cs`)
 
@@ -848,11 +853,11 @@ the white van").
   by McpMoav and the simulator) and `SearchRoutePlanner` — a lawnmower sweep: lanes along the
   polygon's minimum-width direction (rotating calipers on the hull), spaced
   2·alt·tan(HFOV/2)·(1−overlap), clipped by scanline so concave zones split into several segments,
-  chained serpentine, entry corner picked by distance from the UAV. The seeded zones are in open
-  country where real aerial photos exist (see "Onboard detection" below): ZoneA a ~1.3 km strip
-  along the Yatir forest road, ZoneB Route 443 near Modi'in. A file seeded from an older seed gets
-  them rewritten (`SqliteAoiZoneStore.SeedVersion`). The UAV base ("home") is by ZoneA, "alpha" on
-  its road, "bravo" in ZoneB, with 999 at a forward point near ZoneB. Zone names match loosely
+  chained serpentine, entry corner picked by distance from the UAV. The one seeded zone, ZoneA,
+  is the whole Yatir drone photo (~0.7 km², open country with a real aerial photo, see "Onboard
+  detection" below). A file seeded from an older seed gets it rewritten and ZoneB deleted
+  (`SqliteAoiZoneStore.SeedVersion` 3, `RetiredSeedZones`). All three UAVs start at the base
+  ("home") by ZoneA; "alpha" is on its road. Zone names match loosely
   (`AoiZoneNames.Key`: "zone a", "AOI Zone-A").
 - **Tools** (McpMoav, `MoavTools.Mission.cs`): `ListAoiZones`, `GetAoiZone`, `PlanSearchRoute`,
   `UploadRoute`, `SetSearchTarget`, the composite `PrepareAoiSearch` (plan → upload → set target,
@@ -862,6 +867,22 @@ the white van").
   `ToolsConfig.yaml`'s comment). Planned routes live per tail in `IRouteStore`, so the model never
   copies a route id or waypoint list. Every other mission tool's `tailNumber` is single-UAV, and
   zones are `zoneName`, never `location`. Settings: McpMoav's `Mission` section.
+- **Searches repeat until stopped** (operator's decision, 2026-09-30: a moving target may not be
+  there on one pass): `SearchTargetRequest.Repeat` (McpMoav always sets it); at the end of its route
+  the UAV flies it again backwards, reporting `PassCompleted` ("997 searched all of ZoneA (pass 2):
+  no red car found yet. Searching it again."). `StopMission` ("stop the search", "stop tracking",
+  a new fleet command through every layer) ends it; a redirect does too.
+- **Find and track** ("search ZoneA for a red car and track it"): `PrepareAoiSearch` /
+  `SetSearchTarget` take `track`; it rides on `SearchTargetRequest.Track` to the aircraft. Once the
+  onboard computer has found and verified the target it locks the payload on it and the UAV circles
+  it (`Following`); the lock, a loss and a regain come back as mission events (`Tracking`,
+  `TargetLost`, `TargetRegained`, not ends - `MissionEventService.HandleTrackingEventAsync` posts
+  "997 locked on detection 1 (red car)..."), and the position as detection updates under the track
+  id (every 50 m or 20 s, so the model's history isn't flooded). While the UAV is locked on and
+  following, those updates are history notes only - no "seen again" chat message every 30 s (an
+  operator called that noise); lost, found again and given up are still posted. The simulator's page
+  folds a track's updates into one detection, at its latest position. `SetTrackingMode` is the datalink
+  antenna's, and its description says so.
 - **Team searches** ("send 998 and 999 to search for a red car in ZoneA"): `PrepareAoiSearch`
   takes `tailNumbers`, a JSON array, one call with every UAV. It is never 'ALL': for "all UAVs"
   the model lists the fleet itself. `SearchRoutePlanner.PlanTeam` cuts the single-search lanes
@@ -928,6 +949,42 @@ the white van").
   covers the command's retrieval; `AoiSearchMissionLiveTests` and `NavigateToDetectionLiveTests`
   check real mission state and telemetry; `eval/tool-retrieval-lab` has an `aoi-search` scenario.
 
+### Mission plans ("…when the car is found, return the other UAV home")
+
+A mission with a "when" can't be done by BrainAgent alone: it only acts when the operator sends a
+message. So the operator's mission becomes a **plan** that McpMoav carries out
+(`src/UavOps.Agent.McpMoav/Missions/`, tools in `MoavTools.MissionPlans.cs`). It is ground-side
+domain logic: the onboard computer never sees a plan, only each UAV's own search/track task.
+
+- **`CreateMissionPlan(steps)`**: the model writes the steps, each `{when, do, args}`.
+  - `do` is any McpMoav tool that changes something, called with its own argument names.
+  - `when` is one of: `start`, `after N`, `target.found`, `target.lost`, `target.regained`,
+    `target.given_up`, `pass.completed`, `time N` (seconds after start).
+  - A tail argument may be a role: `{finder}` (the plan's first UAV to detect or lock on the
+    target), `{others}`, `{all}`. A single-UAV tool given several UAVs runs once per UAV.
+  - The operator's example compiles to: start → `PrepareAoiSearch` (997+998, ZoneA, red car,
+    track); after 1 → `StartMission {all}`; target.found → `ReturnToLaunch {others}`.
+- **Checked before anything is stored** (`MissionPlanValidator`): real action tool, real argument
+  names and types, required ones present, known trigger, `after N` backwards, roles only after a
+  target step, known tails, existing zone, a start step. Each problem names its step.
+- **Shown, then started**: the result's plain-words steps (`MissionDescriber`) go to the operator;
+  their "start" is `StartMissionPlan`, never `StartMission` (both descriptions say so).
+- **Run** (`MissionEngine`): `Program.cs` hands the fleet's detections and mission events to the
+  engine after `MissionEventService` has posted its own message, so "Detection 1" reads before
+  "Mission step 3". Steps run off the hub's receive loop and call the same static `MoavTools`
+  methods the MCP tools wrap (`StepExecutor`). Each step posts one fixed-text message plus a
+  history note ("done by the plan - don't do it again").
+- **One tracker**: in a plan whose search tracks, a second UAV locking on is stopped (it holds) and
+  the operator told. A tracking plan therefore stays `Running` until cancelled.
+- **Not changed by `McpToolsBuilder`'s DI check**: it now asks `IServiceProviderIsService` whether a
+  parameter is registered rather than resolving it, so building the tool list doesn't construct the
+  engine and its dependencies in a throwaway container.
+- **Tests**: `MissionPlanTests` (validator, roles, describer, engine on the simulated fleet);
+  `MissionPlanLiveTests` (the operator's exact sentence → the 3-step plan with nothing flying, then
+  "start the mission" → both searching, step 3 waiting): 8/8 on 2026-10-01, with
+  `AoiSearchMission`/`TeamAoiSearch*` still 8/8. Verified end to end in Chrome with the Jetson:
+  997 detected the red car and 998 flew home.
+
 ## Voice (speech in and out)
 
 Voice is part of the app: push-to-talk in the chat UI (and the fleet app's joystick button, see
@@ -956,7 +1013,8 @@ Voice is part of the app: push-to-talk in the chat UI (and the fleet app's joyst
   counted; a question with Yes/No choices goes first and cuts a message being said short; the
   operator starting to talk stops the voice at once; the next chunk is synthesized while the current
   one plays. Built after a busy search left the voice minutes behind the screen and the operator
-  sent a UAV by stale speech.
+  sent a UAV by stale speech. Clips play at 1.25x, pitch kept (`VOICE_PLAYBACK_RATE`, the operator's
+  choice). Mission-plan steps are spoken as only what was done, by tail number ("997 returning home").
 - **Evaluation history**: `eval/voice-test-harness/` plays sentences through real speakers into a
   real mic and scores WER (needs a genuinely quiet room: with echo cancellation off, as the loopback
   requires, anyone talking in the room is recorded too - a 23.1% WER run was exactly that). Its
@@ -980,8 +1038,11 @@ in and `DetectionReport` out as before.
   layer, like `PointPayload`; the payload is 40° wide, up to 30x), and `PointPayload` only aims the
   camera (the live view centres on the point, north-up). `PrepareAoiSearch` sends the search zoom
   itself, so the frame is about `Mission:SearchGroundWidthMeters` (100 m, ~0.08 m/px) across, and
-  spaces the lanes from the field of view the aircraft reports in telemetry (`PayloadHfovDeg`). A
-  UAV sent to a point circles around it. It hands the
+  spaces the lanes from the field of view the aircraft reports in telemetry (`PayloadHfovDeg`). It
+  also sends `SetSpeed` to `Mission:SearchSpeedKts` (70; at 105 kts a car crossed the frame in
+  1.4 s, too few detector frames to confirm it), and team bands are planned at that speed. A
+  UAV sent to a point circles around it. The map draws every airborne UAV's camera footprint, its
+  line of sight and tail number, always. It hands the
   search to the detector (`OnboardDetectorClient`: PUT/DELETE `/tasks/{tail}`) and turns the
   detector's callbacks into the ordinary `DetectionReport`. A search is reported `Completed` only
   once the route is flown **and** the detector has analysed every frame - reporting "nothing found"
@@ -996,7 +1057,7 @@ in and `DetectionReport` out as before.
   first interprets what the operator means ("power grid antenna" -> transmission tower), names each
   close-up **without** being told the target (told it, it saw the target in a sign gantry and a
   road), a text-only question compares that name with the interpretation, and a second close-up at
-  the other width must agree. On ZoneB's real photo it finds both pylons and the overpass with no
+  the other width must agree. On the Route 443 photo (the former ZoneB) it finds both pylons and the overpass with no
   false hits; the vehicle prompts found none of them. See its README for the numbers and the
   Jetson notes. These close-ups are the **onboard computer's own payload control** during a search (on a
   real UAV, the Jetson slewing and zooming the payload itself), deliberately not a ground command:
@@ -1011,11 +1072,57 @@ in and `DetectionReport` out as before.
 - **What's on the ground**: in a zone, the photo's own real vehicles plus the placed targets. Drawn
   traffic (outside the photos, `Simulator:TrafficDensity`) never contains a white, silver or beige
   van, so a white van in view is a placed target or real.
+- **Things move** (`UavOps.Simulator/World/`, see its README):
+  - Traffic drives the real OSM roads around the base.
+  - A placed target with `SpeedKmh` drives its road back and forth.
+  - Both are a function of sim time (`SimClock`), so the server's camera draws a survey frame as at
+    its capture. A close-up (`/zoom?seq=`) is drawn as at the frame the candidate was seen in, plus
+    the slew time, so a moving car is still in it.
+  - The detector stamps a detection with the frame's capture time (when it was there). Its tracker
+    allows for driving: within `TrackMemorySeconds` (20), a sighting up to `MaxTargetSpeedMps` (25) ×
+    elapsed further away is the same object. A known object that has moved `MoveReportMeters` (50)
+    is reported again under its `TrackId`.
+  - McpMoav (`MissionEventService.HandleMovedAsync`) treats such a report as an update, not a new
+    detection. "The red car" / "detection N" then point at the new position, the model's history
+    always gets it, and the operator gets "Detection 1 (red car) seen again … moving ~40 km/h NE" at
+    most every `Mission:MovedMessageIntervalSeconds` (30). Following or tracking a target with a UAV
+    isn't built: "send 998 to the red car" goes where it was last seen.
+- **The fast onboard pipeline** (on the Jetson, `Autonomy/TrackingRunner`, see the detector's README
+  for the measurements): perception -> a deterministic mission executive -> payload actions, the
+  shape of onboard autonomy stacks like Shield AI's Hivemind - no language model decides anything
+  onboard (seconds per answer on this device, and not deterministic). Every frame of the live video
+  (10 fps): D-FINE-X (Objects365, Apache-2.0; 18/18 parked cars at search scale against S's 13/18) as
+  a TensorRT FP16 engine through a small native shim (`native/`, 43 ms), run on 2x2 overlapping
+  tiles of the full-resolution frame (`TiledDetector`: a car went from ~25 px and a 0.24 score to
+  ~50 px and 0.6-0.7, every placed vehicle found; 4 inferences a frame, ~3 fps per UAV with two
+  searching, compute-bound - D-FINE-S would be 3x faster but missed the white vehicles), colour from pixels,
+  ground-plane multi-object tracking (Kalman, ByteTrack-style, ids `T-n`; the locked target accepts
+  only sightings of the target's colour, any vehicle class, within driving reach; it is matched
+  first, a duplicate track of it is folded back in, and its coast counts only time spent looking). A candidate of the target's class and colour gets one zoomed close-up checked by the
+  verifier (Qwen3-VL-2B via llama.cpp, ~1.6 s: it names what it sees, `TargetMatcher` compares). In
+  find-and-track the executive then points and zooms the payload itself (`IPayloadControl`), reports
+  the target ~1/s (`TargetTrackReport`), and on a loss re-verifies before taking a track back under
+  the same id - after searching for it (look points over a growing disc around where it should be),
+  and giving it up after 90 s (the search route resumes). Targets the detector doesn't know (pylons,
+  bridges) stay on the VLM pipeline. **The link**: the Jetson is a SignalR client of the ground agent
+  (`/onboardHub`, `Hubs/OnboardLinkHub.cs`, a router that never reads the messages - tasks, reports,
+  payload commands, status); the simulator connects to the same hub as the aircraft
+  (`Simulator:OnboardLink`, `IOnboardLink`); video is read straight from the aircraft. The
+  plain HuggingFace export's FP16 engine found nothing (layer-norm overflow);
+  `scripts/onboard/fuse_layernorm.py` fixes that.
+- **The operator's view**:
+  - The map page is Sentinel-2 satellite (offline, `scripts/build-satellite.ps1`), with moving
+    traffic.
+  - A UAV's camera is a 3D view rendered in the browser (`wwwroot/camera3d.js`): terrain, the gimbal
+    straight down, locked or forward-oblique, the payload's zoom, and a HUD.
+  - The server's MJPEG stays as the "Detector" tab, what the onboard model is given.
 
 ## Ports (local dev)
 
 - `UavOps.Agent`: `http://localhost:5262` (chat UI, `/chatHub`, `/uavCommandHub`, `/healthz`,
   `/api/agent-graph`)
 - `UavOps.Simulator`: `http://localhost:5270` (map page, `/simHub`, `/api/*`, camera endpoints)
-- `UavOps.Onboard.Detector`: `http://localhost:5280` (`/tasks`, `/healthz`)
+- `UavOps.Onboard.Detector`: `http://192.168.1.154:5280` on the Jetson (`/tasks`, `/healthz`,
+  `/detect`); the simulator listens on all interfaces (`0.0.0.0:5270`) so the Jetson can pull its
+  video and post reports back.
 - Ollama: `http://localhost:11434`

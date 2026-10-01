@@ -31,6 +31,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\UavOps.Agent.Contracts\UavOps.Agent.Contracts.csproj" />
+    <!-- Only for OnboardLink's hub path and method names: the onboard hub routes messages, it
+         never reads them. -->
+    <ProjectReference Include="..\UavOps.Onboard.Contracts\UavOps.Onboard.Contracts.csproj" />
     <ProjectReference Include="..\UavOps.Agent.Simulator.Fake\UavOps.Agent.Simulator.Fake.csproj" />
   </ItemGroup>
 

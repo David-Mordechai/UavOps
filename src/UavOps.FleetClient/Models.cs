@@ -65,6 +65,17 @@ namespace UavOps.FleetClient
         public string ZoneName { get; set; }
         public string Prompt { get; set; }
         public double MinConfidence { get; set; }
+
+        /// <summary>Find and track: once found, the onboard agent locks on the target and keeps
+        /// reporting where it is (detection updates under its track id, and the
+        /// <see cref="MissionEventKinds.Tracking"/>/<see cref="MissionEventKinds.TargetLost"/>/
+        /// <see cref="MissionEventKinds.TargetRegained"/> events), and the UAV circles it.</summary>
+        public bool Track { get; set; }
+
+        /// <summary>Fly the route again and again (a moving target may not be there on one pass),
+        /// reporting <see cref="MissionEventKinds.PassCompleted"/> after each, until
+        /// <see cref="IUavMissionHandler.StopMission"/> or a redirect.</summary>
+        public bool Repeat { get; set; }
     }
 
     /// <summary>Sent to the host with <see cref="FleetClientConnection.ReportDetectionAsync"/>
@@ -102,6 +113,21 @@ namespace UavOps.FleetClient
 
         /// <summary>The mission was cut short, e.g. by a Navigate or ReturnToLaunch.</summary>
         public const string Aborted = "Aborted";
+
+        /// <summary>Find and track: the target is found and locked on; the UAV now follows it.</summary>
+        public const string Tracking = "Tracking";
+
+        /// <summary>The tracked target hasn't been seen for a while; the UAV circles where it was.</summary>
+        public const string TargetLost = "TargetLost";
+
+        /// <summary>The tracked target is found again.</summary>
+        public const string TargetRegained = "TargetRegained";
+
+        /// <summary>A repeating search flew its whole route once and starts over.</summary>
+        public const string PassCompleted = "PassCompleted";
+
+        /// <summary>The tracked target couldn't be found again; the search route is resumed.</summary>
+        public const string SearchResumed = "SearchResumed";
     }
 
     /// <summary>A command outcome an <see cref="IUavCommandHandler"/> implementation reports back

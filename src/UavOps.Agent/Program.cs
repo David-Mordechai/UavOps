@@ -130,6 +130,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<McpClientsLifetime
 // browser SPA at /chatHub, the real Moav-commanding client at /uavCommandHub - see ChatHub's own
 // doc comment for why both live on one Hub class).
 builder.Services.AddSignalR(options => options.MaximumParallelInvocationsPerClient = 10);
+// The aircraft <-> onboard computer link (Hubs/OnboardLinkHub): a router only.
+builder.Services.AddSingleton<UavOps.Agent.Hubs.OnboardLinkRouter>();
 
 // Always registered — a Moav command client can connect at any time without an app restart.
 // Backs both ChatHub's connection tracking and its Relay* methods, which UavOps.Agent.McpMoav's
@@ -211,6 +213,7 @@ app.UseStaticFiles();
 // URL changes by mapping both here.
 app.MapHub<ChatHub>("/chatHub");
 app.MapHub<ChatHub>("/uavCommandHub");
+app.MapHub<UavOps.Agent.Hubs.OnboardLinkHub>(UavOps.Onboard.Contracts.OnboardLink.HubPath);
 
 app.MapVoiceEndpoints();
 
